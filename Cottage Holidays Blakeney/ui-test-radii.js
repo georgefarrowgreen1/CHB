@@ -200,7 +200,6 @@ const px = (v) => Math.round(parseFloat(v) || 0);
   await page.addInitScript(() => { window.Square = { payments: () => ({ card: async () => ({ attach: async () => {}, tokenize: async () => ({ status: 'OK', token: 'tk' }) }), paymentRequest: () => { throw new Error('no wallets'); } }) }; });
   await page.reload({ waitUntil: 'networkidle' });
   await open(page, "openPayView('paytok','8','deposit')", 1800);
-  await open(page, "(async () => { const t = document.getElementById('pay-part-toggle'); if (t) t.click(); })()", 600);
   let s6 = await sweepScope(page, '#view-pay');
   ok(s6.n > 40, `the pay screen paints (${s6.n} elements swept)`);
   ok(s6.bad.length === 0, `every corner on the pay screen is a cell, a card or a pill${s6.bad.length ? ' — ' + s6.bad.join(', ') : ''}`);

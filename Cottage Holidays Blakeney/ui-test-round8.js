@@ -17,8 +17,9 @@
 //    §4 the timeline lane reads its monogram below 640 ("J", never "Jolly" or
 //       "Pimp"), the short name above it, the full name announced either way
 //    §5 the bookings rows say their state once: the chip, no coloured rail
-//    §6 the guest's journey is a caption in the hub's grammar, not a pill strip
-//    §7 prose wraps pretty by default; a booking ref and "£X to pay" hold as units
+//    §6 the guest's journey is a caption in the hub's grammar, not a pill strip —
+//       and a stay that owes says its next step once, in its money block
+//    §7 prose wraps pretty by default; a booking ref and the money figure hold as units
 //    §8 the hub's guest-detail labels read at 13px sentence case; the bookings
 //       caption says "· 3 upcoming", not "· 3 bookings upcoming"
 //  The search-scale decision (§9 of the demo) is gated in ui-test-searchpage §16c
@@ -130,13 +131,25 @@ const subsOk = (name, list, floor) => {
       const j = await page.evaluate(() => {
         const caps = [...document.querySelectorAll('#guest-bookings-list .bkflow-cap')].map((c) => c.textContent.trim());
         const refs = [...document.querySelectorAll('#guest-bookings-list .gb2-ref')].map((r) => { const rects = r.getClientRects(); return { nowrap: getComputedStyle(r).whiteSpace === 'nowrap', lines: rects.length }; });
-        const unit = document.querySelector('#guest-bookings-list .gb2-pl-unit');
-        return { caps, pills: document.querySelectorAll('#guest-bookings-list .bkflow-step').length, refs, unit: unit ? { nowrap: getComputedStyle(unit).whiteSpace === 'nowrap', lines: unit.getClientRects().length, t: unit.textContent } : null, when: getComputedStyle(document.querySelector('.gb2-when')).textWrap };
+        // Per card: does it owe (its money block carries a button), and does it
+        // ALSO carry a journey caption? An owing card says its next step once.
+        const cards = [...document.querySelectorAll('#guest-bookings-list .guest-booking.gb2')].map((c) => ({
+          owes: !!c.querySelector('.gbm-btn'), cap: !!c.querySelector('.bkflow-cap'),
+          fig: ((c.querySelector('.gbm-fig') || {}).textContent || '').trim(),
+        }));
+        // The figure and its word hold as one line beside the button (the old
+        // "£300.00 to pay" broke before "pay"): measured on the owing card's own text.
+        const figEl = [...document.querySelectorAll('#guest-bookings-list .gbm-fig')].find((f) => f.closest('.gb2').querySelector('.gbm-btn'));
+        let figLines = 0;
+        if (figEl) { const r = document.createRange(); r.selectNodeContents(figEl); figLines = new Set([...r.getClientRects()].filter((x) => x.width > 0).map((x) => Math.round(x.top))).size; }
+        return { caps, cards, pills: document.querySelectorAll('#guest-bookings-list .bkflow-step').length, refs, fig: figEl ? figEl.textContent.trim() : '', figLines, when: getComputedStyle(document.querySelector('.gb2-when')).textWrap };
       });
-      ok(j.caps.length >= 2 && j.caps.every((c) => /^Next · \d of \d · (Booked|Deposit|Your details|Balance|Arrival info|Your stay|Deposit back)$/.test(c)), `every stay card carries the journey caption in the hub's grammar (${j.caps.join(' | ')})`);
+      ok(j.caps.length >= 1 && j.caps.every((c) => /^Next · \d of \d · (Booked|Deposit|Your details|Balance|Arrival info|Your stay|Deposit back)$/.test(c)), `a settled stay carries the journey caption in the hub's grammar (${j.caps.join(' | ')})`);
+      const owing = j.cards.filter((c) => c.owes);
+      ok(owing.length >= 1 && owing.every((c) => !c.cap && /^£[\d,]+\.\d\d /.test(c.fig)), `a stay that owes says its next step once — the money block's figure, no caption repeating it (${owing.map((c) => c.fig + (c.cap ? ' + caption' : '')).join(' | ')})`);
       ok(j.pills === 0, 'and no pill strip remains');
       ok(j.refs.length >= 2 && j.refs.every((r) => r.nowrap && r.lines === 1), `the booking ref stays on one line with its word (${j.refs.length} refs)`);
-      ok(j.unit && j.unit.nowrap && j.unit.lines === 1, `"${j.unit && j.unit.t}" is one unit beside the figure`);
+      ok(j.fig && j.figLines === 1, `"${j.fig}" is one unit beside the Pay button (${j.figLines} line)`);
       ok(j.when === 'pretty', `the when-line wraps pretty (${j.when})`);
       // §2 the footer's theme switch
       await open(page, "(async () => { document.getElementById('theme-toggle').scrollIntoView({ block: 'center' }); })()", 400);

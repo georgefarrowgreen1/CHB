@@ -83,6 +83,15 @@ const midStay = { id: 3, prop_key: 'jollyboat', name: 'Guest Tester', email: 'gu
   check_in: d(-2), check_out: d(2), check_in_time: '15:00', check_out_time: '10:00', adults: 2, children: 0,
   payment: 'paid', deposit_paid: 495, agreed_total: 495, agreed_per_night: 120, agreed_nights: 4,
   agreed_nightly: 480, agreed_booking_fee: 0, agreed_txn_pct: 3, agreed_txn_fee: 15, agreed_on: d(-30) };
+// The soonest stay still owing: its card carries the countdown, the money block
+// (figure, line, the one button, the bar) and the tiles — the widest card My stays
+// draws, and the one the pay-screens build merged the pre-arrival hub into.
+const nextStay = { id: 4, prop_key: '21a', name: 'Guest Tester', email: 'guest@example.com',
+  check_in: d(40), check_out: d(43), check_in_time: '15:00', check_out_time: '10:00', adults: 2, children: 0,
+  payment: 'deposit', deposit_paid: 175, agreed_total: 700, agreed_per_night: 233.33, agreed_nights: 3,
+  agreed_nightly: 700, agreed_booking_fee: 50, agreed_txn_pct: 0, agreed_txn_fee: 0, agreed_on: d(-10),
+  hold_status: 'charged', hold_amount: 50, payment_method: 'Square card', pay_token: 'layouttok4',
+  balance_due_by: d(10), arrival_on: d(37), next_payment: { kind: 'balance', due: 525, damages: 0, charge: 525 } };
 
 const WIDTHS = [
   { name: 'phone', width: 390, height: 844 },
@@ -179,7 +188,16 @@ async function waitForServer(url, tries = 40) {
       // The DEPOSIT ask with the plan step offered and part-payment bounds — the
       // tallest state of the screen, and the one whose stacked frames the HIG
       // pass flattened.
-      if (url.includes('pay.php')) return json({
+      if (url.includes('pay.php')) {
+        const pb = (() => { try { return JSON.parse(route.request().postData() || '{}'); } catch (e) { return {}; } })();
+        // The whole stay is its own summary (the Deposit | Whole stay switch asks for it).
+        if (pb.action === 'summary' && pb.kind === 'balance') return json({
+          ok: true, propName: '21A Westgate', propKey: '21a', guestName: 'Alexandrina Featherstonehaugh-Smythe',
+          checkIn: '2026-08-27', checkOut: '2026-08-30', currency: 'GBP', kind: 'balance',
+          total: 700, alreadyPaid: 0, balance: 700, depositPct: 25, amountDue: 700,
+          damagesDue: 50, holdAmount: 50, holdStatus: 'none', balanceDueDate: '2026-07-28', quote: 'layout:balance:750.00',
+        });
+        return json({
         ok: true, propName: '21A Westgate', propKey: '21a', guestName: 'Alexandrina Featherstonehaugh-Smythe',
         checkIn: '2026-08-27', checkOut: '2026-08-30', currency: 'GBP', kind: 'deposit',
         total: 700, alreadyPaid: 0, balance: 700, depositPct: 25, amountDue: 175,
@@ -188,6 +206,7 @@ async function waitForServer(url, tries = 40) {
         autopayTerms: { amount: 525, due: '2026-10-28' }, autopayState: 'off',
         instalmentOffer: { n: 3, per: 175, last: 175, due: '2026-10-28', dates: ['2026-08-28', '2026-09-28', '2026-10-28'] },
       });
+      }
       if (url.includes('experiences.php')) return json({ experiences });
       // The email log has to be POPULATED, or the "Show email" button never renders
       // and this gate cannot see the row it overflows. That is exactly how a live
@@ -250,7 +269,7 @@ async function waitForServer(url, tries = 40) {
       }
       if (url.includes('ical-import.php')) return json(icalList);
       if (url.includes('diagnostics.php')) return json({ ok: true, summary: { ok: 12, warn: 1, fail: 0 }, checks: [], mail_ready: true });
-      if (url.includes('my-bookings.php')) return json({ bookings: [midStay], enquiries: [], completed_stays: 0 });
+      if (url.includes('my-bookings.php')) return json({ bookings: [midStay, nextStay], enquiries: [], completed_stays: 0 });
       return json({ ok: true, bookings: [], enquiries: [], threads: [], photos: [], reviews: [], experiences, content: {}, blocks: [], ranges: [] });
     });
     page.on('pageerror', (e) => problems.push(`pageerror @${tag}: ` + e.message));
@@ -302,13 +321,15 @@ async function waitForServer(url, tries = 40) {
         // type="hidden" behind the built-in calendar now, so naming one here asserted
         // that a deliberately invisible element must be on screen.
         { key: 'waitlist-modal', open: "(() => { try { closeChat(); } catch (e) {} openWaitlistModal({ prop: '21a' }); })()", mustSee: ['#waitlist-modal .modal-box', '#wl-date-trigger'] },
-        { key: 'my-stays', open: "(async () => { try { closeWaitlistModal(); } catch (e) {} try { closeChat(); } catch (e) {} currentGuest = { id: 1, name: 'Guest Tester', email: 'guest@example.com' }; try { setAuthUI(); } catch (e) {} nav('view-guest-bookings'); await renderGuestBookings(); })()", mustSee: ['#guest-bookings-list .guest-booking', '.my-stay-hub'] },
-        // THE PAY SCREEN, with the plan step chosen and the part row open — the
-        // state with the most stacked blocks and the only typed money field on
-        // the guest side. It had no scene at all, which is how a 338px form
-        // column inside a 700px card at 1280 went unmeasured.
-        { key: 'pay', open: "(async () => { await openPayView('layouttok', '1', 'deposit'); await new Promise(r => setTimeout(r, 900)); const r = document.querySelector('input[name=\"pay-ap-choice\"][value=\"monthly\"]'); if (r) { r.checked = true; r.dispatchEvent(new Event('change', { bubbles: true })); } await new Promise(r2 => setTimeout(r2, 300)); })()", mustSee: ['#pay-body', '#pay-btn', '.pay-ap-opts'] },
-        { key: 'pay-part', open: "(async () => { const t = document.getElementById('pay-part-toggle'); if (t) t.click(); await new Promise(r => setTimeout(r, 300)); })()", mustSee: ['#pay-part-row', '#pay-part-amt'] },
+        { key: 'my-stays', open: "(async () => { try { closeWaitlistModal(); } catch (e) {} try { closeChat(); } catch (e) {} currentGuest = { id: 1, name: 'Guest Tester', email: 'guest@example.com' }; try { setAuthUI(); } catch (e) {} nav('view-guest-bookings'); await renderGuestBookings(); })()", mustSee: ['#guest-bookings-list .guest-booking', '.my-stay-hub', '.gb2-next .gbm-btn'] },
+        // THE PAY SCREEN, with the plan step chosen and the monthly schedule open —
+        // the state with the most stacked blocks. It had no scene at all, which is
+        // how a 338px form column inside a 700px card at 1280 went unmeasured.
+        { key: 'pay', open: "(async () => { await openPayView('layouttok', '1', 'deposit'); await new Promise(r => setTimeout(r, 900)); const r = document.querySelector('input[name=\"pay-ap-choice\"][value=\"monthly\"]'); if (r) { r.checked = true; r.dispatchEvent(new Event('change', { bubbles: true })); } await new Promise(r2 => setTimeout(r2, 300)); })()", mustSee: ['#pay-body', '#pay-btn', '.pp-plan', '.pp-sched'] },
+        // …the whole stay chosen instead: its own figure, story and consent.
+        { key: 'pay-whole', open: "(async () => { const r = document.querySelector('input[name=\"pay-mode\"][value=\"all\"]'); if (r) { r.checked = true; r.dispatchEvent(new Event('change', { bubbles: true })); } await new Promise(r2 => setTimeout(r2, 700)); })()", mustSee: ['#pay-seg .pp-seg', '#pay-btn', '#pay-consent'] },
+        // …and the receipt, the screen with the most to say once it has worked.
+        { key: 'pay-receipt', open: "(async () => { payReceipt({ charged: 225, fullyPaid: false, autopay: null, card: { brand: 'VISA', last4: '4242' } }, null); await new Promise(r => setTimeout(r, 900)); })()", mustSee: ['#pay-done .pp-rc-h'] },
       ], vp.name, vp.width);
       await page.close();
     }

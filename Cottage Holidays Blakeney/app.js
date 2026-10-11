@@ -2099,6 +2099,9 @@ function mapBookingFromApi(row) {
         // A single "one payment" consent in trouble — no schedule block, but it
         // must not read as healthy (the monthly plan carries its own trouble).
         autopayTrouble: row.autopay_trouble && typeof row.autopay_trouble === 'object' ? row.autopay_trouble : null,
+        // The day the arrival details are sent (my-bookings.php only), so the account
+        // names it instead of promising "a week before".
+        arrivalOn: /^\d{4}-\d{2}-\d{2}$/.test(String(row.arrival_on || '')) ? String(row.arrival_on) : '',
         // The door code (my-bookings.php only) — present ONLY once the owner
         // has confirmed the safe is set for THIS stay and arrival is near;
         // doorCodeFrom is the date it will appear once a confirmed code exists.
@@ -4059,9 +4062,12 @@ function gaStayMoney(x) {
     const b = x.b;
     const p = b.agreedPrice || priceBreakdown(x.propKey, b.adults || 0, b.children || 0, b.checkIn, b.checkOut);
     const gt = displayGrand(p, paymentSummary(x.propKey, b), b.holdStatus, b);
-    const payable = !gt.fullyPaid && !!x.payToken && !bookingOwnerArranged(b);
-    return { gt, payable, cta: payable ? guestPayCta(b, gt) : null };
+    return { gt, ask: guestStayAsk(b, gt, x.payToken) };
 }
+// Something the guest can DO about money: pay, or fix a plan in trouble. An
+// arranged or owner-arranged balance is not a task, and a stay that can only be
+// paid by asking us carries its own button but no pip.
+const GA_ASK_ACT = ['deposit', 'balance', 'trouble'];
 function gaHelloLine() {
     const sp = gaStaysSplit();
     if (!sp) return __gaStays === 'err' ? 'Welcome back.' : 'Your stays and your account, in one place.';
@@ -4089,11 +4095,13 @@ function gaLeadHtml(x, kind) {
         const d = nightsBetween(today, b.checkIn);
         badge = d <= 1 ? 'Tomorrow' : d + ' days to go';
         const n = nightsBetween(b.checkIn, b.checkOut);
-        when = `${dpSpoken(b.checkIn)} → ${dpSpokenEnd(b.checkOut)} · ${n} night${n === 1 ? '' : 's'}`;
-        const m = gaStayMoney(x);
-        ask = m.payable
-            ? `<div class="ga-ask"><div class="ga-ask-t"><b>${gbp(m.cta.amount)} ${escapeHtml(m.cta.word)}</b><span>${escapeHtml(m.cta.word === 'deposit' ? 'Confirms your booking' : 'Due' + (balanceDueBySuffix(b.balanceDueBy) || ' now'))}</span></div><button type="button" class="btn-glass btn-accent ga-ask-btn" ${chbAttrs('openPayView', String(x.payToken), b.dbId)}>Pay</button></div>`
-            : `<div class="ga-ask is-ok"><div class="ga-ask-t"><b>${m.gt.fullyPaid ? 'Paid in full ✓' : 'All arranged ✓'}</b><span>Arrival details arrive a week before.</span></div></div>`;
+        when = `${payRange(b.checkIn, b.checkOut)} · ${n} night${n === 1 ? '' : 's'}`;
+        // ONE RULE (guestStayAsk): the figure, its line and the one button, the
+        // same words My stays and the pay screen use.
+        const a = gaStayMoney(x).ask;
+        const say = guestStaySay(a, b);
+        const tone = a.state === 'trouble' ? 'warn' : a.state === 'arranged' ? 'info' : '';
+        ask = `<div class="ga-ask${a.state === 'paid' ? ' is-ok' : ''}"><div class="ga-ask-t"><b>${escapeHtml(guestStayFig(a))}${a.state === 'paid' ? ' ✓' : ''}</b><span${tone ? ` class="is-${tone}"` : ''}>${escapeHtml(say)}</span></div>${guestStayBtn(a, x.payToken, b, pk, 'btn-glass ga-ask-btn', 'btn-accent')}</div>`;
     } else if (kind === 'now') {
         const left = Math.max(0, nightsBetween(today, b.checkOut));
         badge = left === 0 ? 'Check-out today' : 'Staying now · ' + left + ' night' + (left === 1 ? '' : 's') + ' left';
@@ -4102,7 +4110,7 @@ function gaLeadHtml(x, kind) {
             ? `<div class="ga-ask"><div class="ga-ask-t"><span>Your door code</span><b class="ga-code">${escapeHtml(b.doorCode)}</b></div><button type="button" class="btn-glass ga-ask-btn" ${chbAttrs('guestCopyCode', String(b.doorCode), CHB_SELF)}>Copy</button></div>`
             : '';
     } else {
-        when = `Stayed ${dpSpoken(b.checkIn)} → ${dpSpokenEnd(b.checkOut)}`;
+        when = `Stayed ${payRange(b.checkIn, b.checkOut)}`;
         ask = propertyMeta[x.propKey]
             ? `<div class="ga-ask"><div class="ga-ask-t"><b>Fancy ${escapeHtml(name)} again?</b><span>Check the dates that are free.</span></div><button type="button" class="btn-glass btn-accent ga-ask-btn" ${chbAttrs('rebookCottage', pk)}>Book again</button></div>`
             : '';
@@ -4125,14 +4133,15 @@ function gaStayRow(x, kind) {
     const b = x.b;
     let pill = '';
     if (kind === 'up') {
-        const m = gaStayMoney(x);
-        pill = m.payable
-            ? `<span class="ga-pill is-warn">${gbp(m.cta.amount)} due</span>`
-            : m.gt.fullyPaid
-              ? '<span class="ga-pill is-ok">Paid</span>'
-              : '';
+        const a = gaStayMoney(x).ask;
+        pill =
+            a.state === 'paid'
+                ? '<span class="ga-pill is-ok">Paid</span>'
+                : a.state === 'arranged' || a.state === 'owner'
+                  ? '<span class="ga-pill is-info">Arranged</span>'
+                  : `<span class="ga-pill is-warn">${gbp(a.amount)} due</span>`;
     }
-    const when = `${dpSpoken(b.checkIn)} → ${dpSpokenEnd(b.checkOut)}`;
+    const when = payRange(b.checkIn, b.checkOut);
     return `<button type="button" class="ga-row ga-stayrow" ${chbAttrs('gaOpenStay', String(b.id))}>${gbPhotoHtml(x.propKey).replace('gb2-photo', 'gb2-photo ga-thumb')}<span class="ga-lb"><span class="ga-t">${escapeHtml(gaStayName(x))}</span><span class="ga-s">${escapeHtml(when)}</span></span>${pill}${GA_CHEV}</button>`;
 }
 function gaStaysHtml() {
@@ -4200,7 +4209,7 @@ async function gaOpenStay(id) {
 function guestDockNeedsSync() {
     chbBookedSync();
     const sp = currentGuest && !isAuthenticated ? gaStaysSplit() : null;
-    const needs = !!(sp && sp.lead && (sp.kind === 'now' || (sp.kind === 'up' && gaStayMoney(sp.lead).payable)));
+    const needs = !!(sp && sp.lead && (sp.kind === 'now' || (sp.kind === 'up' && GA_ASK_ACT.indexOf(gaStayMoney(sp.lead).ask.state) !== -1)));
     document.querySelectorAll('.guest-dock-btn[data-tab="account"]').forEach((b) => {
         b.classList.toggle('has-pip', needs);
         let dot = b.querySelector('.gd-pip');
@@ -6167,7 +6176,8 @@ async function renderGuestBookings() {
         // the `currentStay` that was already being computed for the hub.
         currentCards = [],
         pastCards = [],
-        hubCards = [];
+        hubCards = [],
+        nextCards = [];
     let preArrivalShown = false; // only the soonest future stay gets the countdown hub
     mine.forEach(({ propKey, booking: b, address, payToken, propName }) => {
         // AN ARCHIVED COTTAGE'S BOOKING MUST STILL RENDER (reported live: the
@@ -6221,12 +6231,14 @@ async function renderGuestBookings() {
         // secondary actions demoted to one quiet row. A primary control renders
         // only when there's genuinely something to do.
         const gnights = nightsBetween(b.checkIn, b.checkOut);
-        const spokenWhen = `${dpSpoken(b.checkIn)} → ${dpSpokenEnd(b.checkOut)}`;
-        const pl1 = gt.fullyPaid
-            ? `Paid in full <span class="gb2-tick">✓</span>`
-            : gt.paid > 0
-                ? `Paid ${gbp(gt.paid)} — <span class="gb2-pl-unit">${gbp(gt.balance)} to pay</span>` // one unit beside the serif figure: measured breaking "£300.00 to / pay" at 390
-                : 'Still to pay'; // the figure on the right IS the number — say it once
+        // The stay as the pay screen says it: both weekdays, the year once.
+        const spokenWhen = payRange(b.checkIn, b.checkOut);
+        // THE SOONEST STAY BEFORE ARRIVAL IS ONE CARD (the pay-screens build): the
+        // countdown, the weather and the stay's tiles join its card, where they
+        // used to be a hub above it — the same stay twice, Pay offered twice.
+        const isNext = upcoming && !currentStay && !preArrivalShown && b.checkIn > todayStr;
+        if (isNext) preArrivalShown = true;
+        const ask = guestStayAsk(b, gt, payToken);
         const priceBox = guestPriceBoxHtml(p, {
             dep: gt.dep,
             total: gt.total,
@@ -6264,27 +6276,23 @@ async function renderGuestBookings() {
         // The star row lives inside guestReviewForm now (one rating control, in
         // the block whose words it explains), so this slot is empty.
         const starsCard = '';
+        const daysTo = nightsBetween(todayStr, b.checkIn);
+        const countBadge = isNext ? `<span class="ga-badge gb2-count">${daysTo <= 1 ? 'Tomorrow' : daysTo + ' days to go'}</span>` : '';
         const __card = `
-                <div class="glass-panel guest-booking gb2">
+                <div class="glass-panel guest-booking gb2${isNext ? ' gb2-next' : ''}">
                     <div class="gb2-band" style="background:var(--prop-${propKey}, var(--accent));" aria-hidden="true"></div>
-                    ${gbPhotoHtml(propKey)}
+                    ${gbPhotoHtml(propKey)}${countBadge}
                     <!-- STATE SAID ONCE: the .gb2-band twelve pixels above already
                          carries the cottage colour and the badge carries the stage,
                          so the legend swatch that sat here said the cottage twice.
                          The badge + heading pair is a pinned decision (guestrepairs
                          §5) and stays. -->
                     <h3 class="gb2-name">${escapeHtml(meta.name)} ${statusTag}</h3>
-                    <div class="gb2-when">${escapeHtml(spokenWhen)} · ${gnights} night${gnights === 1 ? '' : 's'}${b.guests ? ' · ' + escapeHtml(b.guests) : ''} · <span class="gb2-ref">ref ${bookingRef(b.id)}</span></div>
-                    <button type="button" class="gb2-payline" aria-expanded="false" ${chbAttrs('gb2Toggle', String(b.id), CHB_SELF)}>
-                        <span class="gb2-pl1">${pl1}</span>
-                        <span class="gb2-plr"><span class="gb2-fig">${gbp(gt.total)}</span> <span class="gb2-chev" aria-hidden="true">›</span></span>
-                    </button>
-                    <div class="gb2-fold" id="gb2-fold-${b.id}" hidden><div class="gb2-foldin">
-                        ${priceBox}
-                        <div class="gb2-addr">${escapeHtml(addr || 'Address available on confirmation.')} · in ${escapeHtml(b.checkInTime || '15:00')} / out ${escapeHtml(b.checkOutTime || '10:00')}</div>
-                    </div></div>
+                    <div class="gb2-when"><span class="gb2-ref">${escapeHtml(spokenWhen)}</span> · <span class="gb2-ref">${gnights} night${gnights === 1 ? '' : 's'}${b.guests ? ' · ' + escapeHtml(b.guests) : ''}</span> · <span class="gb2-ref">ref ${bookingRef(b.id)}</span></div>
+                    ${gbMoneyHtml(b, gt, ask, payToken, propKey, upcoming, `${priceBox}
+                        <div class="gb2-addr">${escapeHtml(addr || 'Address available on confirmation.')} · in ${escapeHtml(b.checkInTime || '15:00')} / out ${escapeHtml(b.checkOutTime || '10:00')}</div>`)}
                     ${upcoming ? guestFlowHtml(propKey, b, payToken) : guestDepositTrackerHtml(b)}
-                    ${upcoming && !gt.fullyPaid && payToken && !bookingOwnerArranged(b) ? `<div class="gb2-cta"><button class="btn-glass btn-sm" ${chbAttrs('openPayView', String(payToken), b.dbId)}><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="5" width="20" height="14" rx="2.5"/><path d="M2 10h20"/></svg> Pay ${guestPayCta(b, gt).word} ${gbp(guestPayCta(b, gt).amount)}</button></div>` : ''}
+                    ${isNext ? guestWeatherStripHtml(b) + guestStayTilesHtml(propKey) : ''}
                     ${bookAgainLead}
                     ${showReview ? guestReviewForm(propKey) : ''}
                     <div class="card-actions gb2-links">
@@ -6292,13 +6300,13 @@ async function renderGuestBookings() {
                         <button class="btn-sm btn-edit" ${chbAttrs('addBookingToCalendar', String(b.id))}>Add to calendar</button>
                         <button class="btn-sm btn-edit" data-act="openTermsProp" data-prop="${propKey}">Terms</button>
                         ${upcoming ? faqBlockHtml(propKey) : ''}
-                        ${upcoming ? guestWelcomeButton(propKey) : ''}
+                        ${upcoming && !isNext ? guestWelcomeButton(propKey) : ''}
                         ${!upcoming && !isLeadPast && canRebook ? `<button class="btn-sm btn-edit" ${chbAttrs('rebookCottage', String(propKey))}>Book again</button>` : ''}
                         ${showReview && myGuestReviews[propKey] ? guestReviewButton(propKey) : ''}
                         ${showPhoto ? guestPhotoButton(propKey) : ''}
                     </div>
                 </div>`;
-        (currentStay ? currentCards : upcoming ? upcomingCards : pastCards).push(__card);
+        (isNext ? nextCards : currentStay ? currentCards : upcoming ? upcomingCards : pastCards).push(__card);
 
         // While a stay is in progress, gather its in-stay actions into one
         // prominent "My Stay" hub (rendered at the top of the list). The
@@ -6344,12 +6352,6 @@ async function renderGuestBookings() {
                         </div>
                         ${guestCheckoutBlockHtml(b, meta)}
                     </div>`);
-        } else if (upcoming && !preArrivalShown && b.checkIn > todayStr) {
-            // Soonest FUTURE stay (not in residence): the anticipation + planning
-            // countdown hub. `mine` is sorted soonest-upcoming-first, so the first
-            // future booking we reach is the next one.
-            preArrivalShown = true;
-            hubCards.push(guestPreArrivalHubHtml(propKey, b, meta, payToken, gt));
         }
         } catch (e) {
             // The fence: whatever went wrong with THIS booking, the page still
@@ -6386,11 +6388,12 @@ async function renderGuestBookings() {
         (hubCards.length ? gHdr('Your stay') + hubCards.join('') : '') +
         pendingHtml +
         (currentCards.length ? gHdr('Staying now') + gGrid(currentCards) : '') +
-        (upcomingCards.length ? gHdr('Upcoming stays') + gGrid(upcomingCards) : '');
+        (nextCards.length ? gHdr('Your next stay') + nextCards.join('') : '') +
+        (upcomingCards.length ? gHdr(nextCards.length ? 'Later stays' : 'Upcoming stays') + gGrid(upcomingCards) : '');
     // UPCOMING | PAST (approved demo): the two halves of the list are two panes
     // under one switch, shown only when BOTH have something — a switch with one
     // side empty is a control that offers nothing. The choice survives refreshes.
-    const upN = pendingMine.length + currentCards.length + upcomingCards.length;
+    const upN = pendingMine.length + currentCards.length + nextCards.length + upcomingCards.length;
     const pastN = pastCards.length;
     const both = !!upHtml && !!pastHtml;
     if (!both) __gbSeg = upHtml ? 'up' : 'past';
@@ -6440,62 +6443,115 @@ function balanceDueBySuffix(iso) {
 function guestPayCta(b, gt) {
     const np = b && b.nextPayment;
     const charge = np ? Math.round(Number(np.charge || 0) * 100) / 100 : 0;
-    if (np && charge > 0) return { word: np.kind === 'deposit' ? 'deposit' : 'balance', amount: charge };
+    // Nothing of the stay left, only the refundable deposit: it is called that,
+    // never "£75.00 balance".
+    if (np && charge > 0) return { word: np.kind === 'deposit' ? 'deposit' : !(Number(np.due) > 0.005) && Number(np.damages) > 0.005 ? 'refundable deposit' : 'balance', amount: charge };
     return { word: 'balance', amount: gt.balance };
 }
-// THE MONTHLY-PLAN BLOCK on My Stays: progress bar (a third-full bar reads
-// faster than any sentence — the words beneath still carry the exact figures),
-// then the dated rail in the live-plan vocabulary: green done, accent next,
-// hollow still-to-come. Figures come from the server payload, whose rows SUM
-// to what is actually left.
-function guestPlanBlockHtml(p, payToken, dbId) {
-    const done = p.dates.filter((d) => d.state === 'done').length;
-    // A troubled plan ('retrying'/'stopped') STAYS on this card with its fix —
-    // one that vanished the moment it needed the guest would read as "sorted".
-    const trouble = p.state === 'retrying' || p.state === 'stopped';
-    const rows = p.dates
-        .map((d, i) => {
-            const bad = trouble && d.state === 'next';
-            const note = d.state === 'done' ? 'paid' : bad ? 'declined' : d.state === 'next' ? 'next' : i === p.dates.length - 1 ? 'final' : '';
-            return `<span class="ap-row"><span class="ap-dot is-${escapeHtml(d.state)}" aria-hidden="true"></span><span class="ap-date">${fmtDate(d.date)}</span><span class="ap-figc">${gbp(d.fig)}</span>${note ? `<span class="ap-note${bad ? ' ap-note-warn' : ''}">${note}</span>` : ''}</span>`;
-        })
-        .join('');
-    const failFig = (p.dates.find((d) => d.state === 'next') || { fig: p.per }).fig;
-    // Why + what happens next — the failure email's own two facts.
-    const why = trouble
-        ? `<p class="hub-plan-why">We couldn't take ${gbp(failFig)} — ${escapeHtml(String(p.why || 'the card said no').replace(/\.+$/, ''))}. ${
-              p.state === 'stopped'
-                  ? 'We’ve stopped trying — update your card to carry on, or pay the rest your own way.'
-                  : `We'll try again ${p.retry ? `on ${fmtDate(p.retry)}` : 'in the next day or two'}, or fix it now:`
-          }</p>`
-        : '';
-    const fix = trouble && payToken
-        ? `<button class="btn-glass btn-sm hub-plan-fix" ${chbAttrs('openPayView', String(payToken), dbId)}>Update card &amp; keep the plan</button>`
-        : '';
-    return `
-        <div class="hub-plan${trouble ? ' hub-plan-trouble' : ''}">
-            <div class="hub-plan-head"><span class="pay-sec-cap">Monthly payments</span><span class="hub-plan-sum${trouble ? ' hub-plan-sum-warn' : ''}">${
-                p.state === 'stopped' ? `paused — ${done} of ${p.n} done` : `${done} of ${p.n} done · ${gbp(p.toGo)} to go`
-            }</span></div>
-            <span class="ap-bar" aria-hidden="true"><span style="width:${Math.round((done / p.n) * 100)}%"></span></span>
-            ${why}
-            <span class="ap-rail">${rows}</span>
-            ${fix}
-        </div>`;
+// WHAT A STAY ASKS OF THE GUEST, decided ONCE (the pay-screens build). My stays,
+// the You page and the account's pip all read this, so they cannot disagree about
+// whether there is anything to pay, how much, or what the one button does. Three
+// of them did: an ARRANGED balance still offered Pay on both pages; an owner-
+// arranged stay read "you're all set" on one card and stated its balance on the
+// next; and with card payments switched off, a stay still owing read "All
+// arranged ✓".
+//   state  paid | trouble | arranged | owner | nocard | deposit | balance
+//   btn    '' | 'pay' | 'manage' | 'fix' | 'message'
+function guestStayAsk(b, gt, payToken) {
+    // Figures this page cannot work out (no price snapshot, no rates for the
+    // cottage) are judged by the server's own payment state — never called paid
+    // because a comparison against NaN came back false.
+    const bal = Number(gt && gt.balance);
+    const owed = !!gt && (Number.isFinite(bal) ? !gt.fullyPaid && bal > 0.005 : String(b.payment || '') !== 'paid');
+    if (!owed) return { state: 'paid', amount: 0, word: '', tone: 'ok', btn: '' };
+    const nx = guestPayCta(b, gt);
+    // The account preview strips the pay link; it shows what the guest would see.
+    const card = !!payToken || !!ACCT_PREVIEW;
+    if (card && guestAutopayTroubleOf(b).any) return { state: 'trouble', amount: nx.amount, word: nx.word, tone: 'warn', btn: 'fix' };
+    if (b.autopayState === 'armed') return { state: 'arranged', amount: payR2(gt.balance), word: 'balance', tone: 'info', btn: card ? 'manage' : '' };
+    // Settled by hand with the owner (cash, a transfer): stated, never chased here.
+    if (bookingOwnerArranged(b)) return { state: 'owner', amount: payR2(gt.balance), word: 'balance', tone: '', btn: '' };
+    if (!card) return { state: 'nocard', amount: nx.amount, word: nx.word, tone: 'warn', btn: 'message' };
+    return { state: nx.word === 'deposit' ? 'deposit' : 'balance', amount: nx.amount, word: nx.word, tone: 'warn', btn: 'pay' };
+}
+// The line under the figure, in the pay screen's own words. `journey` is set where
+// the stay's journey line already names the arrival details (My stays), so a paid
+// stay does not say it twice.
+function guestStaySay(a, b, journey) {
+    if (a.state === 'paid') return !journey && b.arrivalOn && b.arrivalOn >= todayDashed() ? `Arrival details on ${payDay(b.arrivalOn)}` : 'Nothing more to pay';
+    if (a.state === 'trouble') return "A payment didn't go through";
+    if (a.state === 'arranged') {
+        const nx = payPlanNext(b.autopayPlan, ' · ');
+        if (nx) return nx;
+        return b.balanceDueBy ? `Taken automatically on ${payDay(b.balanceDueBy)}` : 'Taken automatically';
+    }
+    if (a.state === 'owner') return 'As arranged with us';
+    if (a.state === 'nocard') return 'Message us for how to pay';
+    if (a.state === 'deposit') return 'Due now · confirms your booking';
+    if (a.word === 'refundable deposit') return 'Comes back after you leave';
+    const due = String(b.balanceDueBy || '');
+    return due && due >= todayDashed() ? `Due by ${payDay(due)}` : 'Due now';
+}
+// The figure's words: "£525.00 balance", "Paid in full".
+function guestStayFig(a) {
+    return a.state === 'paid' ? 'Paid in full' : `${gbp(a.amount)} ${a.word}`;
+}
+// THE ONE BUTTON a stay offers, or none. Every route goes through the pay screen,
+// which shows the arranged or troubled plan itself — this only names the door.
+function guestStayBtn(a, payToken, b, propKey, cls, accent) {
+    const c = cls || '';
+    const ac = c + ' ' + (accent || 'is-accent');
+    if (a.btn === 'pay') return `<button type="button" class="${ac}" ${chbAttrs('openPayView', String(payToken), b.dbId)}>Pay</button>`;
+    if (a.btn === 'fix') return `<button type="button" class="${ac}" ${chbAttrs('openPayView', String(payToken), b.dbId)}>Update card</button>`;
+    if (a.btn === 'manage') return `<button type="button" class="${c}" ${chbAttrs('openPayView', String(payToken), b.dbId)}>Manage</button>`;
+    if (a.btn === 'message') return `<button type="button" class="${c}" data-act="chatForStay" data-arg="${escapeHtml(String(propKey))}">Message us</button>`;
+    return '';
+}
+// ONE MONEY BLOCK PER STAY (My stays): the figure and its line from the one rule,
+// the one button, a bar of what is paid, and the breakdown folded under "Payment
+// details". It replaces a payline, a Pay button under the card and the hub's own
+// ask, which between them offered Pay twice and stated one balance five times.
+// The fold keeps its id and the payline class, so every gate that opens it still
+// can. A finished stay offers no button: what follows it is the deposit's story.
+function gbMoneyHtml(b, gt, a, payToken, propKey, upcoming, foldHtml) {
+    const tone = a.state === 'trouble' ? 'warn' : a.state === 'arranged' ? 'info' : '';
+    const grand = payR2(gt.total);
+    const paid = payR2(Math.min(Number(gt.paid) || 0, grand));
+    const pct = grand > 0 ? Math.max(0, Math.min(100, Math.round((paid / grand) * 100))) : 0;
+    const btn = upcoming ? guestStayBtn(a, payToken, b, propKey, 'gbm-btn') : '';
+    return `<div class="gbm${a.state === 'paid' ? ' is-paid' : ''}">
+        <div class="gbm-row">
+            <div class="gbm-t"><b class="gbm-fig">${escapeHtml(guestStayFig(a))}${a.state === 'paid' ? ' <span class="gb2-tick" aria-hidden="true">✓</span>' : ''}</b><span class="gbm-s${tone ? ' is-' + tone : ''}">${escapeHtml(guestStaySay(a, b, upcoming))}</span></div>
+            ${btn}
+        </div>
+        <div class="gbm-bar" aria-hidden="true"><span style="width:${pct}%"></span></div>
+        <div class="gbm-leg"><span>${gbp(paid)} paid</span><span>${gbp(grand)} in all</span></div>
+        <button type="button" class="gb2-payline gbm-det" aria-expanded="false" ${chbAttrs('gb2Toggle', String(b.id), CHB_SELF)}><span>Payment details</span><span class="gb2-chev" aria-hidden="true">›</span></button>
+        <div class="gb2-fold" id="gb2-fold-${b.id}" hidden><div class="gb2-foldin">${foldHtml}</div></div>
+    </div>`;
+}
+// The stay's tiles, in the order the owner asked for (Amenities where Things to do
+// was, Things to do past Contact host; House rules took the Good to know tile).
+function guestStayTilesHtml(propKey) {
+    const pk = escapeHtml(String(propKey));
+    return `<div class="hub-grid">
+        <button class="hub-tile" ${chbAttrs('openCottageDirections', String(propKey))}><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 21s-6.5-5.5-6.5-10a6.5 6.5 0 0 1 13 0c0 4.5-6.5 10-6.5 10z"/><circle cx="12" cy="11" r="2.2"/></svg><span>Directions</span></button>
+        <button class="hub-tile" ${chbAttrs('openHouseRulesModal', String(propKey))}>${IC_RULES}<span>House rules</span></button>
+        <button class="hub-tile" ${chbAttrs('openWelcomeBook', String(propKey))}><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 5a2 2 0 0 1 2-2h6v18H6a2 2 0 0 1-2-2z"/><path d="M20 5a2 2 0 0 0-2-2h-6v18h6a2 2 0 0 0 2-2z"/></svg><span>Welcome book</span></button>
+        <button class="hub-tile" ${chbAttrs('openAmenitiesModal', String(propKey))}>${IC_AMENITY}<span>Amenities</span></button>
+        <button class="hub-tile" data-act="chatForStay" data-arg="${pk}"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 5h16v11H8l-4 4z"/></svg><span>Contact host</span></button>
+        <button class="hub-tile" data-act="nav" data-view="view-experiences"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l2.5 5.5L20 9l-4 4 1 6-5-3-5 3 1-6-4-4 5.5-.5z"/></svg><span>Things to do</span></button>
+    </div>`;
 }
 // ===================================================================
-//  THE MY STAYS COMPANION (the approved demo): one stay timeline from
-//  booking to deposit-back, the arrival-time answer, the stay's weather,
-//  one-tap extras asks, and the arrival-day door-code hero. Every figure
-//  comes from the derivations the card already trusts (displayGrand +
-//  guestPayCta); the door code follows the keeper's own gate — digits only
-//  once the server released them, a DATE only from door_code_from, the
-//  held-back line only on door_code_pending, and NOTHING otherwise (a
-//  keeper-off cottage may have no safe to promise).
+//  THE MY STAYS COMPANION (the approved demo): the stay's weather and the
+//  arrival-day door-code hero. The door code follows the keeper's own gate —
+//  digits only once the server released them, the held-back line only on
+//  door_code_pending, and NOTHING otherwise (a keeper-off cottage may have no
+//  safe to promise). The money lives in the card's one money block.
 // ===================================================================
-// The autopay-trouble judgement, stated ONCE — the hub's outstanding line and
-// the timeline's balance row read the same booleans, so the two can't disagree
-// about whether a plan needs the guest.
+// The autopay-trouble judgement, stated ONCE — guestStayAsk reads it, so no
+// screen can call a plan healthy that another calls in trouble.
 function guestAutopayTroubleOf(b) {
     const plan = b.autopayPlan;
     const monthly = !!(plan && (plan.state === 'retrying' || plan.state === 'stopped'));
@@ -6503,38 +6559,6 @@ function guestAutopayTroubleOf(b) {
         ? b.autopayTrouble
         : null;
     return { monthly, single, any: monthly || !!single };
-}
-function guestStayTimelineHtml(propKey, b, gt) {
-    if (!gt) return '';
-    const row = (st, l, s, f) =>
-        `<div class="gtj ${st}"><span class="gtj-dot" aria-hidden="true"></span><span class="gtj-m"><span class="gtj-l">${l}</span>${s ? `<span class="gtj-s">${s}</span>` : ''}</span>${f ? `<span class="gtj-f">${f}</span>` : ''}</div>`;
-    const rows = [];
-    const made = String(b.createdAt || '').slice(0, 10);
-    rows.push(row('is-done', 'Booking confirmed', /^\d{4}-\d{2}-\d{2}$/.test(made) ? escapeHtml(dpSpoken(made)) : '', ''));
-    if (gt.paid > 0) {
-        rows.push(row('is-done', gt.fullyPaid ? 'Paid in full' : 'Paid so far', '', gbp(gt.fullyPaid ? gt.total : gt.paid)));
-    }
-    if (!gt.fullyPaid && gt.balance > 0) {
-        const nx = guestPayCta(b, gt);
-        const word = nx.word === 'deposit' ? 'Deposit' : 'Balance';
-        const tr = guestAutopayTroubleOf(b);
-        if (tr.any) {
-            rows.push(row('is-now', word, "A payment didn't go through — the fix is below", gbp(nx.amount)));
-        } else if (b.autopayState === 'armed') {
-            rows.push(row('is-arr', word, 'Collected automatically — nothing needed from you', gbp(nx.amount)));
-        } else if (bookingOwnerArranged(b)) {
-            rows.push(row('is-dim', 'Balance', 'As arranged with us', gbp(gt.balance)));
-        } else {
-            rows.push(row('is-now', word,
-                word === 'Balance' ? escapeHtml('Due' + (balanceDueBySuffix(b.balanceDueBy) || ' now')) : 'Confirms your booking',
-                gbp(nx.amount)));
-            const rest = Math.round((gt.balance - nx.amount) * 100) / 100;
-            if (rest > 0.005) rows.push(row('is-dim', 'Remaining balance', escapeHtml('Due' + (balanceDueBySuffix(b.balanceDueBy) || ' before your stay')), gbp(rest)));
-        }
-    }
-    rows.push(row('is-dim', 'Your stay', escapeHtml(`Check-in from ${b.checkInTime || '15:00'} on ${dpSpoken(b.checkIn)}`), ''));
-    if (gt.dep > 0) rows.push(row('is-dim', 'Deposit back', '3–5 working days after checkout', gbp(gt.dep)));
-    return `<div class="gtl"><div class="gtl-cap">Your road to Blakeney</div>${rows.join('')}</div>`;
 }
 // The stay's weather — the coast tier's own public Open-Meteo feed
 // (weather.php), rendered async into the card once per session. Absent when
@@ -6729,108 +6753,6 @@ function guestCopyCode(code, btn) {
     } else fallback();
 }
 
-function guestPreArrivalHubHtml(propKey, b, meta, payToken, gt) {
-    const days = nightsBetween(todayDashed(), b.checkIn);
-    const big = days <= 0 ? '!' : String(days);
-    const unit = days === 1 ? 'day to go' : 'days to go';
-    // The countdown is the BADGE's ("10 days to go"); the title used to say it
-    // again ("Jollyboat — 10 days") and the duplicate forced the name onto two
-    // lines beside the badge at 390px (a 180px column). One figure, one line.
-    // The one outstanding thing before arrival (balance beats details), else all set.
-    let ready, cta = '';
-    // AN OWNER-ARRANGED STAY HAS NO ONLINE TASK. Its money is settled by hand
-    // (bookingOwnerArranged), so an honestly-outstanding refundable deposit must
-    // not turn into "Pay £50" with a card button on the guest's own hub — the
-    // arrangement is the owner's, made off this site. It is not hidden from them:
-    // the money card above still states the total, the paid figure and the
-    // balance. Only the CTA stands down.
-    if (gt && !gt.fullyPaid && gt.balance > 0 && !bookingOwnerArranged(b)) {
-        // …and WHEN: a deadline is the actionable half of "the one outstanding
-        // thing before you arrive", and the pay screen this button leads to has
-        // named the date since #969. The LINE names the same stage as the button
-        // beneath it: a deposit is due now so carries no date, the balance
-        // carries the plan's. "balance £750 due by 15/08" over a button taking a
-        // £225 deposit is two answers to one question.
-        const nx = guestPayCta(b, gt);
-        // AN ARRANGED BALANCE IS NOT AN OUTSTANDING TASK. "£750 due by 15/08" in
-        // warning ink asks them to do what they have already done. Still figure-
-        // first, but it reads as settled, with the way to stop it beside it.
-        // b.autopayState is 'failed' once stopped, so the plan gates below must
-        // not key on 'armed' alone or a stopped plan falls to the bare Pay
-        // button as though nothing was ever arranged.
-        const apPlan = b.autopayPlan;
-        const apMonthlyTrouble = !!(apPlan && (apPlan.state === 'retrying' || apPlan.state === 'stopped'));
-        // A single "one payment" consent in trouble has no schedule block; its
-        // descriptor drives the same warn line + repair route. Either kind is
-        // "trouble" for the gates below.
-        const apSingleTrouble = !apPlan && b.autopayTrouble && (b.autopayTrouble.state === 'retrying' || b.autopayTrouble.state === 'stopped') ? b.autopayTrouble : null;
-        const apTrouble = apMonthlyTrouble || !!apSingleTrouble;
-        if (apTrouble) {
-            const stopped = apMonthlyTrouble ? apPlan.state === 'stopped' : apSingleTrouble.state === 'stopped';
-            const noun = apMonthlyTrouble ? 'monthly payments' : 'your automatic payment';
-            ready = `<span class="hub-warn">${stopped ? `${noun} paused — needs a new card` : 'a payment didn’t go through — needs a new card'}</span>`;
-        } else if (b.autopayState === 'armed') {
-            // A monthly plan on track means NOTHING is outstanding — the plan
-            // block below carries the detail; a single collection keeps its
-            // figure-first line.
-            ready = apPlan
-                ? `<span class="hub-ok">payments on track — nothing needed from you</span>`
-                : `<span class="hub-ok">${gbp(nx.amount)} on the way${balanceDueBySuffix(b.balanceDueBy)}</span>`;
-        } else {
-            ready = `<span class="hub-warn">${nx.word} ${gbp(nx.amount)} due${nx.word === 'balance' ? balanceDueBySuffix(b.balanceDueBy) : ''}</span>`;
-        }
-        if (payToken && (b.autopayState === 'armed' || apTrouble)) {
-            // Monthly: the plan block carries why + the fix. Single trouble: no
-            // block, so a one-line why + the same update-card route stands in.
-            let head = '';
-            if (apPlan) head = guestPlanBlockHtml(apPlan, payToken, b.dbId);
-            else if (apSingleTrouble) {
-                const st = apSingleTrouble;
-                const why = `We couldn’t take ${gbp(st.fig)} — ${escapeHtml(String(st.why || 'the card said no').replace(/\.+$/, ''))}. ${
-                    st.state === 'stopped'
-                        ? 'We’ve stopped trying — update your card, or pay another way.'
-                        : `We'll try again${st.retry ? ` on ${fmtDate(st.retry)}` : ' in the next day or two'}, or fix it now:`
-                }`;
-                head = `<div class="hub-plan hub-plan-trouble"><p class="hub-plan-why">${why}</p><button class="btn-glass btn-sm hub-plan-fix" ${chbAttrs('openPayView', String(payToken), b.dbId)}>Update card &amp; keep the payment</button></div>`;
-            }
-            cta = head +
-                `<button class="hub-autopay-off" ${chbAttrs('guestAutopayOff', String(payToken), b.dbId)}>Turn off automatic payment${apPlan ? 's' : ''}</button>`;
-        }
-        else if (payToken) cta = `<button class="btn-glass btn-sm hub-cta-btn" ${chbAttrs('openPayView', String(payToken), b.dbId)}><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="5" width="20" height="14" rx="2.5"/><path d="M2 10h20"/></svg> Pay ${nx.word} ${gbp(nx.amount)}</button>`;
-    } else if (b.regUrl && !bookingRegComplete(b)) {
-        // Short of the party as well as absent: the form prefills what is already
-        // there and asks for the rest, so re-offering it is the whole fix here.
-        ready = `<span class="hub-warn">add your guest details</span>`;
-        cta = `<a class="btn-glass btn-sm hub-cta-btn" href="${escapeHtml(b.regUrl)}"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M19 8v6M22 11h-6"/></svg> Add your details</a>`;
-    } else {
-        ready = `<span class="hub-ok">you're all set</span>`;
-    }
-    return `
-        <div class="glass-panel my-stay-hub my-stay-hub-soon">
-            <div class="hub-head">
-                <span class="legend-swatch swatch-${propKey}"></span>
-                <div class="hub-head-text">
-                    <div class="hub-title"><strong>${escapeHtml(meta.name)}</strong></div>
-                    <!-- THE SUB IS THE ASK, and only the ask: the "Check in DD/MM/YYYY ·
-                         from 15:00 ·" prefix said, in a second date grammar, what the
-                         timeline's own "Your stay" row states directly below. -->
-                    <div class="hub-sub">${ready}</div>
-                </div>
-                <div class="hub-count chb-appear" aria-hidden="true"><span class="hub-count-n">${big}</span><span class="hub-count-u">${unit}</span></div>
-            </div>
-            ${cta ? `<div class="hub-cta">${cta}</div>` : ''}
-            ${guestStayTimelineHtml(propKey, b, gt)}
-            ${guestWeatherStripHtml(b)}
-            <div class="hub-grid">
-                <button class="hub-tile" ${chbAttrs('openCottageDirections', String(propKey))}><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 21s-6.5-5.5-6.5-10a6.5 6.5 0 0 1 13 0c0 4.5-6.5 10-6.5 10z"/><circle cx="12" cy="11" r="2.2"/></svg><span>Directions</span></button>
-                <button class="hub-tile" ${chbAttrs('openHouseRulesModal', String(propKey))}>${IC_RULES}<span>House rules</span></button>
-                <button class="hub-tile" ${chbAttrs('openWelcomeBook', String(propKey))}><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 5a2 2 0 0 1 2-2h6v18H6a2 2 0 0 1-2-2z"/><path d="M20 5a2 2 0 0 0-2-2h-6v18h6a2 2 0 0 0 2-2z"/></svg><span>Welcome book</span></button>
-                <button class="hub-tile" ${chbAttrs('openAmenitiesModal', String(propKey))}>${IC_AMENITY}<span>Amenities</span></button>
-                <button class="hub-tile" data-act="chatForStay" data-arg="${escapeHtml(propKey)}"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 5h16v11H8l-4 4z"/></svg><span>Contact host</span></button>
-                <button class="hub-tile" data-act="nav" data-view="view-experiences"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l2.5 5.5L20 9l-4 4 1 6-5-3-5 3 1-6-4-4 5.5-.5z"/></svg><span>Things to do</span></button>
-            </div>
-        </div>`;
-}
 
 // ---- In-stay "tide of the day" card (My Bookings + My Stay hub) ----
 async function renderInStayTides() {
@@ -6932,9 +6854,98 @@ function loadSquareSdk(env) {
     });
     return __squareSdkLoader;
 }
-const payState = { token: '', bookingId: 0, kind: 'deposit', amountDue: 0, guestName: '', quote: '', part: null, partAmount: 0, partView: null, walletAmount: 0, walletT: null, walletStamp: 0, openStamp: 0, autopayOffer: false, partSnap: '', apTerms: null, apMonthly: null, apRepair: false, apRepairInfo: null, autopayChoice: 'self' };
+// ===================================================================
+//  THE PAY SCREEN (the approved pay-screens demo). One figure leads and the
+//  breakdown is a tap away; the money story (today, what follows and when,
+//  what comes back) is told once; how much is a CHOICE (the deposit or the
+//  whole stay), not a link; the balance plan reads like a decision; and the
+//  one button names the exact amount. Every figure comes from pay.php's
+//  summary — this screen derives what to SAY, never what to charge.
+// ===================================================================
+const payState = {
+    token: '',
+    bookingId: 0,
+    kind: null, // the stage the CHARGE asks for (pinned from the summary on screen)
+    s: null, // the summary the screen is showing
+    sDep: null, // the deposit-stage summary (the "Deposit" side of the switch)
+    sAll: null, // the whole-stay summary (kind 'balance'), when the switch is offered
+    allState: '', // '' | 'loading' | 'ok' | 'err' — the whole-stay fetch
+    mode: 'due', // 'due' | 'all'
+    view: 'pay', // 'pay' | 'armed' | 'repair' | 'card'
+    cardFrom: '', // 'armed' | 'repair' — where the card form was opened from
+    what: false, // the breakdown fold
+    amountDue: 0, // what the Pay button takes: the stage plus the deposit riding it
+    guestName: '',
+    quote: '',
+    hasEmail: true,
+    walletAmount: 0,
+    walletT: null,
+    walletStamp: 0,
+    walletsAny: false,
+    openStamp: 0,
+    autopayOffer: false,
+    apTerms: null,
+    apMonthly: null,
+    apRepair: false,
+    apRepairInfo: null,
+    autopayChoice: 'self',
+    stepsOn: false,
+    stepsGen: 0,
+    attempt: null, // what the last tap was for — the unsure screen's check reads it
+    cardSaid: '', // the confirmation after a card update
+};
 let squarePayments = null,
     squareCard = null;
+const payR2 = (n) => Math.round((Number(n) || 0) * 100) / 100;
+const payEl = (id) => document.getElementById(id);
+// A typed sum of money, read the way a person writes it (the owner's booking
+// sheet reads every money box through this). A SEPARATOR IS DECIDED BY WHAT
+// FOLLOWS IT: `parseFloat('12,50')` is 12 and a naive `.replace(',', '.')` turns
+// "1,234.50" into 1.23. Both kinds present: the LAST is the decimal point.
+// Commas only: a comma before exactly three digits groups thousands ("1,234"),
+// anything else is the decimal comma ("12,50"). Several dots can only group.
+function payPartNum(raw) {
+    let s = String(raw == null ? '' : raw).replace(/[£\s]/g, '');
+    const dot = s.lastIndexOf('.');
+    const comma = s.lastIndexOf(',');
+    if (dot > -1 && comma > -1) {
+        const dec = Math.max(dot, comma);
+        s = s.slice(0, dec).replace(/[.,]/g, '') + '.' + s.slice(dec + 1);
+    } else if (comma > -1) {
+        s = /,\d{3}(?:\D|$)/.test(s) ? s.replace(/,/g, '') : s.replace(',', '.');
+    } else if ((s.match(/\./g) || []).length > 1) {
+        s = s.replace(/\./g, '');
+    }
+    return Math.round(parseFloat(s) * 100) / 100;
+}
+function payShow(id, on) {
+    const e = payEl(id);
+    if (e) e.hidden = !on;
+}
+// Nothing of the stay is left, only the refundable deposit riding this payment.
+function payDepOnly(s) {
+    return !!s && s.kind === 'balance' && payState.mode !== 'all' && !(Number(s.amountDue) > 0.005) && Number(s.damagesDue) > 0.005;
+}
+// The money a summary is about, stated ONCE for every part of the screen: the
+// stage (rental) plus the refundable deposit riding it, what has already been
+// paid (the deposit charged with it folded in, as every other document does),
+// the rental left after this payment, and what comes back after the stay.
+function payFig(s) {
+    if (!s) return { dep: 0, depCharged: 0, today: 0, back: 0, paid: 0, rest: 0, grand: 0 };
+    const hold = s.kind === 'hold';
+    const dep = hold ? 0 : payR2(s.damagesDue);
+    const depCharged = hold ? 0 : payR2(s.depositCharged);
+    const back = dep > 0 ? dep : depCharged;
+    return {
+        dep,
+        depCharged,
+        back,
+        today: hold ? payR2(s.amountDue) : payR2(Number(s.amountDue) + dep),
+        paid: payR2(Number(s.alreadyPaid || 0) + depCharged),
+        rest: payR2(Number(s.balance || 0) - Number(s.amountDue || 0)),
+        grand: payR2(Number(s.total || 0) + back),
+    };
+}
 // Strong Customer Authentication (UK/EU banks): passing these details to
 // card.tokenize() lets Square run the 3-D Secure check against the REAL amount
 // and buyer, so the bank can approve the charge. Without them UK issuers
@@ -6948,8 +6959,6 @@ function payVerificationDetails() {
     const contact = { countryCode: 'GB' };
     if (parts.length) contact.givenName = parts[0];
     if (parts.length > 1) contact.familyName = parts.slice(1).join(' ');
-    // What is actually being taken (payChargeNow), falling back to the ask only when
-    // the slice is not yet a number — Square rejects a zero verification amount.
     const now = Number(payChargeNow() || 0);
     return {
         amount: (now > 0 ? now : Number(payState.amountDue || 0)).toFixed(2),
@@ -6961,1262 +6970,1170 @@ function payVerificationDetails() {
     };
 }
 function setPayMsg(text) {
-    const el = document.getElementById('pay-msg');
+    const el = payEl('pay-msg');
     if (!el) return;
     el.textContent = text || '';
     el.classList.toggle('show', !!text);
 }
-// `retry` is OPTIONAL and must stay so: this panel also serves genuinely TERMINAL
-// states ("already settled — nothing left to pay"), where a Try-again button would
-// invite the guest to keep tapping at something that will never change. It is
-// passed only where the failure really might be transient — the form not loading.
-function showPayError(text, retry) {
-    ['pay-loading', 'pay-body', 'pay-done'].forEach((id) => {
-        const e = document.getElementById(id);
-        if (e) e.style.display = 'none';
-    });
-    const err = document.getElementById('pay-error'),
-        msg = document.getElementById('pay-error-msg'),
-        again = document.getElementById('pay-error-retry');
-    if (again) {
-        again.style.display = typeof retry === 'function' ? '' : 'none';
-        __payRetry = typeof retry === 'function' ? retry : null;
+// ---- small parts, in the screens' one vocabulary ----
+const PAY_IC = {
+    check: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12.5 10 17l9-10"/></svg>',
+    chev: '<svg class="pp-chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 6 6 6-6 6"/></svg>',
+    lock: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="10.5" width="16" height="10" rx="2.5"/><path d="M8 10.5V7.5a4 4 0 0 1 8 0v3"/></svg>',
+    stop: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M8.5 8.5l7 7"/></svg>',
+    warn: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3.5 2.5 20h19z"/><path d="M12 10v4.5M12 17.5h.01"/></svg>',
+    ok: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M8 12.5l2.6 2.6L16 9.5"/></svg>',
+    info: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 11v5.5M12 7.5h.01"/></svg>',
+    wifi: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 8.5a15 15 0 0 1 20 0M5 12a10 10 0 0 1 14 0M8.5 15.5a5 5 0 0 1 7 0M12 19h.01"/><path d="M3 3l18 18"/></svg>',
+    link: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1"/><path d="M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1"/><path d="M4 4l3 3M20 20l-3-3"/></svg>',
+    card: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="5.5" width="18" height="13" rx="2.5"/><path d="M3 10h18M7 15h4"/></svg>',
+    mail: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2.5"/><path d="m4 7 8 6 8-6"/></svg>',
+    refresh: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 11a8 8 0 1 0-2.3 5.7"/><path d="M20 4v7h-7"/></svg>',
+    tick: '<svg viewBox="0 0 44 44" fill="none" stroke="currentColor" stroke-width="3.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="22" cy="22" r="18"/><path d="M14 22.5 19.5 28 30 16.5"/></svg>',
+};
+// A status capsule: the same shape as the account pages' and the hub's.
+function payCap(tone, text, icon) {
+    return `<span class="pp-cap${tone ? ' is-' + tone : ''}">${icon ? PAY_IC[icon] : ''}${escapeHtml(text)}</span>`;
+}
+// Rows of money: label (+ quiet sub) on the left, the figure on the right; a
+// credit is money already paid (minus, in the ok ink), the total sits under a rule.
+function payRowsHtml(list) {
+    return `<div class="pp-rows">${list
+        .map(
+            (r) =>
+                `<div class="pp-row${r.total ? ' is-total' : ''}${r.credit ? ' is-credit' : ''}"><span class="pp-row-l">${escapeHtml(r.l)}${r.s ? `<small>${escapeHtml(r.s)}</small>` : ''}</span><span class="pp-row-v">${r.credit ? '− ' : ''}${gbp(r.v)}</span></div>`,
+        )
+        .join('')}</div>`;
+}
+// THE SCREEN'S OWN DATE VOICE: weekday, day and month ("Wed 27 Jan"). The stay card
+// states the year once, so no other date here repeats it; in a story column the
+// year is what wrapped the date onto two lines.
+function payDay(str) {
+    const d = dpParse(str);
+    return d ? d.toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' }).replace(',', '') : '';
+}
+// The stay as a range: both weekdays, the year once ("Fri 26 Feb – Mon 1 Mar 2027"),
+// or at both ends when the stay crosses into a new year.
+function payRange(ci, co) {
+    const a = dpParse(ci),
+        z = dpParse(co);
+    if (!a || !z) return '';
+    return a.getFullYear() === z.getFullYear() ? `${payDay(ci)} – ${payDay(co)} ${z.getFullYear()}` : `${payDay(ci)} ${a.getFullYear()} – ${payDay(co)} ${z.getFullYear()}`;
+}
+// The stay's own nights, party and dates, spoken (the account pages' form).
+function payStayFacts(s) {
+    const nights = Math.max(1, Math.round((new Date(s.checkOut) - new Date(s.checkIn)) / 864e5));
+    const party = Number(s.adults) > 0 ? guestSummary(s.adults, s.children) : '';
+    return { nights, party, range: payRange(s.checkIn, s.checkOut) };
+}
+function payStayHtml(s, tone, label) {
+    const f = payStayFacts(s);
+    const pk = String(s.propKey || '');
+    const img = (pk && typeof propertyContent === 'object' && propertyContent[pk] && propertyContent[pk].images && propertyContent[pk].images[0]) || '';
+    const art = `<span class="pp-art" style="--pp-tint:var(--prop-${escapeHtml(pk)}, var(--accent));${img ? `background-image:url('${escapeHtml(chbCssUrl(img))}');` : ''}" aria-hidden="true"></span>`;
+    return `${art}<span class="pp-stay-in"><span class="pp-stay-tx"><span class="pp-stay-n"><span class="pp-dot" style="--pp-dot:var(--prop-${escapeHtml(pk)}, var(--accent))" aria-hidden="true"></span>${escapeHtml(s.propName || '')}</span><span class="pp-stay-d">${escapeHtml(f.range)}</span><span class="pp-stay-d">${f.nights} night${f.nights === 1 ? '' : 's'}${f.party ? ' · ' + escapeHtml(f.party) : ''}</span></span>${label ? payCap(tone, label, tone === 'ok' ? 'check' : '') : ''}</span>`;
+}
+// THE MONEY STORY: one component wherever money is talked about — today, what
+// follows and when, and what comes back. Fewer than two stops states nothing the
+// hero hasn't, so it does not render.
+function payStoryHtml(stops, grand) {
+    if (stops.length < 2) return '';
+    return `<section class="pp-panel pp-story" aria-labelledby="pp-story-h">
+        <div class="pp-sec"><span id="pp-story-h">Your payments</span><span>${gbp(grand)} in all</span></div>
+        <ol class="pp-rail" style="--n:${stops.length}">${stops
+            .map(
+                (x) =>
+                    `<li class="pp-stop is-${x.st}"><span class="pp-stop-dot" aria-hidden="true">${x.st === 'done' ? PAY_IC.check : ''}</span><span class="pp-stop-when">${escapeHtml(x.when)}</span><span class="pp-stop-amt">${typeof x.v === 'number' ? gbp(x.v) : escapeHtml(x.v)}</span><span class="pp-stop-sub">${escapeHtml(x.sub)}</span></li>`,
+            )
+            .join('')}</ol>
+    </section>`;
+}
+// …and told down the page, where there are more stops than fit across (a monthly
+// plan, the receipt's what happens next).
+function payVStoryHtml(stops, label) {
+    return `<section class="pp-panel pp-vstory" aria-label="${escapeHtml(label || 'Your payments')}">${stops
+        .map(
+            (x) =>
+                `<div class="pp-vstop is-${x.st}"><span class="pp-stop-dot" aria-hidden="true">${x.st === 'done' ? PAY_IC.check : ''}</span><span class="pp-vstop-m"><span class="pp-vstop-t">${escapeHtml(x.t)}</span>${x.s ? `<span class="pp-vstop-s">${escapeHtml(x.s)}</span>` : ''}</span><span class="pp-vstop-v">${x.v == null ? '' : typeof x.v === 'number' ? gbp(x.v) : escapeHtml(x.v)}</span></div>`,
+        )
+        .join('')}</section>`;
+}
+// A month span for a monthly plan's stop ("Nov – Jan").
+function payMonthSpan(dates) {
+    const m = (d) => {
+        const x = dpParse(d);
+        return x ? x.toLocaleDateString('en-GB', { month: 'short' }) : '';
+    };
+    if (!dates || !dates.length) return '';
+    const a = m(dates[0]),
+        z = m(dates[dates.length - 1]);
+    return a === z ? a : `${a} – ${z}`;
+}
+// The story for the summary on screen.
+function payStoryStops() {
+    const s = payState.s;
+    const f = payFig(s);
+    const stops = [];
+    const back = f.back > 0.005 ? { when: 'After you leave', v: f.back, sub: 'Comes back to you', st: 'back' } : null;
+    if (s.kind === 'deposit') {
+        stops.push({ when: 'Today', v: f.today, sub: 'Confirms your dates', st: 'now' });
+        if (f.rest > 0.005) {
+            const mo = payState.apMonthly;
+            const ch = payState.autopayChoice;
+            const due = s.balanceDueDate || '';
+            stops.push(
+                ch === 'monthly' && mo
+                    ? { when: payMonthSpan(mo.dates), v: `${mo.n} × ${gbp(mo.per)}`, sub: 'Monthly, automatically', st: 'auto' }
+                    : ch === 'one' && payState.apTerms
+                      ? { when: payDay(payState.apTerms.due), v: f.rest, sub: 'Taken automatically', st: 'auto' }
+                      : { when: due ? 'By ' + payDay(due) : 'Before your stay', v: f.rest, sub: "We'll remind you", st: 'next' },
+            );
+        }
+    } else {
+        // "So far", never a date: payment_date is the FIRST payment's day, and a
+        // sum of several labelled with it would say something untrue.
+        if (f.paid > 0.005) stops.push({ when: 'So far', v: f.paid, sub: 'Paid', st: 'done' });
+        stops.push({ when: 'Today', v: f.today, sub: payState.mode === 'all' ? 'Everything, in one go' : payDepOnly(s) ? 'Your refundable deposit' : 'Settles your stay', st: 'now' });
     }
-    // #pay-error is role=alert — reveal it before the message lands so the alert
-    // fires on visible content rather than into a hidden node.
-    if (err) err.style.display = '';
-    if (msg) msg.textContent = text || 'The payment didn’t go through — nothing has been charged. Try again, or use another card.';
+    if (back) stops.push(back);
+    return stops;
+}
+// ---- the hero: one figure, said once; the breakdown a tap away ----
+function payHeroHtml() {
+    const s = payState.s;
+    const f = payFig(s);
+    if (s.kind === 'hold') {
+        return `<div class="pp-hero-cap">Refundable hold ${payCap('info', 'Held, not charged')}</div><div class="pp-fig" id="pay-amount">${gbp(f.today)}</div>`;
+    }
+    let cap, what, rows;
+    const stay = { l: `Your stay (${payStayFacts(s).nights} night${payStayFacts(s).nights === 1 ? '' : 's'})`, v: Number(s.total || 0) };
+    const backRow = f.back > 0.005 ? { l: 'Refundable deposit', s: f.depCharged > 0.005 ? 'Paid with your deposit. Comes back after you leave' : 'Comes back 3–5 working days after you leave', v: f.back } : null;
+    if (s.kind === 'deposit') {
+        cap = 'Due today';
+        what = f.dep > 0.005 ? `${gbp(s.amountDue)} deposit, plus ${gbp(f.dep)} you get back` : `What the ${gbp(f.today)} covers`;
+        const already = payR2(s.alreadyPaid);
+        rows = [{ l: 'Deposit', s: `${s.depositPct}% of your ${gbp(s.total)} stay`, v: payR2(Number(s.amountDue) + already) }];
+        if (already > 0.005) rows.push({ l: 'Paid so far', v: already, credit: true });
+        if (f.dep > 0.005) rows.push({ l: 'Refundable deposit', s: 'Comes back 3–5 working days after you leave', v: f.dep });
+        rows.push({ l: 'Today', v: f.today, total: true });
+    } else {
+        const due = s.balanceDueDate || '';
+        const all = payState.mode === 'all';
+        const future = !!due && due >= todayDashed();
+        // The stay is paid and only the refundable deposit is left: it is called
+        // that, never "balance".
+        const depOnly = payDepOnly(s);
+        cap = all ? 'Your whole stay' : depOnly ? 'Your refundable deposit' : f.paid > 0.005 ? (future ? 'Balance due by ' + payDay(due) : 'Balance due now') : future ? 'Due by ' + payDay(due) : 'Due today';
+        what = all ? `Your stay ${gbp(s.total)}${f.back > 0.005 ? `, plus ${gbp(f.back)} you get back` : ''}` : depOnly ? 'What the deposit is for' : 'What the balance covers';
+        rows = [stay];
+        if (backRow) rows.push(backRow);
+        if (f.paid > 0.005) rows.push({ l: 'Paid so far', s: s.paidOn ? 'Since ' + payDay(s.paidOn) : '', v: f.paid, credit: true });
+        rows.push({ l: all || depOnly ? 'Today' : 'Balance', v: f.today, total: true });
+    }
+    return `<div class="pp-hero-cap">${escapeHtml(cap)}</div>
+        <div class="pp-fig" id="pay-amount">${gbp(f.today)}</div>
+        <button type="button" class="pp-what" id="pay-what" data-act="payWhat" aria-expanded="${payState.what}" aria-controls="pay-break">${escapeHtml(what)}${PAY_IC.chev}</button>
+        <div class="pp-fold${payState.what ? ' is-open' : ''}" id="pay-break"><div class="pp-foldin"><div class="pp-panel">${payRowsHtml(rows)}</div></div></div>`;
+}
+// THE ONE CHOICE: the deposit, or the whole stay. A balance has nothing to choose
+// between, so it gets no switch; nor does a deposit that IS the whole stay.
+function paySegHtml() {
+    const d = payState.sDep;
+    if (!d || d.kind !== 'deposit' || payFig(d).rest <= 0.005) return '';
+    const fd = payFig(d);
+    const allFig = payState.sAll ? payFig(payState.sAll).today : payR2(Number(d.balance) + fd.dep);
+    const i = payState.mode === 'all' ? 1 : 0;
+    const opt = (v, t, fig) =>
+        `<label class="pp-seg-opt"><input type="radio" name="pay-mode" value="${v}"${payState.mode === v ? ' checked' : ''} data-act-change="payMode"><span class="pp-seg-t">${t}</span> <span class="pp-seg-v">${gbp(fig)}</span></label>`;
+    return `<div class="pp-seg" role="radiogroup" aria-label="How much to pay today" style="--i:${i}"><span class="pp-seg-pill" aria-hidden="true"></span>${opt('due', 'Deposit', fd.today)}${opt('all', 'Whole stay', allFig)}</div>`;
+}
+// ---- the balance plan, as a decision ----
+function payPlanHtml() {
+    const t = payState.apTerms;
+    if (!payState.autopayOffer || !t || payState.mode !== 'due' || payState.view !== 'pay') return '';
+    const mo = payState.apMonthly;
+    const sel = payState.autopayChoice;
+    const opt = (v, title, sub, fig) =>
+        `<label class="pp-opt${sel === v ? ' is-sel' : ''}"><input type="radio" name="pay-ap-choice" value="${v}"${sel === v ? ' checked' : ''} data-act-change="payAutopayChoice"><span class="pp-opt-r" aria-hidden="true"></span><span class="pp-opt-m"><span class="pp-opt-t">${escapeHtml(title)}</span><span class="pp-opt-s">${escapeHtml(sub)}</span></span>${fig ? `<span class="pp-opt-v">${escapeHtml(fig)}</span>` : ''}</label>`;
+    let sched = '';
+    if (mo && sel === 'monthly') {
+        sched = `<div class="pp-sched">${mo.dates.map((d, i) => `<span>${escapeHtml(payDay(d))} · <b>${gbp(i === mo.dates.length - 1 ? mo.last : mo.per)}</b></span>`).join('')}</div>`;
+    }
+    return `<section class="pp-panel pp-plan" role="radiogroup" aria-labelledby="pay-ap-cap">
+        <div class="pp-plan-head"><b id="pay-ap-cap">${payState.apRepair ? "We couldn't use the card you saved before" : `The ${gbp(t.amount)} balance`}</b><span>Due by ${escapeHtml(payDay(t.due))}. How would you like to pay it?</span></div>
+        ${opt('self', "I'll pay it myself", "We'll email you before it's due. Nothing is stored.", '')}
+        ${opt('one', 'Take it on ' + payDay(t.due), 'One payment, from this card, with an email 3 days before', gbp(t.amount))}
+        ${mo ? opt('monthly', 'Spread it monthly', 'From this card, with an email before each one', `${mo.n} × ${gbp(mo.per)}`) : ''}
+        ${sched}
+    </section>`;
+}
+function payAutopayChoice() {
+    const r = /** @type {HTMLInputElement|null} */ (document.querySelector('input[name="pay-ap-choice"]:checked'));
+    payState.autopayChoice = r && (r.value === 'one' || r.value === 'monthly') ? r.value : 'self';
+    // The radio under the finger is kept (rebuilding it would drop keyboard focus
+    // mid-choice); everything that FOLLOWS the choice is redrawn.
+    payRender({ keep: 'plan' });
+}
+// The chosen option's tint and the monthly schedule, in place.
+function payPlanSync(panel) {
+    const sel = payState.autopayChoice;
+    panel.querySelectorAll('.pp-opt').forEach((o) => {
+        const i = /** @type {HTMLInputElement|null} */ (o.querySelector('input'));
+        o.classList.toggle('is-sel', !!i && i.value === sel);
+    });
+    const old = panel.querySelector('.pp-sched');
+    if (old) old.remove();
+    const mo = payState.apMonthly;
+    if (mo && sel === 'monthly') {
+        panel.insertAdjacentHTML('beforeend', `<div class="pp-sched">${mo.dates.map((d, i) => `<span>${escapeHtml(payDay(d))} · <b>${gbp(i === mo.dates.length - 1 ? mo.last : mo.per)}</b></span>`).join('')}</div>`);
+    }
+}
+// ONE CONSENT SENTENCE, whichever rail: the whole arrangement — today's figure,
+// what happens to the rest, what (if anything) is stored — restated above the
+// button so the wallet sheet and the card form make identical promises.
+function payConsentText() {
+    const s = payState.s;
+    const f = payFig(s);
+    if (s.kind === 'hold') return `<b>A ${gbp(f.today)} hold, not a payment.</b> It's released after you leave, and only used if something's damaged. We'd tell you first.`;
+    const backLine = f.back > 0.005 ? ` Your ${gbp(f.back)} refundable deposit comes back after you leave.` : '';
+    if (payState.mode === 'all') return `<b>Your whole stay, today.</b> Nothing more to pay.${backLine}`;
+    if (s.kind !== 'deposit') {
+        if (payDepOnly(s)) return `<b>${gbp(f.today)} today</b> is your refundable deposit. It comes back after you leave.`;
+        const armed = s.autopayState === 'armed' && !s.autopayRepair;
+        return armed ? `<b>${gbp(f.today)} today</b> settles your stay early. Nothing more is taken automatically.${backLine}` : `<b>${gbp(f.today)} today</b> settles your stay.${backLine}`;
+    }
+    const t = payState.apTerms;
+    const mo = payState.apMonthly;
+    if (payState.autopayOffer && t) {
+        if (payState.autopayChoice === 'one') return `<b>${gbp(f.today)} today</b>, and your card is kept securely on file for one payment of ${gbp(t.amount)} on ${escapeHtml(payDay(t.due))}. We'll email you 3 days before.`;
+        if (payState.autopayChoice === 'monthly' && mo) return `<b>${gbp(f.today)} today</b>, and your card is kept securely on file for ${mo.n} monthly payments of ${gbp(mo.per)}, first on ${escapeHtml(payDay(mo.dates[0]))}. We'll email you before each one.`;
+        return `<b>Today's payment only.</b> The ${gbp(t.amount)} balance stays yours to pay. We'll email you before ${escapeHtml(payDay(t.due))}, and nothing is stored.`;
+    }
+    if (f.rest > 0.005) {
+        const due = s.balanceDueDate || '';
+        return `<b>Today's payment only.</b> The ${gbp(f.rest)} balance follows${due ? ' by ' + escapeHtml(payDay(due)) : ' before your stay'}, and we'll email you before it's due.`;
+    }
+    return `<b>${gbp(f.today)} today.</b>${backLine}`;
+}
+function payBtnLabel() {
+    const s = payState.s;
+    return s && s.kind === 'hold' ? `Place ${gbp(payState.amountDue)} hold` : `Pay ${gbp(payState.amountDue)}`;
+}
+function payBtnPaint(html) {
+    const btn = payEl('pay-btn');
+    if (!btn) return;
+    btn.innerHTML = html || `${PAY_IC.lock}<span>${escapeHtml(payBtnLabel())}</span>`;
+}
+// THE METHODS FOLLOW THE CHOICE. An automatic plan needs a card Square can keep
+// on file, and Square cannot keep a WALLET card for merchant-initiated payments,
+// so choosing one stands the wallets down WITH THE REASON and the card form takes
+// over; "I'll pay it myself" brings them straight back. Called from payRender and
+// mountWallets (a late wallet mount must respect an already-chosen plan).
+function payMethodsSync() {
+    const card = payState.view === 'card';
+    const hold = payState.s && payState.s.kind === 'hold';
+    const auto = payState.autopayOffer && payState.mode === 'due' && payState.autopayChoice !== 'self' && !card;
+    const wallets = !!payState.walletsAny && !card && !hold && payR2(payChargeNow()) > 0;
+    payShow('pay-express', wallets);
+    const ex = payEl('pay-express');
+    if (ex) {
+        ex.classList.toggle('is-off', auto);
+        ex.setAttribute('aria-disabled', auto ? 'true' : 'false');
+    }
+    payShow('pay-walnote', wallets && auto);
+    payShow('sq-or', wallets);
+}
+// ---- the whole screen, from payState. `keep` names a control the guest is
+// using right now ('seg' or 'plan'), which is updated in place, not rebuilt. ----
+function payRender(opts) {
+    const keep = (opts && opts.keep) || '';
+    const s = payState.s;
+    if (!s) return;
+    const f = payFig(s);
+    const view = payState.view;
+    const armed = view === 'armed';
+    const repair = view === 'repair';
+    const card = view === 'card';
+    payState.amountDue = f.today;
+    // The back link names where it goes (the account pages' rule).
+    const back = payEl('pay-back-lbl');
+    if (back) back.textContent = currentGuest ? 'Your stay' : 'Home';
+    // The stay, and the stage it is at.
+    const stayEl = payEl('pay-stay');
+    if (stayEl) {
+        // Money in hand confirms the dates; nothing yet, and they are held for you.
+        const tone = s.kind === 'hold' ? '' : f.paid > 0.005 ? 'ok' : 'warn';
+        const label = s.kind === 'hold' ? 'Older link' : tone === 'warn' ? 'Dates held for you' : 'Confirmed';
+        stayEl.innerHTML = payStayHtml(s, tone, label);
+    }
+    // The alert above the hero: a repair, or a card just saved.
+    const top = payEl('pay-alert-top');
+    if (top) top.innerHTML = repair || (card && payState.cardFrom === 'repair') ? payRepairAlertHtml() : payState.cardSaid ? payAlertHtml('ok', 'Card updated', payState.cardSaid) : '';
+    // The hero.
+    const hero = payEl('pay-hero');
+    if (hero) {
+        const prev = payEl('pay-amount');
+        const old = prev ? prev.textContent : '';
+        hero.innerHTML = armed ? payArmedHeroHtml() : repair ? payRepairHeroHtml() : payHeroHtml();
+        const fig = payEl('pay-amount');
+        if (fig && old && fig.textContent !== old && !armed && !repair) fig.classList.add('is-swap');
+    }
+    const seg = payEl('pay-seg');
+    const segBox = seg && /** @type {HTMLElement|null} */ (seg.querySelector('.pp-seg'));
+    if (keep === 'seg' && segBox) segBox.style.setProperty('--i', payState.mode === 'all' ? '1' : '0');
+    else if (seg) seg.innerHTML = view === 'pay' ? paySegHtml() : '';
+    const story = payEl('pay-story');
+    if (story) story.innerHTML = s.kind === 'hold' ? payHoldExplainHtml() : armed ? payArmedStoryHtml() : repair ? '' : view === 'card' && payState.cardFrom ? '' : payStoryHtml(payStoryStops(), f.grand);
+    const plan = payEl('pay-plan');
+    const planBox = plan && /** @type {HTMLElement|null} */ (plan.querySelector('.pp-plan'));
+    if (keep === 'plan' && planBox) payPlanSync(planBox);
+    else if (plan) plan.innerHTML = payPlanHtml();
+    const side = payEl('pay-armed');
+    if (side) side.innerHTML = armed ? payArmedSideHtml() : repair ? payRepairSideHtml() : '';
+    // The method panel, the consent and the bar are the PAYING half; the armed and
+    // repair screens have nothing to pay today, so there is no card box at all.
+    const paying = view === 'pay' || card;
+    payShow('pay-method', paying);
+    payShow('pay-bar', paying);
+    const cap = payEl('pay-method-cap');
+    if (cap) cap.textContent = card ? 'Your new card' : 'Pay with';
+    const lead = payEl('pay-method-lead');
+    if (lead) {
+        lead.hidden = !card;
+        lead.textContent = card ? payCardLeadText() : '';
+    }
+    const consent = payEl('pay-consent');
+    if (consent) {
+        const show = view === 'pay';
+        consent.hidden = !show;
+        consent.innerHTML = show ? payConsentText() : '';
+    }
+    const btn = payEl('pay-btn');
+    if (btn) {
+        btn.dataset.act = card ? 'payUpdateCard' : 'submitPayment';
+        btn.classList.remove('is-ok');
+        btn.removeAttribute('aria-busy');
+        payBtnPaint(card ? `${PAY_IC.card}<span>Save card</span>` : '');
+    }
+    payShow('pay-cancel', card);
+    const say = payEl('pay-secure-say');
+    if (say) say.textContent = card ? 'Nothing is charged when you save. Secured by Square.' : 'Secured by Square. We never see your card number.';
+    payMethodsSync();
+    if (paying) payCardEnsure().catch(() => {});
+}
+// ---- the armed plan: nothing to pay today, so no card box ----
+// A monthly plan's next collection, said one way on the stay card and here:
+// "£175.00 monthly · next on Tue 20 Oct", or "Next £60.00 on Tue 20 Oct" when it
+// is smaller than the rest (a payment made by hand, or the plan's last), so a
+// smaller figure is never called the monthly one.
+function payPlanNext(p, sep) {
+    const nx = p && Array.isArray(p.dates) ? p.dates.find((d) => d.state === 'next') : null;
+    if (!nx) return '';
+    const per = Number(p.per);
+    const fig = Number(nx.fig) || 0;
+    return per > 0 && Math.abs(fig - per) > 0.005 ? `Next ${gbp(fig)} on ${payDay(nx.date)}` : `${gbp(fig)} monthly${sep}next on ${payDay(nx.date)}`;
+}
+function payArmedPlanLine() {
+    const s = payState.s;
+    const p = s.autopayPlan;
+    if (p && p.dates) {
+        const nx = payPlanNext(p, ', ');
+        return nx ? `${nx}. We'll email you before each one.` : "Taken monthly. We'll email you before each one.";
+    }
+    return s.balanceDueDate ? `Taken automatically on ${payDay(s.balanceDueDate)}. We'll email you 3 days before.` : "Taken automatically. We'll email you before it's taken.";
+}
+function payArmedHeroHtml() {
+    const f = payFig(payState.s);
+    return `<div class="pp-hero-cap">${payCap('info', 'Arranged', 'check')}Nothing to pay today</div>
+        <div class="pp-fig" id="pay-amount">${gbp(f.today)}</div>
+        <p class="pp-hero-line">${escapeHtml(payArmedPlanLine())}</p>`;
+}
+function payArmedStoryHtml() {
+    const s = payState.s;
+    const f = payFig(s);
+    const p = s.autopayPlan;
+    if (p && p.dates) return payVStoryHtml(payPlanStops(p, f), 'Your monthly payments');
+    const stops = [];
+    if (f.paid > 0.005) stops.push({ when: 'So far', v: f.paid, sub: 'Paid', st: 'done' });
+    stops.push({ when: s.balanceDueDate ? payDay(s.balanceDueDate) : 'Before your stay', v: f.today, sub: 'Taken automatically', st: 'auto' });
+    if (f.back > 0.005) stops.push({ when: 'After you leave', v: f.back, sub: 'Comes back to you', st: 'back' });
+    return payStoryHtml(stops, f.grand);
+}
+// A monthly plan's stops, from the server's own rows (booking_autopay_plan_view).
+function payPlanStops(p, f) {
+    const stops = [];
+    if (f.paid > 0.005) stops.push({ t: 'Paid so far', s: '', v: f.paid, st: 'done' });
+    const trouble = p.state === 'retrying' || p.state === 'stopped';
+    p.dates.forEach((d, i) => {
+        const last = i === p.dates.length - 1;
+        if (d.state === 'done') return;
+        if (d.state === 'next' && trouble)
+            stops.push({ t: payDay(d.date), s: p.state === 'stopped' ? 'Declined. Update your card to carry on' : `Declined. Trying again${p.retry ? ' on ' + payDay(p.retry) : ' soon'}`, v: d.fig, st: 'warn' });
+        else stops.push({ t: payDay(d.date), s: last ? 'Final payment, taken automatically' : 'Taken automatically', v: d.fig, st: 'auto' });
+    });
+    if (f.back > 0.005) stops.push({ t: 'After you leave', s: 'Refundable deposit comes back', v: f.back, st: 'back' });
+    return stops;
+}
+function payArmedSideHtml() {
+    const f = payFig(payState.s);
+    return `<div class="pp-sec pp-sec-out"><span>Paying with</span></div>
+        <div class="pp-panel pp-chip">${PAY_IC.card}<span class="pp-chip-m"><b>The card you saved</b><span>Kept securely by Square</span></span><button type="button" class="pp-link" data-act="payChangeCard">Change</button></div>
+        <div class="pp-acts">
+            <button type="button" class="pp-btn2" data-act="payNowInstead">Pay ${gbp(f.today)} now instead</button>
+            <p class="pp-consent pp-center">Paying now settles your stay early. Nothing more is taken.</p>
+            <button type="button" class="pp-link pp-center pp-off" data-act="payTurnOff">Turn off automatic payment</button>
+        </div>`;
+}
+// ---- a payment that didn't go through: what happened, when we'll try again ----
+function payRepairWhy() {
+    const r = payState.apRepairInfo || {};
+    const why = String(r.why || 'the card said no').trim().replace(/\.+$/, '');
+    const next = r.stopped
+        ? `We've stopped trying that card. Update it and ${r.monthly ? 'the plan carries on' : 'the payment is taken as arranged'}, or pay now instead.`
+        : `We'll try again${r.retry ? ' on ' + payDay(r.retry) : ' in the next day or two'}, or update your card now and ${r.monthly ? 'the plan carries on' : 'it is taken as arranged'}.`;
+    return `${why}. ${next}`;
+}
+function payRepairAlertHtml() {
+    const act = payState.view === 'card' ? '' : `<div class="pp-alert-acts"><button type="button" class="pp-btn pp-btn-sm" data-act="payChangeCard">Update card</button></div>`;
+    return `<div class="pp-alert is-warn">${PAY_IC.warn}<div><b>A payment didn't go through</b><p>${escapeHtml(payRepairWhy())}</p>${act}</div></div>`;
+}
+function payRepairHeroHtml() {
+    const s = payState.s;
+    const f = payFig(s);
+    const p = s.autopayPlan;
+    const left = p && p.dates ? p.dates.filter((d) => d.state !== 'done').length : 0;
+    return `<div class="pp-hero-cap">Left to pay</div>
+        <div class="pp-fig" id="pay-amount">${gbp(f.today)}</div>
+        ${left > 1 ? `<p class="pp-hero-line">${left} monthly payments of ${gbp(p.per)}</p>` : ''}`;
+}
+function payRepairSideHtml() {
+    const s = payState.s;
+    const f = payFig(s);
+    const p = s.autopayPlan;
+    const story = p && p.dates ? payVStoryHtml(payPlanStops(p, f), 'Your monthly payments') : payStoryHtml(payStoryStops(), f.grand);
+    return `${story}<div class="pp-acts"><button type="button" class="pp-btn2" data-act="payNowInstead">Pay the ${gbp(f.today)} now instead</button></div>`;
+}
+// ---- the card form on its own: a new card for the plan, nothing charged ----
+function payCardLeadText() {
+    const s = payState.s;
+    const f = payFig(s);
+    if (payState.cardFrom === 'repair') return `Nothing is charged when you save. The ${gbp(f.today)} is then taken as arranged.`;
+    return `Nothing is charged when you save. The ${gbp(f.today)} is still taken${s.balanceDueDate ? ' on ' + payDay(s.balanceDueDate) : ' as arranged'}.`;
+}
+function payChangeCard() {
+    payState.cardFrom = payState.view === 'repair' ? 'repair' : 'armed';
+    payState.view = 'card';
+    payState.cardSaid = '';
+    setPayMsg('');
+    payRender();
+    try {
+        const m = payEl('pay-method');
+        if (m) m.scrollIntoView({ block: 'center', behavior: 'smooth' });
+    } catch (e) {}
+}
+function payCardCancel() {
+    payState.view = payState.cardFrom || 'armed';
+    payState.cardFrom = '';
+    setPayMsg('');
+    payRender();
+}
+function payNowInstead() {
+    payState.view = 'pay';
+    payState.mode = 'due';
+    setPayMsg('');
+    payRender();
+    payCardEnsure()
+        .then(() => payWalletsReprice())
+        .catch(() => {});
+}
+async function payTurnOff() {
+    const ok = await glassConfirm(
+        `We won't take the ${gbp(payFig(payState.s).today)} automatically. You'll pay it yourself, and we'll email you before it's due.`,
+        'Turn it off',
+    );
+    if (!ok) return;
+    try {
+        await apiPost('pay.php', { action: 'autopay_off', booking_id: payState.bookingId, token: payState.token });
+        toast("Turned off. We'll email you before it's due.");
+        await openPayView(payState.token, payState.bookingId, payState.kind);
+    } catch (e) {
+        glassAlert((e && e.message) || "Couldn't turn it off. Please message us and we'll do it.");
+    }
+}
+// A NEW CARD FOR THE PLAN — stores a card against the existing consent and
+// touches NO money (pay.php update_card).
+async function payUpdateCard() {
+    if (!squareCard) {
+        setPayMsg('The card box is still loading. One moment.');
+        return;
+    }
+    setPayMsg('');
+    const btn = payEl('pay-btn');
+    if (btn) {
+        btn.setAttribute('aria-busy', 'true');
+        btn.innerHTML = '<span class="pp-spin" aria-hidden="true"></span><span>Saving…</span>';
+    }
+    try {
+        // Bare tokenize: a STORE, not a charge — no verification amount rides it.
+        const result = await squareCard.tokenize();
+        if (!result || result.status !== 'OK' || !result.token) {
+            setPayMsg('Check the card details in the card box and try again.');
+            payRender();
+            return;
+        }
+        const res = await apiPost('pay.php', { action: 'update_card', token: payState.token, booking_id: payState.bookingId, source_id: result.token });
+        payState.apRepairInfo = null;
+        payState.cardSaid = res && res.say ? String(res.say) : 'The plan carries on, and nothing was charged today.';
+        payState.view = 'armed';
+        payState.cardFrom = '';
+        payRender();
+        toast('Card updated. Nothing was charged.');
+    } catch (e) {
+        setPayMsg((e && e.message) || 'Could not save the card just now.');
+        payRender();
+    }
+}
+// ---- the legacy hold: says plainly it is a hold, not a payment ----
+function payHoldExplainHtml() {
+    const f = payFig(payState.s);
+    return `<div class="pp-panel">${`<div class="pp-rows">
+        <div class="pp-row"><span class="pp-row-l">We hold ${gbp(f.today)} on your card<small>It isn't taken. Your bank shows it as pending.</small></span></div>
+        <div class="pp-row"><span class="pp-row-l">Released after you leave<small>Usually within 5 days of checkout.</small></span></div>
+        <div class="pp-row"><span class="pp-row-l">Only used for damage<small>We'd tell you first, and say why.</small></span></div>
+    </div>`}</div>`;
+}
+// ---- the interactions ----
+function payWhat() {
+    payState.what = !payState.what;
+    const t = payEl('pay-what');
+    if (t) t.setAttribute('aria-expanded', String(payState.what));
+    const fold = payEl('pay-break');
+    if (fold) fold.classList.toggle('is-open', payState.what);
+}
+// The switch: Deposit | Whole stay. Each side is a summary of its own (its own
+// quote, its own stage), so switching changes what the charge asks for — the
+// whole stay is the BALANCE stage asked early, which pay.php has always honoured.
+function payMode() {
+    const r = /** @type {HTMLInputElement|null} */ (document.querySelector('input[name="pay-mode"]:checked'));
+    const mode = r && r.value === 'all' ? 'all' : 'due';
+    if (mode === payState.mode) return;
+    payState.mode = mode;
+    payState.what = false;
+    // A chosen plan never rides the whole stay (there is nothing left to schedule).
+    if (mode === 'all') payState.autopayChoice = 'self';
+    payUseSummary(mode === 'all' ? payState.sAll : payState.sDep);
+    payRender({ keep: 'seg' });
+    payWalletsReprice();
+    // The whole stay's own figures are still on their way: say so on the button
+    // rather than charge with a quote that does not exist yet.
+    if (mode === 'all' && !payState.sAll) payBtnWait();
+}
+function payBtnWait() {
+    const btn = /** @type {HTMLButtonElement} */ (payEl('pay-btn'));
+    if (!btn) return;
+    btn.disabled = payState.mode === 'all' && !payState.sAll;
+    if (btn.disabled) btn.innerHTML = `<span class="pp-spin" aria-hidden="true"></span><span>${payState.allState === 'err' ? "Couldn't get the figure — tap Deposit, or reload" : 'Getting the figure…'}</span>`;
+}
+// The summary on screen: its stage is what the charge asks for, its quote what
+// the charge is checked against.
+function payUseSummary(s) {
+    if (!s) return;
+    payState.s = s;
+    payState.kind = s.kind === 'deposit' || s.kind === 'balance' || s.kind === 'hold' ? s.kind : payState.kind;
+    payState.quote = typeof s.quote === 'string' ? s.quote : '';
+    payState.amountDue = payFig(s).today;
+}
+function payBack() {
+    if (!currentGuest) {
+        nav('view-main');
+        return;
+    }
+    payDoneStays();
+}
+// ---- the calm screens: an expired link, nothing to pay, a dropped connection ----
+function payTitle(text, on) {
+    const h = payEl('pay-title');
+    if (!h) return;
+    h.textContent = text;
+    h.hidden = !on;
+}
+function payPanel(which) {
+    ['pay-loading', 'pay-body', 'pay-done', 'pay-error'].forEach((id) => payShow(id, id === which));
+    // The calm and receipt panels carry their own visible heading.
+    payTitle(payState.s && payState.s.propName ? 'Pay for your stay at ' + payState.s.propName : 'Pay for your stay', which === 'pay-body' || which === 'pay-loading');
+}
+function payCalmHtml(o) {
+    return `<div class="pp-calm-i${o.tone ? ' is-' + o.tone : ''}" aria-hidden="true">${PAY_IC[o.icon] || ''}</div>
+        <h2 class="pp-calm-h" tabindex="-1">${escapeHtml(o.h)}</h2>
+        <p>${escapeHtml(o.p)}</p>
+        ${o.extra || ''}
+        <div class="pp-acts">${o.acts || ''}</div>
+        ${o.foot ? `<p class="pp-calm-foot">${escapeHtml(o.foot)}</p>` : ''}`;
+}
+function payCalm(o) {
+    payPanel('pay-error');
+    const el = payEl('pay-error');
+    if (el) el.innerHTML = payCalmHtml(o);
+}
+const payStayBtn = (label) => `<button type="button" class="pp-btn" data-act="payStayFromCalm">${escapeHtml(label || 'See your stay')}</button>`;
+const payChatBtn = () => `<button type="button" class="pp-btn2" data-act="toggleChat">Message us</button>`;
+function payStayFromCalm() {
+    if (currentGuest) payDoneStays();
+    else openGuestArea();
+}
+// `retry` is OPTIONAL and must stay so: a terminal refusal ("this link has
+// expired") must not offer a button that returns the same answer for ever.
+function showPayError(text, retry) {
+    __payRetry = typeof retry === 'function' ? retry : null;
+    payCalm({
+        icon: 'info',
+        h: retry ? "We couldn't load the payment page" : "This payment can't go ahead",
+        p: text || "The payment didn't go through. Nothing has been charged.",
+        acts: (retry ? '<button type="button" class="pp-btn" data-act="payErrorRetry">Try again</button>' : payStayBtn()) + payChatBtn(),
+    });
 }
 // A REFUSAL, not a hiccup: retrying any of these returns the same answer. 500 is
-// deliberately NOT here (a server error can pass), and a transport failure carries no
-// status at all — the case the retry exists for.
+// deliberately NOT here (a server error can pass), and a transport failure carries
+// no status at all — the case the retry exists for.
 const PAY_ERR_TERMINAL = [400, 403, 404, 410, 503];
-// Named once — the confirmation email is a thread the owner can answer, and Messages
-// reaches them without one.
-const PAY_ERR_WAY_OUT = 'Reply to your confirmation email and we\'ll send you a fresh link — or message us from the site and we\'ll take it from there.';
-// Held rather than closed over by the button, so re-showing the panel with a
-// different (or no) remedy can never leave the last one wired up.
 let __payRetry = null;
 function payErrorRetry() {
     const fn = __payRetry;
     if (fn) fn();
 }
-// Opened from a secure pay link (?pay=<token>&b=<id>) parsed at boot.
-// TURNING OFF THE ARRANGEMENT, from the guest's own screen. Confirmed in terms
-// of the consequence rather than "are you sure" — the balance goes back to being
-// theirs to remember. Rides the pay token they hold, so there is no new way in.
-async function guestAutopayOff(token, bookingId) {
-    const ok = await glassConfirm(
-        "We'll stop collecting your balance automatically. You'll need to pay it yourself before your stay — we'll email you a link nearer the time.",
-        'Turn it off',
-    );
-    if (!ok) return;
-    try {
-        await apiPost('pay.php', { action: 'autopay_off', booking_id: bookingId, token: token });
-        toast('Automatic payment turned off.');
-        // Repaint from the SERVER: the state is derived there, and a mirror here
-        // is one more thing that can disagree with it.
-        await renderGuestBookings();
-    } catch (e) {
-        glassAlert(e.message || "Couldn't turn it off — please message us and we'll do it.");
-    }
-}
-
-// ---- THE JOURNEY (the approved payments demo): one row composer feeds the
-// pay screen's schedule AND the done panel's what-happens-next, so the promise
-// before paying and the promise after are one document. ----
-function payJourneyRow(state, lbl, sub, fig) {
-    return `<div class="pj-row is-${state}"><span class="pj-dot" aria-hidden="true"></span><span class="pj-main"><span class="pj-lbl">${escapeHtml(lbl)}</span>${sub ? `<span class="pj-sub">${escapeHtml(sub)}</span>` : ''}</span>${fig ? `<span class="pj-fig">${escapeHtml(fig)}</span>` : ''}</div>`;
-}
-// One row set for every state of the screen: the resting ask, an armed part
-// payment (the "you are here" row becomes the slice and the remainder gets its
-// own quiet row), and a live automatic plan (the marked row says it's ARRANGED).
-function payJourneyRowsFor(ctx, part) {
-    const remind = "we'll remind you";
-    const dueSub = ctx.due ? `Due by ${fmtDate(ctx.due)} — ${remind}` : `Before your stay — ${remind}`;
-    const rows = [];
-    if (ctx.kind === 'deposit') {
-        if (part > 0.005) {
-            rows.push(payJourneyRow('now', 'Today — part payment', '', gbp(part)));
-            rows.push(payJourneyRow('dim', 'Rest of this payment', 'Still to pay — any time from your booking page', gbp(Math.round((ctx.payTotal - part) * 100) / 100)));
-        } else {
-            rows.push(payJourneyRow('now', 'Today — deposit', 'Confirms your dates', gbp(ctx.payTotal)));
-        }
-        if (ctx.rest > 0.005) rows.push(payJourneyRow('dim', 'Balance', dueSub, gbp(ctx.rest)));
-    } else {
-        if (ctx.paidSoFar > 0.005)
-            rows.push(payJourneyRow('done', 'Already paid', ctx.backFig > 0.005 ? 'Including your refundable deposit' : '', gbp(ctx.paidSoFar)));
-        if (part > 0.005) {
-            rows.push(payJourneyRow('now', 'Today — part payment', '', gbp(part)));
-            rows.push(payJourneyRow('dim', 'Remaining balance', dueSub, gbp(Math.round((ctx.payTotal - part) * 100) / 100)));
-        } else if (ctx.armed) {
-            rows.push(payJourneyRow('arr', 'Arranged — nothing to do', `${gbp(ctx.payTotal)} will be collected automatically${ctx.due ? ' on ' + fmtDate(ctx.due) : ''}. We'll email you before it's taken.`, gbp(ctx.payTotal)));
-        } else {
-            rows.push(payJourneyRow('now', 'Balance — today', '', gbp(ctx.payTotal)));
-        }
-    }
-    if (ctx.backFig > 0.005) rows.push(payJourneyRow('dim', 'Deposit back', '3–5 working days after checkout', gbp(ctx.backFig)));
-    return rows;
-}
-function payJourneyRender(s, dep, depCharged, paidSoFar, payTotal) {
-    const wrap = document.getElementById('pay-journey');
-    const rowsEl = document.getElementById('pay-journey-rows');
-    if (!wrap || !rowsEl) return;
-    // The legacy hold flow keeps its own wording and gets no journey.
-    if (s.kind === 'hold') { wrap.style.display = 'none'; payState.jCtx = null; return; }
-    const rest = Math.round((Number(s.balance || 0) - Number(s.amountDue || 0)) * 100) / 100;
-    const backFig = dep > 0 ? dep : depCharged;
-    // Stashed for the done panel, which renders after the screen's locals are gone.
-    payState.jBack = backFig;
-    payState.jDue = s.balanceDueDate || '';
-    // …and for payJourneySync, so an armed part payment re-renders the SAME facts.
-    payState.jCtx = {
-        kind: s.kind,
-        rest: rest,
-        backFig: backFig,
-        paidSoFar: paidSoFar,
-        payTotal: payTotal,
-        due: s.balanceDueDate || '',
-        // A TROUBLED plan must not read "nothing to do" — the repair card is
-        // the affordance there, and red is not "arranged".
-        armed: s.kind === 'balance' && s.autopayState === 'armed' && !s.autopayRepair,
-    };
-    const rows = payJourneyRowsFor(payState.jCtx, 0);
-    // A one-row journey states nothing the hero hasn't — render only a real path.
-    if (rows.length < 2) { wrap.style.display = 'none'; payState.jCtx = null; return; }
-    rowsEl.innerHTML = rows.join('');
-    wrap.style.display = '';
-}
-// THE JOURNEY FOLLOWS THE SLICE. Arming a part payment re-prices the hero, the
-// button and the wallets — this keeps the journey telling the same story (it
-// used to keep saying "Balance — today £525" under a £100 hero). Called from
-// payPartRender, so every path that moves the slice moves the journey with it.
-function payJourneySync() {
-    const ctx = payState.jCtx;
-    const rowsEl = document.getElementById('pay-journey-rows');
-    if (!ctx || !rowsEl) return;
-    const row = document.getElementById('pay-part-row');
-    const open = !!(row && row.style.display !== 'none' && payState.part);
-    const part = open ? Math.round((payState.partAmount || 0) * 100) / 100 : 0;
-    rowsEl.innerHTML = payJourneyRowsFor(ctx, part).join('');
-}
-// The green BEAT: success shows on the control that was pressed BEFORE the done
-// panel replaces it (the approved motion grammar). Instant under reduced motion.
-async function payBeat(label) {
-    try {
-        const btn = document.getElementById('pay-btn');
-        if (!btn) return;
-        btn.classList.remove('is-busy');
-        btn.classList.add('is-paid');
-        btn.textContent = label || '✓ Paid';
-        // 1050ms, the approved unhurried tempo — the "it worked" breath before
-        // the receipt takes over (was 650; the WAIT before this is untouched).
-        if (!(window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches))
-            await new Promise((r) => setTimeout(r, 1050));
-        btn.classList.remove('is-paid');
-    } catch (e) {}
-}
-// THE WAIT IS NARRATED (#pay-steps) — three rules: it EARNS ITS PLACE (400ms
-// before it reveals, so a fast payment never sees it), it ACKNOWLEDGES TIME (a
-// bank step still running at 2s changes its line — the pause is the bank's,
-// not a frozen page), and it NEVER INVENTS PROGRESS (steps tick on the real
-// callbacks only). Card path only — a wallet has its own sheet.
-function payStepsArm() {
-    payState.stepsOn = true;
-    const gen = (payState.stepsGen = (payState.stepsGen || 0) + 1);
-    // One pulse, one place: while the charge runs, the journey's own "you are
-    // here" marker is the thing that spins (payStepsEnd settles or restores it).
-    const nowRow = document.querySelector('#pay-journey-rows .pj-row.is-now');
-    if (nowRow) {
-        nowRow.classList.remove('is-now');
-        nowRow.classList.add('is-run');
-    }
-    const esc = (i, txt) => {
-        const el = document.getElementById('pay-st-' + i);
-        if (el && el.classList.contains('is-run')) {
-            const ss = el.querySelector('.pay-step-sub');
-            if (ss) ss.textContent = txt;
-        }
-    };
-    setTimeout(() => {
-        if (!payState.stepsOn || payState.stepsGen !== gen) return;
-        const box = document.getElementById('pay-steps');
-        if (!box) return;
-        const fig = gbp(Math.round(payChargeNow() * 100) / 100);
-        const step = (i, state, l, s) =>
-            `<div class="pay-step ${state}" id="pay-st-${i}"><span class="pay-step-dot" aria-hidden="true"></span><span class="pay-step-m"><span class="pay-step-lbl">${l}</span><span class="pay-step-sub">${s}</span></span></div>`;
-        box.innerHTML =
-            `<div class="pay-steps-in"><div class="pay-steps-cap">What's happening</div>` +
-            // By 400ms we are already inside tokenize, so "preparing" is
-            // genuinely done and the bank step is genuinely running.
-            step(0, 'is-ok', 'Preparing your payment', 'this only takes a moment') +
-            step(1, 'is-run', 'Checking with your bank', 'your bank may show an approval prompt — nothing to retype here') +
-            step(2, '', 'Taking the payment', `one payment of ${fig} — nothing else is taken`) +
-            '</div>';
-        box.style.display = '';
-        requestAnimationFrame(() => requestAnimationFrame(() => box.classList.add('is-open')));
-        setTimeout(() => {
-            if (payState.stepsGen !== gen) return;
-            esc(1, 'still with your bank — if no prompt has appeared, open your banking app');
-        }, 2000);
-    }, 400);
-}
-// Advance to step i (everything before it ticks). No-op unless armed, so the
-// wallet and hold paths never see a narration they didn't start.
-function payStepGo(i) {
-    if (!payState.stepsOn) return;
-    for (let k = 0; k <= i; k++) {
-        const el = document.getElementById('pay-st-' + k);
-        if (!el) continue;
-        el.classList.remove('is-run');
-        if (k < i) el.classList.add('is-ok');
-        else el.classList.add('is-run');
-    }
-}
-function payStepsEnd(ok) {
-    payState.stepsOn = false;
-    payState.stepsGen = (payState.stepsGen || 0) + 1;
-    const runRow = document.querySelector('#pay-journey-rows .pj-row.is-run');
-    if (runRow) {
-        runRow.classList.remove('is-run');
-        runRow.classList.add(ok ? 'is-done' : 'is-now');
-    }
-    const box = document.getElementById('pay-steps');
-    if (!box) return;
-    if (ok) {
-        box.querySelectorAll('.pay-step').forEach((s) => {
-            s.classList.remove('is-run');
-            s.classList.add('is-ok');
-        });
-    } else {
-        // A failure folds the narration away BEFORE the message settles in —
-        // the last lit step already said where it stopped.
-        box.classList.remove('is-open');
-        setTimeout(() => {
-            if (!payState.stepsOn) {
-                box.style.display = 'none';
-                box.innerHTML = '';
-            }
-        }, 350);
-    }
-}
-// THE PAGE TITLE IS THE PAGE'S OWN STATE. "Pay for your stay" is an instruction
-// and it stayed on screen above a receipt that had already been paid — so the
-// done panel renames it and openPayView puts it back on every open (a guest can
-// come straight back to pay the rest). One writer, both directions.
-function payHeadTitle(done) {
-    const h1 = document.querySelector('#view-pay .pay-head h1');
-    if (h1) h1.textContent = done ? 'Your payment' : 'Pay for your stay';
-}
-// WHAT HAPPENS NEXT on the done panel, as the journey's own rows — paying
-// never dead-ends. Additive beside the (unchanged) spoken sub.
-function payDoneNextRender(res, rem) {
-    // THE CAPSULE FOLLOWS THE MONEY: "Dates held for you" was set when the screen
-    // opened and never revisited, so it sat over "Your dates are confirmed".
-    const cap = document.querySelector('.pay-stay-cap.is-held');
-    if (cap) {
-        cap.classList.remove('is-held');
-        cap.textContent = '✓ Dates confirmed';
-    }
-    const el = document.getElementById('pay-done-next');
-    if (!el) return;
-    const apo = res && res.autopay;
-    // THE RECEIPT IS SAID ONCE. This row read "Payment received" under an h2
-    // reading "Payment received" under an h1 still reading "Pay for your stay",
-    // with a toast saying it a fourth time — four statements of one fact on one
-    // screen. The heading owns the news; this row states what happens NEXT.
-    const rows = [
-        // A CLAIM THE APP CAN KEEP: the receipt is emailed only to a guest who
-        // has an email on file (send_payment_receipt refuses otherwise, and the
-        // enquiry form accepts a phone alone). Without one, this page is the
-        // record and the row says so instead of promising an inbox.
-        payState.hasEmail === false
-            ? payJourneyRow('done', payState.kind === 'deposit' ? 'Your dates are confirmed' : 'Payment received', 'We have no email address for you, so keep this page as your record', '')
-            : payState.kind === 'deposit'
-              ? payJourneyRow('done', 'Your dates are confirmed', 'A receipt is on its way to your inbox', '')
-              : payJourneyRow('done', 'Receipt on its way', "We've emailed it to you", ''),
-    ];
-    // Gate each row on the FACT it states, not on `rem`: a whole DEPOSIT pays
-    // rem=0, so `if (rem>0.005)` deleted the balance, its date and the arranged
-    // row the journey had just shown. jCtx still holds the stay balance.
-    const ctx = payState.jCtx;
-    const dep = ctx && ctx.kind === 'deposit';
-    if (apo && apo.ok) {
-        rows.push(payJourneyRow('dim', 'The rest is arranged', apo.monthly ? `${gbp(apo.per)} monthly from ${fmtDate(apo.next)} — an email before each one` : `${gbp(apo.per)} collected automatically on ${fmtDate(apo.due)}`, ''));
-    } else {
-        if (dep && rem > 0.005) {
-            rows.push(payJourneyRow('dim', `Rest of your deposit ${gbp(rem)}`, 'Still to pay — any time from your booking page', ''));
-        }
-        // The stay balance still to come — jCtx on a deposit ask, else `rem`.
-        if (dep && Number(ctx.rest || 0) > 0.005) {
-            rows.push(payJourneyRow('dim', `Balance ${gbp(ctx.rest)}`, ctx.due ? `Due by ${fmtDate(ctx.due)} — we'll email a reminder` : "We'll email a reminder before your stay", ''));
-        } else if (!dep && rem > 0.005) {
-            rows.push(payJourneyRow('dim', `Balance ${gbp(rem)}`, payState.jDue ? `Due by ${fmtDate(payState.jDue)} — we'll email a reminder` : "We'll email a reminder before your stay", ''));
-        }
-    }
-    rows.push(payJourneyRow('dim', 'Arrival details a week before', 'Directions, entry and everything you need', ''));
-    if (Number(payState.jBack || 0) > 0.005)
-        rows.push(payJourneyRow('dim', `${gbp(payState.jBack)} deposit back`, '3–5 working days after checkout', ''));
-    el.innerHTML = rows.join('');
-    el.style.display = '';
-}
-async function openPayView(token, bookingId, kind) {
-    try {
-        trackEvent('pay_start', '');
-    } catch (e) {}
-    payState.token = token;
-    payState.bookingId = bookingId;
-    // SUPERSEDE (the mountWallets guard): two opens can be in flight (dock tap,
-    // "pay the rest", amount-changed recovery), so a slow summary from an earlier
-    // one must not paint its booking over the newer one after each await.
-    const openStamp = ++payState.openStamp;
-    const openLive = () => payState.openStamp === openStamp;
-    // A stage if the caller has one, NULL if not — and null means "no
-    // preference", which the server resolves off the booking. It used to
-    // default to 'deposit': a preference invented for a caller that had none,
-    // and why a link whose deposit was settled still offered to take it again.
-    // 'hold' MUST survive — a legacy ?hold= link promises an authorise-only
-    // refundable hold, and coercing it would CHARGE the guest.
-    payState.kind = kind === 'balance' || kind === 'hold' || kind === 'deposit' ? kind : null;
-    squareCard = null;
-    ['pay-body', 'pay-done', 'pay-error'].forEach((id) => {
-        const e = document.getElementById(id);
-        if (e) e.style.display = 'none';
+function payExpired() {
+    payCalm({
+        icon: 'link',
+        h: 'This payment link has expired',
+        p: "Your booking isn't affected. You can see what's due and pay from your stay, or ask us for a new link.",
+        acts: payStayBtn() + payChatBtn(),
+        foot: "Or reply to your confirmation email and we'll send a fresh link.",
     });
-    // Back to the ASK: the done panel renames both headings, and a guest
-    // returns here to pay the rest. Reset where every open passes.
-    payHeadTitle(false);
-    const doneTitle = document.getElementById('pay-done-title');
-    if (doneTitle) doneTitle.textContent = 'Payment received';
-    const ld = document.getElementById('pay-loading');
-    if (ld) ld.style.display = '';
-    const cardEl = document.getElementById('sq-card');
-    if (cardEl) cardEl.innerHTML = '';
-    setPayMsg('');
-    nav('view-pay');
-    try {
-        const cfg = await apiGet('square-config.php');
-        if (!openLive()) return; // a newer open took over while we waited
-        if (!cfg.enabled || !cfg.applicationId || !cfg.locationId)
-            throw new Error('Online payment is not available right now.');
-        // Sandbox Square = a test environment by definition: say which card works.
-        const sandNote = document.getElementById('pay-sandbox-note');
-        if (sandNote) sandNote.style.display = cfg.environment === 'production' ? 'none' : '';
-        const s = await apiPost('pay.php', {
-            action: 'summary',
-            booking_id: payState.bookingId,
-            token: payState.token,
-            kind: payState.kind,
-        });
-        if (!openLive()) return; // ditto — do not paint a superseded booking
-        // The refundable damage deposit is charged WITH this payment and refunded
-        // after checkout — so the guest pays (and the wallet sheet shows) rental +
-        // deposit. The server computes the same total independently. On the LEGACY
-        // ?hold= screen the amount IS the deposit — don't add it twice.
-        const dep = s.kind === 'hold' ? 0 : Math.round(Number(s.damagesDue || 0) * 100) / 100;
-        const payTotal = Math.round((Number(s.amountDue) + dep) * 100) / 100;
-        payState.amountDue = payTotal;
-        // PIN the stage just resolved, so the CHARGE asks for what this screen
-        // quotes. Charging with no preference would let a payment landing in
-        // between move the stage, taking a balance off a deposit screen.
-        if (s.kind === 'deposit' || s.kind === 'balance' || s.kind === 'hold') payState.kind = s.kind;
-        // The server's signed statement of the figure this screen shows; sent back
-        // with the charge so it can stop if the sum has moved. payment_quote_sign
-        // says why. Cleared, never stale-kept, if a summary arrives without one.
-        payState.quote = typeof s.quote === 'string' ? s.quote : '';
-        // THE ARRANGEMENT IS ONE THREE-WAY DECISION — "I'll pay it myself"
-        // (the DEFAULT: automatic collection is opted INTO, never out of), one
-        // payment on the due date, or monthly when the server offers it.
-        // Offered only when there is something to schedule and no live
-        // arrangement; three states are REPAIRS (a card that expired, one that
-        // never saved, terms the owner has since changed) — 'revoked' is
-        // deliberately absent (they turned it off on purpose, and re-asking on
-        // every payment is nagging) and 'armed' is already arranged. The sum
-        // and the day are IN the words (the caption, the lead, the one-payment
-        // option): permission to charge a card is not permission anyone gave
-        // against "automatic payments" and a link.
-        const terms = s.autopayTerms;
-        const REPAIR = ['failed', 'nocard', 'stale'];
-        const isRepair = REPAIR.indexOf(s.autopayState) !== -1;
-        const canOffer = terms && terms.amount > 0 && terms.due && (s.autopayState === 'off' || isRepair);
-        // Remembered so payAutopaySync can bring a slice-hidden offer back.
-        payState.autopayOffer = !!canOffer;
-        payState.apTerms = canOffer ? terms : null;
-        payState.apMonthly = canOffer && s.instalmentOffer && Number(s.instalmentOffer.n) > 1 ? s.instalmentOffer : null;
-        payState.apRepair = !!isRepair;
-        payState.autopayChoice = 'self';
-        payAutopayRender();
-        // THE REPAIR CARD — fixes the CARD on an existing consent. Mid-plan the
-        // kind is 'balance' so autopayTerms is null and the consent card never
-        // renders: this is the only affordance the failure email can point at.
-        payState.apRepairInfo = s.autopayRepair && typeof s.autopayRepair === 'object' ? s.autopayRepair : null;
-        payRepairRender();
-        payState.guestName = s.guestName || '';
-        // Only an EXPLICIT false changes the receipt row's words; an older server
-        // that sends no flag keeps today's copy rather than being read as "no email".
-        payState.hasEmail = s.hasEmail === false ? false : true;
-        // Stay context: the cottage as its accent chip + dates + nights, so the
-        // page reads like a receipt for THEIR stay, not a bare payment form.
-        const propEl = document.getElementById('pay-prop');
-        if (propEl) {
-            const nights = Math.max(1, Math.round((new Date(s.checkOut) - new Date(s.checkIn)) / 864e5));
-            const chip = s.propKey
-                ? `<span class="prop-tag tag-${escapeHtml(String(s.propKey))}">${escapeHtml(s.propName || '')}</span> `
-                : escapeHtml(s.propName || '') + ' · ';
-            // EVERY SEPARATOR TRAVELS WITH THE UNIT THAT FOLLOWS IT. At 390 this
-            // 304px line wraps, and it broke AFTER the "·" — flush against the
-            // column edge. The arrow would dangle next, so both glue forward: a
-            // line may START with one and can never END with one.
-            propEl.innerHTML = `${chip}${fmtDate(s.checkIn)} →&nbsp;${fmtDate(s.checkOut)} ·&nbsp;${nights}&nbsp;night${nights === 1 ? '' : 's'}`;
-        }
-        // The headline says WHEN, from the booking's own payment plan — once
-        // the date has passed it stays plain "Balance due" (it is due now).
-        const dueBy = s.kind === 'balance' ? balanceDueBySuffix(s.balanceDueDate) : '';
-        // THE LABEL NAMES WHAT THE FIGURE IS. With the refundable deposit riding
-        // this payment the hero is a SUM, so "Balance due" names one half and
-        // shows both — reported: "BALANCE DUE BY 14/08/2026" over £340.00 when
-        // the balance was £290.00, the payask defect again. With nothing riding
-        // it the figure IS the balance, so the precise label stays.
-        document.getElementById('pay-kind-label').textContent =
-            s.kind === 'hold'
-                ? 'Refundable security hold'
-                : dep > 0
-                  ? s.kind === 'balance' && dueBy
-                    ? `To pay${dueBy}`
-                    : 'To pay now'
-                  : s.kind === 'balance'
-                    ? `Balance due${dueBy}`
-                    : 'Deposit due';
-        document.getElementById('pay-amount').textContent = gbp(payTotal);
-        // The deposit ALREADY charged folds into BOTH the total and the paid
-        // figure (the balance is unmoved) — otherwise a guest whose first card
-        // payment took £225 read "of £700.00 total · £175.00 already paid" here,
-        // against the £225-of-£750 their receipt, confirmation and My Stays say.
-        const depCharged = s.kind === 'hold' ? 0 : Math.round(Number(s.depositCharged || 0) * 100) / 100;
-        const grandTotalRef = Math.round((Number(s.total) + dep + depCharged) * 100) / 100;
-        // The headline sub carries only the money shape; the deposit explanation
-        // gets its own quiet line instead of a dense parenthetical run-on.
-        const paidSoFar = Math.round((Number(s.alreadyPaid || 0) + depCharged) * 100) / 100;
-        // The deposit sub must ITEMISE when the damages deposit rides the payment:
-        // "25% deposit · £750.00 total" under a £225.00 headline invited checking
-        // 25% × 750 = £187.50 — the percentage was against the rental while the
-        // total beside it was the grand, so the line never reconciled with the
-        // figure above it. Stated as its own sum now, it always does.
-        // ITEMISED AS A LIST, NOT A SENTENCE. One run-on carried four figures
-        // and answered two questions at once — what am I paying now, and where
-        // does that sit in the whole stay. Split, each row states one thing and
-        // they visibly sum to the hero. Only with more than one component: a
-        // one-row list is worse than a sentence.
-        const subEl = document.getElementById('pay-amount-sub');
-        const payLine = (label, amount, aside) =>
-            `<div class="pay-line"><span class="pay-line-lbl">${escapeHtml(label)}${aside ? `<small>${escapeHtml(aside)}</small>` : ''}</span><span class="pay-line-amt">${escapeHtml(amount)}</span></div>`;
-        if (s.kind !== 'hold' && dep > 0) {
-            subEl.classList.add('is-lines');
-            subEl.innerHTML =
-                payLine(
-                    s.kind === 'balance' ? 'Balance of your stay' : `Deposit (${s.depositPct}%)`,
-                    gbp(Number(s.amountDue)),
-                ) +
-                // The deposit's explanation lives HERE and nowhere else. It was
-                // repeated in the note directly beneath — the same £50 twice in
-                // adjacent lines, which reads as two deposits until you check.
-                payLine('Refundable deposit', gbp(dep), 'returned after your stay');
-        } else {
-            subEl.classList.remove('is-lines');
-            subEl.textContent =
-                s.kind === 'hold'
-                    ? 'held, not charged — released after checkout'
-                    : s.kind === 'balance'
-                      ? `of ${gbp(grandTotalRef)} total${paidSoFar > 0 ? ` · ${gbp(paidSoFar)} already paid` : ''}`
-                      : `${s.depositPct}% deposit · ${gbp(grandTotalRef)} total`;
-        }
-        const noteEl = document.getElementById('pay-amount-note');
-        if (noteEl) {
-            const bits = [];
-            // WHERE THIS SITS IN THE WHOLE STAY — the second question the old
-            // run-on answered in the same breath as the first. Its own line,
-            // below the hairline, because it is context and not part of the sum
-            // above. The deposit's explanation is NOT repeated here.
-            if (s.kind !== 'hold' && dep > 0 && grandTotalRef > 0.005) {
-                bits.push(
-                    paidSoFar > 0.005
-                        ? // NBSP so the wrap can't orphan "paid." on a line of its own,
-                          // which it did at 390px — measured on the rendered box.
-                          `${gbp(grandTotalRef)} for the whole stay · ${gbp(paidSoFar)} already\u00a0paid.`
-                        : `${gbp(grandTotalRef)} for the whole stay.`,
-                );
-            }
-            // WHAT FOLLOWS, AND WHEN. balanceDueDate was already in this payload
-            // and rendered only for `kind === 'balance'` — so the guest learned
-            // the date on the screen where they were already paying it. Both
-            // figures derive from what is already sent, so nothing can disagree.
-            const rest = Math.round((Number(s.balance || 0) - Number(s.amountDue || 0)) * 100) / 100;
-            if (s.kind === 'deposit' && rest > 0.005) {
-                bits.push(
-                    s.balanceDueDate
-                        ? `The balance of ${gbp(rest)} is due by ${fmtDate(s.balanceDueDate)}.`
-                        : `The balance of ${gbp(rest)} follows before you arrive.`,
-                );
-            }
-            noteEl.textContent = bits.join(' ');
-            noteEl.style.display = bits.length ? '' : 'none';
-        }
-        // The cottage's colour opens the card, and the stay states its stage as
-        // the capsule beside the dates — the money follows the thing it buys.
-        try {
-            const band = document.getElementById('pay-stay-band');
-            const accent = s.propKey && typeof propertyMeta === 'object' && propertyMeta[s.propKey] && propertyMeta[s.propKey].accent;
-            if (band) {
-                band.style.display = accent ? '' : 'none';
-                if (accent) band.style.background = accent;
-            }
-            if (propEl && s.kind !== 'hold') {
-                propEl.insertAdjacentHTML(
-                    'beforeend',
-                    s.kind === 'balance'
-                        ? '<span class="pay-stay-cap">✓ Dates confirmed</span>'
-                        : '<span class="pay-stay-cap is-held">Dates held for you</span>',
-                );
-            }
-        } catch (e) {}
-        // THE JOURNEY: every figure re-uses what the note above derived, so the
-        // two cannot disagree (see payJourneyRender's header).
-        try {
-            payJourneyRender(s, dep, depCharged, paidSoFar, payTotal);
-        } catch (e) {}
-        // SETTLE IT ALL NOW. booking_payment_kind already passes a requested
-        // 'balance' through, so the whole amount was always chargeable — there
-        // was simply no way to ask for it.
-        const fullEl = document.getElementById('pay-full');
-        if (fullEl) {
-            const restNow = Math.round((Number(s.balance || 0) - Number(s.amountDue || 0)) * 100) / 100;
-            const show = s.kind === 'deposit' && restNow > 0.005;
-            fullEl.textContent = show ? `Rather settle the whole stay now — ${gbp(payTotal + restNow)}` : '';
-            fullEl.style.display = show ? '' : 'none';
-        }
-        try {
-            const pb = document.getElementById('pay-btn');
-            if (pb) pb.textContent = s.kind === 'hold' ? `Place ${gbp(payTotal)} hold` : `Pay ${gbp(payTotal)}`;
-        } catch (e) {}
-        // AN ARRANGED BALANCE SAYS SO: the hero names the arrangement, the
-        // journey's marked row reads "Arranged — nothing to do", and the button
-        // demotes to a quiet "pay now instead" — a guest opening their emailed
-        // link used to see the same full-strength ask as an unpaid balance.
-        // Gated on armed AND no repair (a failed card is TROUBLE, whose
-        // affordance is the repair card, never "nothing to do").
-        try {
-            const armed = s.kind === 'balance' && s.autopayState === 'armed' && !s.autopayRepair;
-            const pb2 = document.getElementById('pay-btn');
-            const anote = document.getElementById('pay-armed-note');
-            if (armed) {
-                const lblEl2 = document.getElementById('pay-kind-label');
-                if (lblEl2) lblEl2.textContent = 'Balance · already arranged';
-                if (pb2) {
-                    pb2.textContent = `Pay ${gbp(payTotal)} now instead`;
-                    pb2.classList.add('is-quiet');
-                }
-                if (anote) {
-                    anote.textContent =
-                        'Paying now settles the balance early — nothing further is collected. You can change your card or turn this off any time from My stays.';
-                    anote.style.display = '';
-                }
-            } else {
-                if (pb2) pb2.classList.remove('is-quiet');
-                if (anote) {
-                    anote.style.display = 'none';
-                    anote.textContent = '';
-                }
-            }
-        } catch (e) {}
-        // PAY PART OF IT. Offered only where the SERVER sent bounds — it clamps
-        // the charge to them, so the field can only ever ASK. Its max is the
-        // RENTAL due, not the hero: the refundable deposit rides the payment
-        // that completes the stage, which is why the hint says where it went.
-        payState.part =
-            s.part && Number(s.part.max) > 0 ? { min: Number(s.part.min), max: Number(s.part.max) } : null;
-        payState.partAmount = 0;
-        // Fresh screen, fresh hero — a re-open must not tick the figure over
-        // on top of the body's own entrance.
-        const bigSeed = document.getElementById('pay-amount');
-        if (bigSeed) delete bigSeed.dataset.fig;
-        const partRow = document.getElementById('pay-part-row');
-        const partAmt = /** @type {HTMLInputElement} */ (document.getElementById('pay-part-amt'));
-        const partTog = document.getElementById('pay-part-toggle');
-        const partWrap = document.getElementById('pay-part');
-        if (partRow) partRow.style.display = 'none';
-        if (partTog) partTog.setAttribute('aria-expanded', 'false');
-        if (partAmt) {
-            partAmt.value = '';
-            if (payState.part) {
-                partAmt.min = String(payState.part.min);
-                partAmt.max = String(payState.part.max);
-            }
-        }
-        if (partWrap) partWrap.style.display = payState.part ? '' : 'none';
-        // The resting screen, snapshotted so arming a slice can REPLACE it and
-        // disarming can put it back — one number on screen at a time.
-        payState.partView = payState.part
-            ? {
-                  due: payTotal,
-                  dep: dep,
-                  label: document.getElementById('pay-kind-label').textContent,
-                  amount: document.getElementById('pay-amount').textContent,
-                  subHtml: subEl ? subEl.innerHTML : '',
-                  subLines: !!(subEl && subEl.classList.contains('is-lines')),
-                  noteDisp: noteEl ? noteEl.style.display : 'none',
-                  fullDisp: fullEl ? fullEl.style.display : 'none',
-                  btn: document.getElementById('pay-btn') ? document.getElementById('pay-btn').textContent : '',
-              }
-            : null;
-        payPartRender();
-        if (!(payTotal > 0)) {
-            showPayError("This booking is already settled — there's nothing left to pay.");
-            return;
-        }
-        await loadSquareSdk(cfg.environment);
-        squarePayments = window.Square.payments(cfg.applicationId, cfg.locationId);
-        // RE-ENTRANT: attaching a second card over a live one leaves the SDK with
-        // two, and this screen is legitimately drawn twice — by the amount-changed
-        // recovery below, and by tapping "Pay balance" again on My Stays.
-        // Cast: squareCard is declared null, so the guard narrows it to never.
-        const liveCard = /** @type {any} */ (squareCard);
-        try {
-            if (liveCard) await liveCard.destroy();
-        } catch (e) {}
-        squareCard = null;
-        squareCard = await squarePayments.card();
-        await squareCard.attach('#sq-card');
-        try {
-            payState.walletAmount = payTotal; // the amount the initial mount prices to
-            await mountWallets(payTotal);
-        } catch (e) {} // Apple/Google Pay (best-effort)
-        if (ld) ld.style.display = 'none';
-        document.getElementById('pay-body').style.display = '';
-    } catch (e) {
-        // A DROPPED CONNECTION IS NOT THE END OF THE JOURNEY. This is the guest's
-        // only way to pay, reached from an emailed link, and the panel's one control
-        // was "Back to the site" — so a failed Square SDK load ended the payment.
-        //
-        // …BUT A VERDICT IS NOT A DROPPED CONNECTION. pay.php's terminal refusals (an
-        // expired link, a booking gone, payments off) carry a status, and retrying one
-        // returns it for ever — measured, Try again reproduced the identical panel. A
-        // button that looks like the remedy and is not is worse than none, and the
-        // guest still wants to pay, so the message names what would work.
-        const terminal = PAY_ERR_TERMINAL.indexOf(Number(e && e.status)) !== -1;
-        const say = e.message || 'Could not load the payment form.';
-        showPayError(
-            terminal ? say + ' ' + PAY_ERR_WAY_OUT : say,
-            terminal ? null : () => openPayView(token, bookingId, kind),
-        );
-    }
 }
-// Charge a Square token (from the card field OR an Apple/Google Pay wallet)
-// through the same server endpoint, then show the receipt state.
-// partOverride: when a WALLET is tapped, the charge must match the figure the
-// wallet SHEET showed — which is what the wallet was mounted for, not the
-// (possibly un-settled) value in the part field. undefined = the card path,
-// which charges payState.partAmount (the "Pay £X" button's own figure).
-// THE CHARGE WAITS LONGER THAN THE SERVER CAN TAKE. pay.php waits up to 30s for the
-// booking lock and 20s for Square; the page gave up at 15s and told the guest the full
-// amount was still due over a payment recorded two seconds later.
-const PAY_CHARGE_WAIT_MS = 75000;
-async function payWithToken(sourceId, partOverride) {
-    // A damages deposit is an AUTHORISATION (hold), not a charge.
-    if (payState.kind === 'hold') {
-        await apiPost('pay.php', {
-            action: 'authorize',
-            booking_id: payState.bookingId,
-            token: payState.token,
-            kind: 'hold',
-            source_id: sourceId,
-        }, { timeoutMs: PAY_CHARGE_WAIT_MS });
-        await payBeat('✓ Hold placed');
-        document.getElementById('pay-body').style.display = 'none';
-        // Reveal BEFORE writing the text: #pay-done is a polite live region now, and
-        // a change made while it is display:none is not reliably announced.
-        document.getElementById('pay-done').style.display = '';
-        payHeadTitle(true);
-        // A HOLD IS NOT A PAYMENT: the shared panel's heading said "Payment
-        // received" directly above "held, not charged".
-        const holdTitle = document.getElementById('pay-done-title');
-        if (holdTitle) holdTitle.textContent = 'Card hold placed';
-        document.getElementById('pay-done-sub').textContent =
-            "Your refundable security hold is in place — held, not charged. It's released after checkout, provided there's no damage.";
-        try { payDoneBackRetarget(); } catch (e) {}
-        try {
-            toast('Card hold placed — thank you.');
-        } catch (e) {}
+function payUnavailable() {
+    payCalm({
+        icon: 'info',
+        h: "Card payments aren't available right now",
+        p: "Your booking is safe. Reply to your confirmation email and we'll tell you how to pay, or message us.",
+        acts: payChatBtn() + payStayBtn(),
+    });
+}
+function paySettled(s) {
+    const f = payFig(s);
+    // "So far", not a date: paidOn is the FIRST payment's day, and the whole sum
+    // labelled with it would say something untrue.
+    const stops = [{ when: 'So far', v: f.paid > 0.005 ? f.paid : Number(s.total || 0), sub: 'Paid in full', st: 'done' }];
+    if (f.back > 0.005) stops.push({ when: 'After you leave', v: f.back, sub: 'Comes back to you', st: 'back' });
+    payCalm({
+        icon: 'ok',
+        tone: 'ok',
+        h: 'Nothing left to pay',
+        p: `Your stay at ${s.propName || 'the cottage'} is paid in full.${s.arrivalOn ? ` We'll send your arrival details around ${payDay(s.arrivalOn)}.` : ''}`,
+        extra: payStoryHtml(stops, f.grand),
+        acts: currentGuest ? payStayBtn('View your stay') : `<button type="button" class="pp-btn" data-act="nav" data-view="view-main">Back to the site</button>`,
+    });
+}
+// THE CONNECTION DROPPED, NOT NECESSARILY THE PAYMENT. There is no Pay button on
+// this screen at all — only a way to find out whether it went through. A second
+// tap of a full-strength Pay button is how a guest pays twice.
+function payUnsure() {
+    const s = payState.s || {};
+    payCalm({
+        icon: 'wifi',
+        tone: 'warn',
+        h: "We couldn't confirm your payment",
+        p: "The connection dropped before your bank's answer reached us. It may have gone through, so check before paying again.",
+        acts: `<button type="button" class="pp-btn" data-act="payCheckAgain">${PAY_IC.refresh}<span>Check whether it went through</span></button>${currentGuest ? payStayBtn('View your stay') : ''}`,
+        foot: s.emailHint ? `If a receipt arrives at ${s.emailHint}, you're done.` : 'If a receipt arrives by email, you are done.',
+    });
+}
+async function payCheckAgain(el) {
+    const btn = el && el.tagName === 'BUTTON' ? el : document.querySelector('#pay-error [data-act="payCheckAgain"]');
+    if (btn) btn.innerHTML = '<span class="pp-spin" aria-hidden="true"></span><span>Checking with your bank…</span>';
+    const at = payState.attempt;
+    let s;
+    try {
+        s = await apiPost('pay.php', { action: 'summary', booking_id: payState.bookingId, token: payState.token, kind: at ? at.kind : payState.kind });
+    } catch (e) {
+        if (btn) btn.innerHTML = `${PAY_IC.refresh}<span>Check whether it went through</span>`;
+        toast("Still can't reach us. Check your connection and try again.");
         return;
     }
-    let res;
-    // The bank step is done the moment we hold a token — the charge is what
-    // runs now, and the narration says so (no-op unless the card path armed it).
-    payStepGo(2);
-    try {
-        res = await apiPost('pay.php', {
-            action: 'charge',
-            booking_id: payState.bookingId,
-            token: payState.token,
-            kind: payState.kind,
-            source_id: sourceId,
-            quote: payState.quote,
-            // REQUESTED, not decided: pay.php clamps this into its own bounds
-            // and ignores it outright when there are none. A wallet tap pins the
-            // sheet's figure (partOverride); the card path uses the live field.
-            part_amount: partOverride !== undefined ? partOverride : payState.partAmount || 0,
-            // Read at the moment of paying — the choice can change after any
-            // render, and 'self' (the default) sends no consent at all. The
-            // monthly COUNT is only ever the one the server offered; pay.php
-            // re-validates it against its own derivation.
-            autopay: payState.autopayChoice === 'one' || payState.autopayChoice === 'monthly',
-            autopay_instalments: payState.autopayChoice === 'monthly' && payState.apMonthly ? Number(payState.apMonthly.n) : 0,
-        }, { timeoutMs: PAY_CHARGE_WAIT_MS });
-    } catch (e) {
-        // THE AMOUNT MOVED WHILE THEY READ IT. Nothing was charged, and a bare
-        // error would leave them looking at a figure the server has just refused;
-        // redraw at the new total so the next tap is one they agreed to.
-        if (e && e.code === 'amount_changed') {
-            try {
-                await openPayView(payState.token, payState.bookingId, payState.kind);
-            } catch (e2) {}
-            throw e;
-        }
-        // THE REPLY WAS LOST, NOT NECESSARILY THE PAYMENT. With no status the
-        // server never answered us — the charge may well have gone through, so
-        // "could not reach the server" invited a second payment. Re-read the
-        // summary (it shows what is really still due) and say so plainly.
-        if (!e || !e.status) {
-            try {
-                await openPayView(payState.token, payState.bookingId, payState.kind);
-            } catch (e2) {}
-            throw new Error("We couldn't confirm whether that payment went through — the connection dropped before the bank's answer reached us. Please check your email for a receipt before paying again; the amount above is what is still due.");
-        }
-        throw e;
+    const paidNow = payFig(s).paid;
+    if (at && paidNow > at.paidBefore + 0.005) {
+        // It went through: the receipt, from what was asked and what is now true.
+        payState.s = s;
+        // Paid in full is the STAY's balance, not this stage's: a deposit that went
+        // through leaves its own stage at nothing while the balance is still to come.
+        payReceipt({ charged: at.amount, fullyPaid: Number(s.balance) <= 0.005, autopay: null, card: null, fromCheck: true }, at);
+        toast('It went through. Nothing more to do.');
+        return;
     }
-    await payBeat();
-    document.getElementById('pay-body').style.display = 'none';
-    // Show what the card was CHARGED (incl. the bundled refundable deposit) —
-    // quoting only the rental portion after a "Pay £450" button read like a
-    // mis-charge to the guest.
-    // Reveal BEFORE writing the text — see the hold branch above.
-    document.getElementById('pay-done').style.display = '';
-    payHeadTitle(true);
-    // A PART PAYMENT'S DONE SCREEN IS NOT A DEAD END: `remaining` is what is
-    // left of the ask just read (the hint's "£X would remain", server-derived)
-    // — before fullyPaid, since a max-bound slice settles the rental with the
-    // deposit still to come, where "paid in full" is the wrong sentence.
-    const rem = Math.round(Number(res.remaining || 0) * 100) / 100;
-    // THE ARRANGEMENT'S OUTCOME IS SPOKEN, both ways round. A guest who just
-    // agreed to automatic payments used to get the generic "we'll be in
-    // touch" — and a FAILED card-save was logged for the owner while the
-    // guest left believing something was arranged that was not. res.autopay
-    // is null when nothing was asked for; the old sentence stands there.
-    const took = gbp(res.charged != null ? res.charged : res.paid);
-    const apo = res.autopay;
-    document.getElementById('pay-done-sub').textContent =
-        rem > 0.005
-            ? `Thank you — ${took} received. ${gbp(rem)} is still to pay — take care of it now, or we'll be in touch before your stay.`
-            : res.fullyPaid
-              ? 'Your booking is now paid in full. We look forward to welcoming you.'
-              : apo && apo.ok && apo.monthly
-                ? `Thank you — ${took} received. Your monthly payments are set up: ${gbp(apo.per)} on ${fmtDate(apo.next)}${apo.n > 2 ? `, then monthly until ${fmtDate(apo.due)}` : `, and the rest by ${fmtDate(apo.due)}`}. We'll email you before each one.`
-                : apo && apo.ok
-                  ? `Thank you — ${took} received. That's everything arranged — we'll collect the remaining ${gbp(apo.per)} automatically on ${fmtDate(apo.due)}, with an email before.`
-                  : apo && !apo.ok
-                    ? `Thank you — ${took} received. We couldn't set up automatic payments just now — nothing else was charged, we'll email you before the balance is due, and you can pay any time from My stays.`
-                    : `Thank you — ${took} received. We'll be in touch about the remaining balance before your stay.`;
-    // What happens next, as the journey's own rows — additive beside the sub.
-    try { payDoneNextRender(res, rem); } catch (e) {}
-    try { payDoneBackRetarget(); } catch (e) {}
-    const restBtn = document.getElementById('pay-done-rest');
-    if (restBtn) {
-        restBtn.style.display = rem > 0.005 ? '' : 'none';
-        restBtn.textContent = rem > 0.005 ? `Pay the remaining ${gbp(rem)}` : '';
-    }
-    // NO TOAST. The panel draws its own tick, is role="status" and says it in
-    // its heading — the toast was a fourth statement of one fact, over the
-    // Messages pill. The HOLD branch keeps its own: that is different news.
+    // It did not: back to the screen, with the figure as it stands and the fact said.
+    await openPayView(payState.token, payState.bookingId, at ? at.kind : payState.kind);
+    const slot = payEl('pay-alert');
+    if (slot) slot.innerHTML = payAlertHtml('info', "That payment didn't go through", 'Nothing was taken, so you can try again.');
 }
-// THE RECEIPT LANDS WHERE ITS PROMISES LIVE: everything the done panel names
-// (plan, arrival email, deposit back) is on My Stays, so a SIGNED-IN guest's
-// exit goes there; an email-link guest with no session keeps the homepage.
-function payDoneBackRetarget() {
-    const back = document.getElementById('pay-done-back');
-    if (!back) return;
-    if (currentGuest) {
-        back.textContent = 'View your stay';
-        back.dataset.act = 'payDoneStays';
+function payAlertHtml(tone, title, body) {
+    const ic = tone === 'ok' ? PAY_IC.ok : tone === 'warn' ? PAY_IC.warn : tone === 'info' ? PAY_IC.info : PAY_IC.stop;
+    return `<div class="pp-alert is-${tone}" role="status">${ic}<div><b>${escapeHtml(title)}</b><p>${escapeHtml(body)}</p></div></div>`;
+}
+// ---- the receipt: what was paid, with what, and what happens next ----
+function payReceipt(res, at) {
+    const s = payState.s || {};
+    const kind = at ? at.kind : payState.kind;
+    const all = at ? at.mode === 'all' : payState.mode === 'all';
+    const charged = payR2(res && res.charged != null ? res.charged : res && res.paid);
+    const fig = charged > 0 ? charged : at ? at.amount : 0;
+    const full = res && res.fullyPaid != null ? !!res.fullyPaid : all || kind === 'balance';
+    const apo = res && res.autopay;
+    const f = payFig(s);
+    const back = at ? at.back : f.back;
+    const rode = at ? at.dep : f.dep;
+    const card = res && res.card && res.card.last4 ? `${res.card.brand || 'Card'} •• ${res.card.last4}` : at && at.via ? at.via : 'Card';
+    const now = new Date();
+    const when = `Today, ${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+    const arrival = s.arrivalOn ? payDay(s.arrivalOn) : '';
+    let h, cap, lead;
+    const next = [];
+    if (kind === 'hold') {
+        h = 'Hold placed';
+        cap = payCap('info', 'Held, not charged');
+        lead = "It's released after you leave. Nothing is taken unless something's damaged, and we'd tell you first.";
+    } else if (full) {
+        h = 'Your stay is paid in full';
+        cap = payCap('ok', 'Nothing more to pay', 'check');
+        lead = arrival ? `We'll send directions and how to get in around ${arrival}.` : "We'll send directions and how to get in before your stay.";
+        next.push({ t: 'Paid in full', s: 'Today', v: fig, st: 'done' });
     } else {
-        back.textContent = 'Back to the site';
-        back.dataset.act = 'nav';
+        h = 'Payment received';
+        cap = payCap('ok', kind === 'deposit' ? 'Your dates are confirmed' : 'Payment received', 'check');
+        const rest = at ? at.rest : f.rest;
+        const due = s.balanceDueDate || '';
+        if (apo && apo.ok && apo.monthly) lead = `Your monthly payments are set up: ${gbp(apo.per)} from ${payDay(apo.next)}, finishing by ${payDay(apo.due)}.`;
+        else if (apo && apo.ok) lead = `The ${gbp(apo.per)} balance will be taken on ${payDay(apo.due)}. We'll email you 3 days before.`;
+        else if (apo && !apo.ok) lead = "We couldn't set up automatic payments just now. Nothing else was charged, and we'll email you before the balance is due.";
+        else lead = rest > 0.005 ? `We'll email you before the ${gbp(rest)} balance is due${due ? ' by ' + payDay(due) : ''}.` : "We'll be in touch before your stay.";
+        next.push({ t: kind === 'deposit' ? 'Deposit paid' : 'Paid', s: 'Today', v: fig, st: 'done' });
+        if (rest > 0.005) {
+            if (apo && apo.ok && apo.monthly) next.push({ t: 'Monthly payments', s: `${apo.n} × ${gbp(apo.per)}, ${payDay(apo.next)} to ${payDay(apo.due)}`, v: rest, st: 'auto' });
+            else if (apo && apo.ok) next.push({ t: 'Balance, taken automatically', s: `${payDay(apo.due)} · email 3 days before`, v: rest, st: 'auto' });
+            else next.push({ t: 'Balance', s: due ? `By ${payDay(due)} · we'll email you` : "Before your stay · we'll email you", v: rest, st: 'next' });
+        }
     }
+    if (kind !== 'hold') {
+        next.push({ t: 'Arrival details', s: (arrival ? arrival + ' · ' : '') + 'Directions, entry and everything you need', v: null, st: 'next' });
+        if (back > 0.005) next.push({ t: 'Refundable deposit back', s: '3–5 working days after you leave', v: back, st: 'back' });
+    }
+    const kv = [
+        [kind === 'hold' ? 'Held on' : 'Paid with', card],
+        ['When', when],
+        ['Reference', bookingRef(payState.bookingId)],
+    ];
+    if (rode > 0.005 && kind !== 'hold') kv.push(['Includes', `${gbp(rode)} refundable deposit`]);
+    const f2 = payStayFacts(s.checkIn ? s : { checkIn: todayDashed(), checkOut: todayDashed() });
+    const pk = String(s.propKey || '');
+    const img = (pk && typeof propertyContent === 'object' && propertyContent[pk] && propertyContent[pk].images && propertyContent[pk].images[0]) || '';
+    const ticket = `<div class="pp-ticket">
+        <div class="pp-ticket-head"><span class="pp-art" style="--pp-tint:var(--prop-${escapeHtml(pk)}, var(--accent));${img ? `background-image:url('${escapeHtml(chbCssUrl(img))}');` : ''}" aria-hidden="true"></span><span><b>${escapeHtml(s.propName || '')}</b><span>${escapeHtml(f2.range)}</span></span></div>
+        <div class="pp-ticket-cut" aria-hidden="true"></div>
+        <dl class="pp-kvs">${kv.map((r) => `<div class="pp-kv"><dt>${escapeHtml(r[0])}</dt><dd>${escapeHtml(r[1])}</dd></div>`).join('')}</dl>
+    </div>`;
+    const stays = currentGuest
+        ? `<button type="button" class="pp-btn" data-act="payDoneStays">View your stay</button>`
+        : `<button type="button" class="pp-btn" data-act="nav" data-view="view-main">Back to the site</button>`;
+    const mail = payState.hasEmail === false
+        ? `<p class="pp-mail">${PAY_IC.mail}<span>We have no email address for you, so keep this page as your record.</span></p>`
+        : `<p class="pp-mail">${PAY_IC.mail}<span>${kind === 'hold' ? 'Confirmation' : 'Receipt'} sent to ${escapeHtml(s.emailHint || 'your email')}</span></p>`;
+    payPanel('pay-done');
+    const el = payEl('pay-done');
+    // Revealed BEFORE the words land: a polite live region whose content changes
+    // while hidden is not reliably announced.
+    if (el)
+        el.innerHTML = `<div class="pp-rc-top"><div class="pp-tick">${PAY_IC.tick}</div><h2 class="pp-rc-h" tabindex="-1">${escapeHtml(h)}</h2><div class="pp-rc-fig">${gbp(fig)}</div>${cap}<p class="pp-rc-lead">${escapeHtml(lead)}</p></div>
+            ${ticket}
+            ${next.length ? `<div class="pp-sec pp-sec-out"><span>What's next</span></div>${payVStoryHtml(next, "What's next")}` : ''}
+            <div class="pp-acts">${stays}</div>
+            ${mail}`;
+    try {
+        const h2 = el && el.querySelector('.pp-rc-h');
+        if (h2) /** @type {HTMLElement} */ (h2).focus({ preventScroll: true });
+        window.scrollTo({ top: 0 });
+    } catch (e) {}
 }
+// THE RECEIPT LANDS WHERE ITS PROMISES LIVE: a signed-in guest's exit goes to
+// My stays, where the plan, the arrival details and the deposit live.
 function payDoneStays() {
     if (!currentGuest) {
         nav('view-main');
         return;
     }
     nav('view-guest-bookings');
-    // renderGuestBookings fetches its own payload, so the stay card reflects
-    // the payment that just went through rather than the pre-payment cache.
+    // renderGuestBookings fetches its own payload, so the stay card reflects the
+    // payment that just went through rather than the pre-payment cache.
     renderGuestBookings().catch(() => {});
 }
-// "Pay the remaining £X" on the done screen: re-open the same pay screen — the
-// summary refetches and asks for what is NOW left; this button decides nothing.
-function payRestNow() {
-    openPayView(payState.token, payState.bookingId, payState.kind).catch(() => {});
-}
-// PAY PART OF IT — three functions, and none of them decides an amount. pay.php
-// sends the bounds and clamps the charge into them, and the signed quote still
-// covers the FULL charge and is checked BEFORE the slice is taken — so a
-// tampered field buys nothing but a smaller payment they could already make.
-function payPartToggle() {
-    const row = document.getElementById('pay-part-row');
-    const tog = document.getElementById('pay-part-toggle');
-    const v = payState.partView;
-    if (!row || !tog || !v) return;
-    const open = row.style.display === 'none';
-    row.style.display = open ? '' : 'none';
-    tog.setAttribute('aria-expanded', open ? 'true' : 'false');
-    // THE WALLETS FOLLOW THE FIGURE. Opening the row re-prices them to the slice
-    // (or takes them down until a valid amount is typed); closing re-prices them
-    // to the full ask. Immediate here — there is no typing race on a toggle.
-    payWalletsReprice();
-    if (open) {
-        const amt = document.getElementById('pay-part-amt');
-        if (amt) {
-            try {
-                amt.focus();
-            } catch (e) {}
-        }
-    } else {
-        payState.partAmount = 0;
-        const amt = /** @type {HTMLInputElement} */ (document.getElementById('pay-part-amt'));
-        if (amt) amt.value = '';
-    }
-    payPartRender();
-}
-// Typing governs the hero and the button. An amount outside the bounds arms
-// nothing and the hint says what is needed — deliberately NOT clamped as they
-// type, which would turn "5" on the way to "50" into the minimum under their
-// fingers.
-// THE FIELD IS TEXT NOW, so it takes strings a number input used to refuse:
-// `parseFloat('12,50')` is 12, and a guest typing the European decimal comma
-// would have paid twelve pounds instead of twelve fifty, silently. One reader,
-// used by BOTH callers.
-//
-// A SEPARATOR IS DECIDED BY WHAT FOLLOWS IT, never by which character it is —
-// a naive `.replace(',', '.')` turns a four-figure balance typed "1,234.50"
-// into "1.234.50", which parseFloat reads as 1.23. That one is not silent (it
-// lands under the minimum, so the commit snaps it up and says so) but being
-// bounced to the minimum for typing a thousands separator is its own defect,
-// and half-normalising money is how the first bug got here.
-function payPartNum(raw) {
-    let s = String(raw == null ? '' : raw).replace(/[£\s]/g, '');
-    const dot = s.lastIndexOf('.');
-    const comma = s.lastIndexOf(',');
-    if (dot > -1 && comma > -1) {
-        // Both kinds present: the LAST one is the decimal point and every
-        // earlier separator groups thousands, in either convention.
-        const dec = Math.max(dot, comma);
-        s = s.slice(0, dec).replace(/[.,]/g, '') + '.' + s.slice(dec + 1);
-    } else if (comma > -1) {
-        // Commas only, and the grouping is the only signal: a comma followed by
-        // exactly three digits groups thousands ("1,234"), anything else is the
-        // decimal comma ("12,50").
-        s = /,\d{3}(?:\D|$)/.test(s) ? s.replace(/,/g, '') : s.replace(',', '.');
-    } else if ((s.match(/\./g) || []).length > 1) {
-        // "1.234.567" can only be grouped; a single dot stays a decimal point,
-        // which is the house convention on a £ field.
-        s = s.replace(/\./g, '');
-    }
-    return Math.round(parseFloat(s) * 100) / 100;
-}
-function payPartSync() {
-    const amt = /** @type {HTMLInputElement} */ (document.getElementById('pay-part-amt'));
-    const p = payState.part;
-    if (!amt || !p) return;
-    payState.partSnap = ''; // typing resumed — any earlier auto-correct note is stale
-    const v = payPartNum(amt.value);
-    payState.partAmount = isFinite(v) && v >= p.min - 0.005 && v <= p.max + 0.005 ? v : 0;
-    payPartRender();
-    payWalletsSchedule(); // re-price Apple/Google Pay to the slice once typing settles
-}
-// ON COMMIT (change = blur/Enter) an out-of-bounds figure SNAPS to the nearest
-// bound and the hint says so — the owner's ask. Deliberately not on input:
-// clamping as they type turns "5" on the way to "50" into the minimum under
-// their fingers. Empty stays empty (blank is not choosing), and the reprice is
-// immediate — a commit has no typing race, the same call the toggle makes.
-function payPartClamp() {
-    const amt = /** @type {HTMLInputElement} */ (document.getElementById('pay-part-amt'));
-    const p = payState.part;
-    if (!amt || !p) return;
-    if (String(amt.value).trim() === '') return;
-    const v = payPartNum(amt.value);
-    if (!isFinite(v)) return; // unreadable — the hint is already asking for a number
-    const snapped = v < p.min ? p.min : v > p.max ? p.max : null;
-    // ON COMMIT THE FIELD SHOWS WHAT WILL BE CHARGED — never "12,50" over a
-    // £12.50 ask. Only when the normalisation MOVED something, so "120.50" is
-    // left exactly as typed.
-    if (snapped === null) {
-        // ONE READER, ONE FIGURE. The display is rewritten from the number
-        // payPartNum produced — never by a second string substitution. This
-        // used to be its own naive `.replace(',', '.')`, the exact swap the
-        // reader's header forbids: a correct "1,234.50" became "1.234.50",
-        // which re-read as £123,450 and disarmed the button on a figure the
-        // guest had typed correctly (found in the final review, two callers
-        // agreeing with each other and disagreeing with the reader). Rewrite
-        // only when what was typed is not already that figure in a clean money
-        // shape, so "120.50" stays exactly as typed while "12,50", "£50" and
-        // "50x" all become what will be charged.
-        const raw = String(amt.value).trim();
-        if (parseFloat(raw) !== v || !/^\d+(\.\d{1,2})?$/.test(raw)) {
-            amt.value = v.toFixed(2);
-            payPartSync();
-        }
-        return;
-    }
-    amt.value = String(snapped);
-    payPartSync();
-    payState.partSnap = snapped === p.min ? 'min' : 'max';
-    payPartRender();
-    payWalletsReprice();
-}
-function payPartRender() {
-    const p = payState.part,
-        v = payState.partView;
-    if (!v) return;
-    const row = document.getElementById('pay-part-row');
-    const open = !!(row && row.style.display !== 'none');
-    const part = open ? payState.partAmount : 0;
-    const armed = part > 0;
-    const el = (id) => document.getElementById(id);
-    const tog = el('pay-part-toggle');
-    if (tog) tog.textContent = open ? `Pay the full ${gbp(v.due)} instead` : 'Pay part of it instead';
-    const hint = el('pay-part-hint');
-    if (hint && p) {
-        const amt = /** @type {HTMLInputElement} */ (el('pay-part-amt'));
-        const typed = amt ? String(amt.value).trim() : '';
-        // The deposit sentence rides EVERY bounds-showing state: the max is
-        // the rental due (the deposit can't split — it rides the completing
-        // payment), and the owner screenshotted the one state that never said
-        // why "£340 to pay" sat over "between £20.00 and £290.00".
-        const depLine = v.dep > 0.005 ? ` The refundable ${gbp(v.dep)} deposit follows with your next payment.` : '';
-        // The auto-correct note (payPartClamp) leads the armed line, so a
-        // figure that moved under the guest is announced, never silent.
-        const snap =
-            payState.partSnap === 'min'
-                ? `Adjusted up to the ${gbp(p.min)} minimum. `
-                : payState.partSnap === 'max'
-                  ? `Adjusted down to the ${gbp(p.max)} maximum. `
-                  : '';
-        hint.textContent = armed
-            ? snap + `${gbp(part)} now — ${gbp(Math.round((v.due - part) * 100) / 100)} would remain.`
-            : typed !== ''
-              ? `Enter an amount between ${gbp(p.min)} and ${gbp(p.max)}.` + depLine
-              : `Anything from ${gbp(p.min)} to ${gbp(p.max)}.` + depLine;
-    }
-    const lbl = el('pay-kind-label'),
-        big = el('pay-amount'),
-        sub = el('pay-amount-sub'),
-        note = el('pay-amount-note'),
-        full = el('pay-full'),
-        btn = /** @type {HTMLButtonElement} */ (el('pay-btn'));
-    if (armed) {
-        if (lbl) lbl.textContent = 'Paying now';
-        if (big) big.textContent = gbp(part);
-        if (sub) {
-            sub.classList.remove('is-lines');
-            sub.textContent = `of ${gbp(v.due)} due · ${gbp(Math.round((v.due - part) * 100) / 100)} would remain`;
-        }
-        if (note) note.style.display = 'none';
-        if (full) full.style.display = 'none';
-        if (btn) btn.textContent = `Pay ${gbp(part)}`;
-    } else {
-        if (lbl) lbl.textContent = v.label;
-        if (big) big.textContent = v.amount;
-        if (sub) {
-            sub.classList.toggle('is-lines', v.subLines);
-            sub.innerHTML = v.subHtml;
-        }
-        if (note) note.style.display = v.noteDisp;
-        if (full) full.style.display = open ? 'none' : v.fullDisp;
-        if (btn) btn.textContent = v.btn;
-    }
-    // An open row with nothing valid in it is not a payment yet, so the button
-    // says so rather than quietly charging the full amount they just declined.
-    if (btn) btn.disabled = open && !armed;
-    // The hero TICKS OVER on a real figure change only — dataset.fig is
-    // cleared by openPayView so the first paint rides the body's entrance.
-    if (big) {
-        const prev = big.dataset.fig;
-        if (prev !== undefined && prev !== big.textContent) {
-            big.classList.remove('pay-amt-swap');
-            void big.offsetWidth; // restart the animation
-            big.classList.add('pay-amt-swap');
-        }
-        big.dataset.fig = big.textContent;
-    }
-    payJourneySync();
-    payAutopaySync();
-}
-// THE ARRANGEMENT STANDS DOWN WHILE THE PART ROW IS OPEN: its sentence quotes
-// the rest after the FULL ask, and terms recorded beside a slice never match
-// what the collector later derives — "agreed" yet never firing (pay.php
-// refuses that half). Unticked on hide so consent can't ride a slice unseen.
-function payAutopaySync() {
-    const wrap = document.getElementById('pay-autopay');
-    if (!wrap) return;
-    // Standing down RESETS the decision to the default, so a consent chosen
-    // for the full payment can never ride a slice invisibly. VISIBILITY is
-    // decided inside the renderer — one place — or a sync-then-render pair
-    // can undo each other (measured: the render un-hid what sync had just
-    // stood down).
-    const row = document.getElementById('pay-part-row');
-    const open = !!(row && row.style.display !== 'none' && payState.part);
-    if ((!payState.autopayOffer || open) && payState.autopayChoice !== 'self') {
-        payState.autopayChoice = 'self';
-    }
-    payAutopayRender();
-}
-// THE THREE-WAY CARD. Rebuilt per state change (the monthly option opens to
-// its dated schedule only while chosen); the schedule's sum CLOSES on screen
-// (n × per = rest, or its unequal-final form) — the reader can check the
-// maths without deriving anything. Escaping: every figure/date here is
-// gbp()/fmtDate() output, never user text.
-function payAutopayRender() {
-    const wrap = document.getElementById('pay-autopay');
-    if (!wrap) return;
-    const t = payState.apTerms;
-    const row = document.getElementById('pay-part-row');
-    const open = !!(row && row.style.display !== 'none' && payState.part);
-    if (!payState.autopayOffer || !t || open) {
-        wrap.style.display = 'none';
-        wrap.innerHTML = '';
-        // THE STAND-DOWN HAS TO REACH THE CONSENT. This branch returned before
-        // payMethodsSync, so opening the part row after choosing "Monthly" reset the
-        // choice and hid the card while the consent sentence went on promising a
-        // monthly plan — the guest's own decision withdrawn with nothing said.
-        payMethodsSync();
-        return;
-    }
-    const mo = payState.apMonthly;
-    const sel = payState.autopayChoice;
-    const opt = (val, title, right, sub, body) => `
-        <label class="pay-ap-opt${sel === val ? ' is-sel' : ''}">
-            <span class="pay-ap-optrow">
-                <input type="radio" name="pay-ap-choice" value="${val}" ${sel === val ? 'checked' : ''} data-act-change="payAutopayChoice">
-                <span class="pay-ap-opttxt">
-                    <span class="pay-ap-title">${title}</span>
-                    ${sub ? `<span class="pay-ap-sub">${sub}</span>` : ''}
-                </span>
-                ${right ? `<span class="pay-ap-fig">${right}</span>` : ''}
-            </span>
-            ${body ? `<span class="pay-ap-body">${body}</span>` : ''}
-        </label>`;
-    let monthly = '';
-    if (mo) {
-        const rest = Math.round((mo.per * (mo.n - 1) + mo.last) * 100) / 100;
-        const rows = mo.dates
-            .map((d, i) => {
-                const last = i === mo.dates.length - 1;
-                return `<span class="ap-row"><span class="ap-step">${i + 1}</span><span class="ap-date">${fmtDate(d)}</span><span class="ap-figc">${gbp(last ? mo.last : mo.per)}</span>${last ? '<span class="ap-note">final</span>' : ''}</span>`;
-            })
-            .join('');
-        const sum =
-            Math.abs(mo.per - mo.last) < 0.005
-                ? `${mo.n} × ${gbp(mo.per)} = ${gbp(rest)}`
-                : `${mo.n - 1} × ${gbp(mo.per)} + ${gbp(mo.last)} = ${gbp(rest)}`;
-        monthly = opt(
-            'monthly',
-            'Monthly',
-            `${mo.n} × ${gbp(mo.per)}`,
-            'from a card we keep securely on file',
-            sel === 'monthly' ? `<span class="ap-rail">${rows}<span class="ap-sum">${sum}</span></span>` : '',
-        );
-    }
-    wrap.style.display = '';
-    wrap.innerHTML = `
-        <div class="pay-sec-cap" id="pay-ap-cap"><span class="pay-step-n" aria-hidden="true">1</span>${payState.apRepair ? "We couldn't use the card you saved before" : `The ${gbp(t.amount)} that's left`}</div>
-        <p class="pay-ap-lead">Due by ${fmtDate(t.due)} — how would you like to handle it?</p>
-        <div class="pay-ap-opts">
-            ${opt('self', "I'll pay it myself", '', "we'll email you when it's due — nothing is stored", '')}
-            ${opt('one', 'One payment', gbp(t.amount), `taken automatically on ${fmtDate(t.due)}`, '')}
-            ${monthly}
-        </div>
-        <p class="pay-ap-fine">${
-            sel === 'monthly'
-                ? "We'll email you 3 days before each payment, and you can turn this off any time from My stays."
-                : sel === 'one'
-                  ? "We'll email you 3 days before it's taken, and you can change your mind any time from My stays."
-                  : "Choose an automatic option and we'll email you before anything is taken — you can change your mind any time from My stays."}</p>`;
-    payMethodsSync();
-}
-function payAutopayChoice() {
-    const r = /** @type {HTMLInputElement|null} */ (document.querySelector('input[name="pay-ap-choice"]:checked'));
-    payState.autopayChoice = r && (r.value === 'one' || r.value === 'monthly') ? r.value : 'self';
-    payAutopayRender();
-}
-// THE METHODS FOLLOW THE CHOICE (the approved plan-first demo). An automatic
-// plan needs a card Square can keep on file, and Square cannot store a WALLET
-// card for merchant-initiated payments — so choosing one stands the wallets
-// down WITH THE REASON on screen (#pay-walnote) and the card form takes over;
-// "I'll pay it myself" brings them straight back. Also owns step 2's caption
-// and the one consent sentence above the button, so every method makes the
-// same promise. One place decides all of it, called from payAutopayRender and
-// mountWallets (a late wallet mount must respect an already-chosen plan).
-function payMethodsSync() {
-    const wrap = document.getElementById('pay-autopay');
-    const offered = !!(wrap && wrap.style.display !== 'none' && payState.autopayOffer);
-    const auto = offered && payState.autopayChoice !== 'self';
-    // TWO REASONS THE WALLETS STAND DOWN, ONE EXPRESSION: a chosen plan (Square cannot
-    // keep a wallet card on file) and a £0 charge, which payWalletsReprice already
-    // decides from the same payChargeNow(). Folding it in stops the two undoing each
-    // other by ordering — without it, running on the hidden branch restored an empty
-    // express panel over a £0 charge.
-    const wallets = !!payState.walletsAny && Math.round(payChargeNow() * 100) / 100 > 0;
-    const show = (id, on) => {
-        const el = document.getElementById(id);
-        if (el) el.style.display = on ? '' : 'none';
+// ---- the narrated wait, in the pay bar ----
+// Three rules: it EARNS ITS PLACE (400ms before it reveals, so a fast payment
+// never sees it), it ACKNOWLEDGES TIME (a bank step still running at 2s changes
+// its line — the pause is the bank's, not a frozen page), and it NEVER INVENTS
+// PROGRESS (steps tick on the real callbacks only). Card path only.
+function payStepsArm() {
+    payState.stepsOn = true;
+    const gen = (payState.stepsGen = (payState.stepsGen || 0) + 1);
+    const fig = gbp(payR2(payChargeNow()));
+    const paint = (n, still) => {
+        const box = payEl('pay-steps');
+        if (!box) return;
+        const steps = [
+            ['Preparing your payment', 'This only takes a moment'],
+            ['Checking with your bank', still ? "Still with your bank. If it asked you to approve this, open its app." : 'Your bank may ask you to approve it in its app'],
+            ['Taking the payment', `One payment of ${fig}. Nothing else is taken.`],
+        ];
+        box.innerHTML = `<div class="pay-steps-in">${steps
+            .map((x, i) => `<div class="pay-step ${i < n ? 'is-ok' : i === n ? 'is-run' : ''}" id="pay-st-${i}"><span class="pay-step-dot" aria-hidden="true">${i < n ? PAY_IC.check : ''}</span><span class="pay-step-m"><span class="pay-step-lbl">${x[0]}</span><span class="pay-step-sub">${x[1]}</span></span></div>`)
+            .join('')}</div>`;
+        box.hidden = false;
     };
-    show('pay-express', wallets && !auto);
-    show('sq-or', wallets && !auto);
-    show('pay-walnote', wallets && auto);
-    // With the divider hidden the card label is the only thing naming the
-    // field again (mountWallets' one-label rule, restated for this state).
-    show('sq-card-label', !(wallets && !auto));
-    // Step 2's caption only while step 1 is on screen; it replaces the express
-    // caption then (one heading, not two, over the same buttons).
-    show('pay-today-cap', offered);
-    const exCap = document.getElementById('pay-express-cap');
-    if (exCap) exCap.style.display = offered ? 'none' : '';
-    const todayAmt = document.getElementById('pay-today-amt');
-    if (todayAmt) {
-        // The figure is the BUTTON's own — one source for the ask.
-        const m = ((document.getElementById('pay-btn') || {}).textContent || '').match(/£[\d,]+\.\d\d/);
-        todayAmt.textContent = m ? m[0] : '';
-    }
-    // The consent sentence — the whole arrangement, whichever rail.
-    const strip = document.getElementById('pay-consent');
-    if (strip) {
-        const t = payState.apTerms;
-        if (!offered || !t) {
-            strip.style.display = 'none';
-            strip.textContent = '';
-        } else {
-            const mo = payState.apMonthly;
-            const sel = payState.autopayChoice;
-            strip.style.display = '';
-            strip.textContent =
-                sel === 'one'
-                    ? `Today's payment, and your card is kept securely on file for one payment of ${gbp(t.amount)} on ${fmtDate(t.due)} — we'll email you before it's taken.`
-                    : sel === 'monthly' && mo
-                      ? `Today's payment, and your card is kept securely on file for ${mo.n} monthly payments of ${gbp(mo.per)}, first on ${fmtDate(mo.dates[0])} — we'll email you before each one.`
-                      : "Today's payment only — the rest stays yours to pay, we'll email you before it's due, and nothing is stored.";
-        }
+    payState.stepsPaint = paint;
+    payState.stepsAt = 1;
+    setTimeout(() => {
+        if (!payState.stepsOn || payState.stepsGen !== gen) return;
+        paint(payState.stepsAt);
+        setTimeout(() => {
+            if (payState.stepsGen !== gen || payState.stepsAt !== 1) return;
+            paint(1, true);
+        }, 2000);
+    }, 400);
+}
+function payStepGo(i) {
+    if (!payState.stepsOn) return;
+    payState.stepsAt = i;
+    const box = payEl('pay-steps');
+    if (box && !box.hidden && payState.stepsPaint) payState.stepsPaint(i);
+}
+function payStepsEnd(ok) {
+    payState.stepsOn = false;
+    payState.stepsGen = (payState.stepsGen || 0) + 1;
+    const box = payEl('pay-steps');
+    if (!box) return;
+    if (ok && !box.hidden && payState.stepsPaint) payState.stepsPaint(3);
+    else {
+        box.hidden = true;
+        box.innerHTML = '';
     }
 }
-// THE REPAIR CARD. Its one action stores a card (update_card) and touches NO
-// money; `doneSay` replaces it with the confirmation.
-function payRepairRender(doneSay) {
-    const wrap = document.getElementById('pay-repair');
-    if (!wrap) return;
-    if (doneSay) {
-        wrap.style.display = '';
-        wrap.innerHTML = `<div class="pay-sec-cap pay-rep-ok" id="pay-rep-cap">All sorted</div><p class="pay-rep-body">${escapeHtml(doneSay)}</p>`;
-        return;
-    }
-    const r = payState.apRepairInfo;
-    if (!r) {
-        wrap.style.display = 'none';
-        wrap.innerHTML = '';
-        return;
-    }
-    // The booking is safe and the fix is a minute — warn-tinted, never danger.
-    const why = String(r.why || 'the card said no').trim().replace(/\.+$/, '');
-    const next = r.stopped
-        ? `We've stopped trying that card${r.monthly ? ' — the plan is paused where it got to' : ''}. Save a new one and ${r.monthly ? 'it carries on' : 'the payment is collected as arranged'}, or simply pay here instead.`
-        : `We'll try again ${r.retry ? `on ${fmtDate(r.retry)}` : 'in the next day or two'}. Save a new card and the plan carries on — or simply pay here instead.`;
-    wrap.style.display = '';
-    wrap.innerHTML = `
-        <div class="pay-sec-cap" id="pay-rep-cap">Your saved card needs attention</div>
-        <p class="pay-rep-body">${escapeHtml(why)}. ${escapeHtml(next)}</p>
-        <button type="button" class="btn-glass pay-rep-btn" data-act="payUpdateCard">Save new card &amp; keep the plan</button>
-        <p class="pay-rep-fine">Uses the card details you enter below — nothing is charged when you save.</p>`;
-}
-async function payUpdateCard() {
-    const msg = document.getElementById('pay-msg');
-    if (!squareCard) {
-        if (msg) msg.textContent = 'The card box is still loading — one moment.';
-        return;
-    }
+// The BEAT: success shows on the control that was pressed BEFORE the receipt
+// replaces it. Instant under reduced motion.
+async function payBeat(label) {
     try {
-        // Bare tokenize: a STORE, not a charge — no verification amount rides it.
-        const result = await squareCard.tokenize();
-        if (!result || result.status !== 'OK' || !result.token) {
-            if (msg) msg.textContent = 'Check the card details in the card box and try again.';
+        const btn = payEl('pay-btn');
+        if (!btn) return;
+        btn.removeAttribute('aria-busy');
+        btn.classList.add('is-ok');
+        btn.innerHTML = `${PAY_IC.check}<span>${escapeHtml(label || 'Paid')}</span>`;
+        if (!(window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches)) await new Promise((r) => setTimeout(r, 900));
+    } catch (e) {}
+}
+// ---- opening the screen: from a secure pay link (?pay=<token>&b=<id>) parsed at
+// boot, or from a stay's Pay, Manage or Update card button ----
+async function openPayView(token, bookingId, kind) {
+    try {
+        trackEvent('pay_start', '');
+    } catch (e) {}
+    payState.token = token;
+    payState.bookingId = bookingId;
+    // SUPERSEDE: two opens can be in flight (a dock tap, "check whether it went
+    // through", an amount-changed redraw), so a slow summary from an earlier one
+    // must not paint its booking over the newer one after each await.
+    const openStamp = ++payState.openStamp;
+    const openLive = () => payState.openStamp === openStamp;
+    // A stage if the caller has one, NULL if not — and null means "no
+    // preference", which the server resolves off the booking. 'hold' MUST
+    // survive: a legacy ?hold= link promises an authorise-only refundable hold,
+    // and coercing it would CHARGE the guest.
+    payState.kind = kind === 'balance' || kind === 'hold' || kind === 'deposit' ? kind : null;
+    Object.assign(payState, { s: null, sDep: null, sAll: null, allState: '', mode: 'due', view: 'pay', cardFrom: '', what: false, cardSaid: '', attempt: null, walletsAny: false, autopayChoice: 'self' });
+    // RE-ENTRANT: attaching a second card over a live one leaves the SDK with two,
+    // and this screen is legitimately opened twice (an amount-changed redraw,
+    // "check whether it went through", Pay tapped again on My stays).
+    const liveCard = /** @type {any} */ (squareCard);
+    squareCard = null;
+    if (liveCard) Promise.resolve().then(() => liveCard.destroy()).catch(() => {});
+    const cardEl = payEl('sq-card');
+    if (cardEl) cardEl.innerHTML = '';
+    const wal = payEl('sq-wallets');
+    if (wal) wal.innerHTML = '';
+    ['pay-alert', 'pay-alert-top'].forEach((id) => {
+        const e = payEl(id);
+        if (e) e.innerHTML = '';
+    });
+    payStepsEnd(false);
+    setPayMsg('');
+    payPanel('pay-loading');
+    nav('view-pay');
+    try {
+        const cfg = await apiGet('square-config.php');
+        if (!openLive()) return;
+        if (!cfg.enabled || !cfg.applicationId || !cfg.locationId) {
+            payUnavailable();
             return;
         }
-        const res = await apiPost('pay.php', { action: 'update_card', token: payState.token, booking_id: payState.bookingId, source_id: result.token });
-        payState.apRepairInfo = null;
-        payRepairRender(res && res.say ? res.say : 'Card updated — the plan carries on, and nothing was charged today.');
-        if (msg) msg.textContent = '';
+        payShow('pay-sandbox-note', cfg.environment !== 'production');
+        __payCardCfg = cfg; // the armed and repair screens attach the card box later
+        const s = await apiPost('pay.php', { action: 'summary', booking_id: payState.bookingId, token: payState.token, kind: payState.kind });
+        if (!openLive()) return;
+        payUseSummary(s);
+        payState.guestName = s.guestName || '';
+        // Only an EXPLICIT false changes the receipt's words; an older server that
+        // sends no flag keeps the inbox sentence rather than reading as "no email".
+        payState.hasEmail = s.hasEmail === false ? false : true;
+        // THE ARRANGEMENT IS ONE THREE-WAY DECISION — "I'll pay it myself" (the
+        // DEFAULT: automatic collection is opted INTO, never out of), one payment
+        // on the due date, or monthly when the server offers it. Offered only when
+        // there is something to schedule and no live arrangement; 'failed',
+        // 'nocard' and 'stale' are REPAIRS, 'revoked' is deliberately absent (they
+        // turned it off on purpose) and 'armed' is already arranged.
+        const terms = s.autopayTerms;
+        const REPAIR = ['failed', 'nocard', 'stale'];
+        const isRepair = REPAIR.indexOf(s.autopayState) !== -1;
+        const canOffer = !!(terms && terms.amount > 0 && terms.due && (s.autopayState === 'off' || isRepair));
+        payState.autopayOffer = canOffer;
+        payState.apTerms = canOffer ? terms : null;
+        payState.apMonthly = canOffer && s.instalmentOffer && Number(s.instalmentOffer.n) > 1 ? s.instalmentOffer : null;
+        payState.apRepair = isRepair;
+        payState.apRepairInfo = s.autopayRepair && typeof s.autopayRepair === 'object' ? s.autopayRepair : null;
+        const f = payFig(s);
+        if (!(f.today > 0.005)) {
+            if (s.kind === 'hold') payCalm({ icon: 'ok', tone: 'ok', h: 'Your hold is already in place', p: "Nothing more to do. It's released after you leave.", acts: payStayBtn(currentGuest ? 'View your stay' : '') });
+            else paySettled(s);
+            return;
+        }
+        // Which screen: a plan in trouble shows what happened and the fix; an
+        // arranged balance shows the arrangement, with nothing to pay today.
+        const armed = s.kind === 'balance' && s.autopayState === 'armed';
+        payState.view = payState.apRepairInfo && s.kind === 'balance' ? 'repair' : armed ? 'armed' : 'pay';
+        if (s.kind === 'deposit') {
+            payState.sDep = s;
+            // The whole stay is the BALANCE stage asked early — its own summary, its
+            // own quote. Fetched beside the screen, never in front of it.
+            if (f.rest > 0.005) {
+                payState.allState = 'loading';
+                apiPost('pay.php', { action: 'summary', booking_id: payState.bookingId, token: payState.token, kind: 'balance' })
+                    .then((sa) => {
+                        if (!openLive()) return;
+                        payState.allState = sa && sa.kind === 'balance' ? 'ok' : 'err';
+                        if (payState.allState !== 'ok') return;
+                        payState.sAll = sa;
+                        if (payState.mode === 'all') {
+                            payUseSummary(sa);
+                            payRender();
+                            payWalletsReprice();
+                        } else {
+                            const v = document.querySelector('#pay-seg .pp-seg-opt:last-child .pp-seg-v');
+                            if (v) v.textContent = gbp(payFig(sa).today);
+                        }
+                    })
+                    .catch(() => {
+                        if (!openLive()) return;
+                        payState.allState = 'err';
+                        if (payState.mode === 'all') payBtnWait();
+                    });
+            }
+        }
+        payPanel('pay-body');
+        payRender();
+        if (payState.view !== 'pay') return;
+        await payCardEnsure();
+        if (!openLive()) return;
+        try {
+            payState.walletAmount = payState.amountDue;
+            await mountWallets(payState.amountDue);
+        } catch (e) {} // Apple/Google Pay are best-effort
     } catch (e) {
-        if (msg) msg.textContent = (e && e.message) || 'Could not save the card just now.';
+        // THE OLDER OPEN'S FAILURE IS NOT THIS SCREEN'S: a newer open has taken
+        // over, so its working screen must not be replaced by a stale error.
+        if (!openLive()) return;
+        const st = Number(e && e.status);
+        if (st === 403 || st === 404 || st === 410) return payExpired();
+        if (st === 503) return payUnavailable();
+        const terminal = PAY_ERR_TERMINAL.indexOf(st) !== -1;
+        const say = (e && e.message) || 'Could not load the payment form.';
+        showPayError(say, terminal ? null : () => openPayView(token, bookingId, kind));
     }
 }
-// Try to mount Apple Pay / Google Pay buttons for the exact amount due. Each
-// is independent + best-effort: an unsupported wallet is simply hidden and the
-// card field still works. Reveals the "or pay by card" divider if any mounted.
+// THE CARD BOX, attached once per open and only when a screen needs it (the
+// arranged screen has none until "Change" or "Pay now instead").
+let __payCardCfg = null;
+async function payCardEnsure() {
+    if (squareCard || !__payCardCfg) return;
+    const stamp = payState.openStamp;
+    await loadSquareSdk(__payCardCfg.environment);
+    if (stamp !== payState.openStamp || squareCard) return;
+    squarePayments = window.Square.payments(__payCardCfg.applicationId, __payCardCfg.locationId);
+    let c = null;
+    // Square draws the card box itself; matched to the house where it allows it,
+    // and plain where it doesn't (a refused style must never cost the payment).
+    try {
+        c = await squarePayments.card({ style: payCardStyle() });
+    } catch (e) {
+        c = null;
+    }
+    if (!c) c = await squarePayments.card();
+    if (stamp !== payState.openStamp) return;
+    try {
+        await c.attach('#sq-card');
+    } catch (e) {
+        // A style Square refuses at attach rather than at creation: the plain box.
+        try {
+            await c.destroy();
+        } catch (e2) {}
+        c = await squarePayments.card();
+        await c.attach('#sq-card');
+    }
+    if (stamp !== payState.openStamp) return;
+    squareCard = c;
+    // A refusal sits ON the card: typing a new card clears it.
+    try {
+        squareCard.addEventListener('focusClassAdded', payClearDecline);
+        squareCard.addEventListener('cardBrandChanged', payClearDecline);
+    } catch (e) {}
+}
+function payCardStyle() {
+    const light = document.body.classList.contains('light-mode');
+    return {
+        '.input-container': { borderColor: light ? 'rgba(28, 46, 58, 0.22)' : 'rgba(255, 255, 255, 0.18)', borderRadius: '12px' },
+        '.input-container.is-focus': { borderColor: light ? '#c6885e' : '#d6a785' },
+        '.input-container.is-error': { borderColor: light ? '#bc2626' : '#ef9a9a' },
+        input: { backgroundColor: light ? '#fdfcfa' : '#18191c', color: light ? '#1b2a34' : '#f4f5f7', fontSize: '16px' },
+        'input::placeholder': { color: light ? '#52646e' : '#b4b8c6' },
+        '.message-text': { color: light ? '#52646e' : '#b4b8c6' },
+        '.message-icon': { color: light ? '#52646e' : '#b4b8c6' },
+        '.message-text.is-error': { color: light ? '#bc2626' : '#ef9a9a' },
+        '.message-icon.is-error': { color: light ? '#bc2626' : '#ef9a9a' },
+    };
+}
+function payClearDecline() {
+    const slot = payEl('pay-alert');
+    if (slot && slot.querySelector('.is-bad')) slot.innerHTML = '';
+    payEl('sq-card') && payEl('sq-card').classList.remove('is-bad');
+}
+// Charge a Square token (from the card field OR an Apple/Google Pay wallet)
+// through the same server endpoint, then show the receipt.
+// THE CHARGE WAITS LONGER THAN THE SERVER CAN TAKE. pay.php waits up to 30s for the
+// booking lock and 20s for Square; the page gave up at 15s and told the guest the
+// full amount was still due over a payment recorded two seconds later.
+const PAY_CHARGE_WAIT_MS = 75000;
+async function payWithToken(sourceId, via) {
+    const s = payState.s || {};
+    const f = payFig(s);
+    // What this tap is for, held for the receipt and for "check whether it went
+    // through" — which compares the paid figure before and after.
+    payState.attempt = { kind: payState.kind, mode: payState.mode, amount: payState.amountDue, paidBefore: f.paid, rest: f.rest, back: f.back, dep: f.dep, plan: payState.autopayChoice, via: via || '' };
+    if (payState.kind === 'hold') {
+        await apiPost('pay.php', { action: 'authorize', booking_id: payState.bookingId, token: payState.token, kind: 'hold', source_id: sourceId }, { timeoutMs: PAY_CHARGE_WAIT_MS });
+        await payBeat('Hold placed');
+        payReceipt({ charged: payState.amountDue }, payState.attempt);
+        return;
+    }
+    let res;
+    payStepGo(2);
+    try {
+        res = await apiPost(
+            'pay.php',
+            {
+                action: 'charge',
+                booking_id: payState.bookingId,
+                token: payState.token,
+                kind: payState.kind,
+                source_id: sourceId,
+                quote: payState.quote,
+                // Read at the moment of paying; 'self' (the default) sends no
+                // consent at all. The monthly COUNT is only ever the one the server
+                // offered, and pay.php re-validates it against its own derivation.
+                autopay: payState.mode === 'due' && (payState.autopayChoice === 'one' || payState.autopayChoice === 'monthly'),
+                autopay_instalments: payState.mode === 'due' && payState.autopayChoice === 'monthly' && payState.apMonthly ? Number(payState.apMonthly.n) : 0,
+            },
+            { timeoutMs: PAY_CHARGE_WAIT_MS },
+        );
+    } catch (e) {
+        // THE REPLY WAS LOST, NOT NECESSARILY THE PAYMENT: no status means the
+        // server never answered, so the charge may well have gone through.
+        if (!e || !e.status) {
+            payStepsEnd(false);
+            payUnsure();
+            const err = new Error('unsure');
+            /** @type {any} */ (err).handled = true;
+            throw err;
+        }
+        throw e;
+    }
+    await payBeat(res && res.fullyPaid ? 'Paid in full' : 'Paid');
+    payReceipt(res, payState.attempt);
+}
+// What a refusal says, ON the card: a decline names nothing was taken; anything
+// else is said under the box.
+function payFailSay(e) {
+    const st = Number(e && e.status);
+    const raw = String((e && e.message) || '');
+    if (e && e.code === 'amount_changed') return { alert: ['warn', 'The amount changed while you were paying', raw || 'Nothing has been charged. Check the new total and try again.'] };
+    if (st === 402) return { bad: true, alert: ['bad', 'Your bank declined this card', /nothing was charged/i.test(raw) ? raw : `${raw} Nothing was taken.`.trim()] };
+    if (/verification|3.?d.?s|timed out/i.test(raw)) return { alert: ['warn', "Your bank's check didn't finish", "Nothing was taken. Try again, and if your bank shows an approval prompt in its app or by text, confirm it."] };
+    return { msg: raw || 'Payment failed. Please try again.' };
+}
+function payShowFail(e) {
+    const say = payFailSay(e);
+    const slot = payEl('pay-alert');
+    if (say.alert && slot) {
+        slot.innerHTML = payAlertHtml(say.alert[0], say.alert[1], say.alert[2]);
+        if (say.bad) {
+            const c = payEl('sq-card');
+            if (c) c.classList.add('is-bad');
+        }
+        try {
+            slot.scrollIntoView({ block: 'center', behavior: 'smooth' });
+        } catch (er) {}
+    } else setPayMsg(say.msg || '');
+}
+// Try to mount Apple Pay / Google Pay buttons for the exact amount due. Each is
+// independent + best-effort: an unsupported wallet is simply absent and the card
+// field still works.
 async function mountWallets(amountDue) {
-    const wrap = document.getElementById('sq-wallets');
+    const wrap = payEl('sq-wallets');
     if (!wrap || !squarePayments) return;
-    // SUPERSEDE. The part flow re-prices the wallets as the guest types, so two
-    // mounts can be in flight at once; a later one bumps this stamp and any
-    // earlier mount that finishes afterwards bails before it appends a button
-    // for a stale amount. Same pattern the search fetches use.
+    // SUPERSEDE: the switch re-prices the wallets, so two mounts can be in flight;
+    // a later one bumps the stamp and an earlier one bails before it appends a
+    // button for a stale amount.
     const stamp = ++payState.walletStamp;
     const live = () => payState.walletStamp === stamp;
     wrap.innerHTML = '';
     let any = false;
     let req;
     try {
-        req = squarePayments.paymentRequest({
-            countryCode: 'GB',
-            currencyCode: 'GBP',
-            total: { amount: Number(amountDue).toFixed(2), label: 'Cottage Holidays Blakeney' },
-        });
+        req = squarePayments.paymentRequest({ countryCode: 'GB', currencyCode: 'GBP', total: { amount: Number(amountDue).toFixed(2), label: 'Cottage Holidays Blakeney' } });
     } catch (e) {
+        payState.walletsAny = false;
+        payMethodsSync();
         return;
     }
-    const walletPay = async (wallet) => {
+    const walletPay = async (wallet, name) => {
         setPayMsg('');
-        // THE BELT under payMethodsSync's braces: consent must never ride a
-        // wallet token (Square cannot store one, so the guest would leave
-        // believing a plan was arranged that the save then fails). The UI
-        // stands the wallets down when a plan is chosen; if a stale button is
-        // reached anyway, refuse in words rather than charge with a doomed
-        // consent attached.
-        if (payState.autopayChoice === 'one' || payState.autopayChoice === 'monthly') {
+        const slot = payEl('pay-alert');
+        if (slot) slot.innerHTML = '';
+        // THE BELT under payMethodsSync's braces: consent must never ride a wallet
+        // token (Square cannot store one). A stale button reached anyway refuses
+        // in words rather than charge with a doomed consent attached.
+        if (payState.mode === 'due' && (payState.autopayChoice === 'one' || payState.autopayChoice === 'monthly')) {
             setPayMsg("Automatic payments need the card form below — or choose “I'll pay it myself” to use Apple Pay or Google Pay today.");
             return;
         }
         try {
             const result = await wallet.tokenize();
-            if (result.status !== 'OK')
-                throw new Error(
-                    (result.errors && result.errors[0] && result.errors[0].message) ||
-                        'Payment was cancelled.',
-                );
-            // A slice ONLY when the part row is open — then this wallet was
-            // mounted for payState.walletAmount and that is what its sheet
-            // showed. Closed = full payment, so no part_amount (0), or the
-            // server would clamp the refundable deposit off a full charge.
-            const partRow = document.getElementById('pay-part-row');
-            const sliceMode = !!(partRow && partRow.style.display !== 'none' && payState.part);
-            await payWithToken(result.token, sliceMode ? payState.walletAmount : 0);
+            if (result.status !== 'OK') throw new Error((result.errors && result.errors[0] && result.errors[0].message) || 'Payment was cancelled.');
+            await payWithToken(result.token, name);
         } catch (e) {
-            setPayMsg(e.message || 'Payment failed. Please try again.');
+            if (e && e.handled) return;
+            payShowFail(e);
         }
     };
     try {
@@ -8225,18 +8142,16 @@ async function mountWallets(amountDue) {
         const el = document.createElement('div');
         el.id = 'sq-gpay';
         wrap.appendChild(el);
-        await gp.attach('#sq-gpay', {
-            buttonColor: 'black',
-            buttonType: 'long',
-            buttonSizeMode: 'fill',
-        });
+        // Beside Apple Pay, so the SHORT button; black on the light ground, white on
+        // the dark one (Google's own rule — the colour is fixed when it attaches).
+        await gp.attach('#sq-gpay', { buttonColor: document.body.classList.contains('light-mode') ? 'black' : 'white', buttonType: 'short', buttonSizeMode: 'fill' });
         el.addEventListener('click', async (e) => {
             e.preventDefault();
-            await walletPay(gp);
+            await walletPay(gp, 'Google Pay');
         });
         any = true;
     } catch (e) {
-        const x = document.getElementById('sq-gpay');
+        const x = payEl('sq-gpay');
         if (x) x.remove();
     }
     try {
@@ -8249,136 +8164,83 @@ async function mountWallets(amountDue) {
         btn.setAttribute('aria-label', 'Pay with Apple Pay');
         wrap.appendChild(btn);
         btn.addEventListener('click', async () => {
-            await walletPay(ap);
+            await walletPay(ap, 'Apple Pay');
         });
         any = true;
     } catch (e) {
-        const x = document.getElementById('sq-apay');
+        const x = payEl('sq-apay');
         if (x) x.remove();
     }
     if (!live()) return;
-    // The express panel exists only when a wallet does, and its caption names
-    // the LIVE figure the buttons are priced to — the clearest statement of a
-    // re-priced part payment, in words, directly above the buttons.
-    const exAmt = document.getElementById('pay-express-amt');
-    if (exAmt) exAmt.textContent = any ? gbp(amountDue) : '';
-    // Whether wallets EXIST is decided here; whether they're currently SHOWN
-    // belongs to payMethodsSync, which folds in the plan choice (an automatic
-    // plan stands them down) and owns the one-label rule with it — a late
-    // mount landing after the guest already chose Monthly must not resurrect
-    // the buttons this line used to show unconditionally.
+    // Whether wallets EXIST is decided here; whether they're SHOWN belongs to
+    // payMethodsSync, which folds in the plan (an automatic plan stands them down).
     payState.walletsAny = any;
     payMethodsSync();
 }
-// WHAT THE WALLET MUST CHARGE, RIGHT NOW: the slice when one is validly armed,
-// the full amount when the part row is closed, and NOTHING while the row is
-// open with no valid amount yet (there is nothing to charge, and the "Pay"
-// button says as much). Re-mounts only when the target actually moves, so a
-// wallet button never shows a figure the guest didn't choose — the owner's
-// point: part-paying must still offer Apple/Google Pay, priced to the part.
-// WHAT IS BEING CHARGED RIGHT NOW — one decider, read by the wallets AND by the card
-// path's 3-D Secure verification, which used to read payState.amountDue: written once
-// in openPayView, so a guest paying £60 of a £225 ask had their bank's challenge name
-// £225. That is the one moment a guest confirms an amount.
+// WHAT IS BEING CHARGED RIGHT NOW — one decider, read by the wallets AND by the
+// card path's 3-D Secure verification (the one moment a guest confirms an amount).
 function payChargeNow() {
-    const v = payState.partView;
-    const row = document.getElementById('pay-part-row');
-    const open = !!(row && row.style.display !== 'none');
-    if (!payState.part) return payState.amountDue; // no part feature → full
-    if (open) return payState.partAmount > 0 ? payState.partAmount : 0;
-    return v ? v.due : payState.amountDue; // closed → the full ask
+    if (payState.mode === 'all' && !payState.sAll) return 0;
+    return payState.amountDue;
 }
 function payWalletsReprice() {
-    const wrap = document.getElementById('sq-wallets');
-    const orEl = document.getElementById('sq-or');
-    const lblEl = document.getElementById('sq-card-label');
-    const target = Math.round(payChargeNow() * 100) / 100;
-    if (!(target > 0)) {
-        // Nothing to charge yet — take the wallets down and cancel any in-flight
-        // mount so a late one can't paint a stale button. The express panel goes
-        // with them, or an empty captioned box would claim a checkout that
-        // isn't there.
+    const wrap = payEl('sq-wallets');
+    const target = payR2(payChargeNow());
+    if (!(target > 0) || payState.view !== 'pay') {
         ++payState.walletStamp;
-        if (wrap) { wrap.innerHTML = ''; wrap.style.display = 'none'; }
-        const exEl = document.getElementById('pay-express');
-        if (exEl) exEl.style.display = 'none';
-        if (orEl) orEl.style.display = 'none';
-        if (lblEl) lblEl.style.display = '';
+        if (wrap) wrap.innerHTML = '';
         payState.walletAmount = 0;
+        payState.walletsAny = false;
+        payMethodsSync();
         return;
     }
-    // Already priced right and on screen → leave it (avoids a needless re-mount
-    // flicker when the render fires but the amount hasn't moved).
-    if (Math.abs(target - payState.walletAmount) < 0.005 && wrap && wrap.style.display !== 'none') return;
-    if (wrap) wrap.style.display = '';
+    if (Math.abs(target - payState.walletAmount) < 0.005 && wrap && wrap.childElementCount) return;
     payState.walletAmount = target;
     mountWallets(target).catch(() => {});
-}
-// Debounced: typing "120" should re-price ONCE when they stop, not thrice as
-// the digits arrive (each re-mount re-renders the Apple Pay button).
-function payWalletsSchedule() {
-    if (payState.walletT) clearTimeout(payState.walletT);
-    payState.walletT = setTimeout(() => {
-        payState.walletT = null;
-        try { payWalletsReprice(); } catch (e) {}
-    }, 350);
 }
 async function submitPayment() {
     if (!squareCard) return;
     setPayMsg('');
-    const btn = document.getElementById('pay-btn');
-    const orig = btn ? btn.textContent : '';
+    const slot = payEl('pay-alert');
+    if (slot) slot.innerHTML = '';
+    const btn = payEl('pay-btn');
     if (btn) {
-        btn.disabled = true;
-        btn.classList.add('is-busy');
-        btn.textContent = 'Processing…';
+        btn.setAttribute('aria-busy', 'true');
+        btn.innerHTML = `<span class="pp-spin" aria-hidden="true"></span><span>${payState.kind === 'hold' ? 'Placing' : 'Paying'} ${escapeHtml(gbp(payChargeNow()))}…</span>`;
     }
-    // The narration arms here and nowhere else: the card path is the one with
-    // an invisible bank check inside it. Wallets have their own sheet, and the
-    // legacy hold keeps its own wording.
+    // The narration arms here and nowhere else: the card path is the one with an
+    // invisible bank check inside it. Wallets have their own sheet.
     if (payState.kind !== 'hold') payStepsArm();
+    let done = false;
     try {
-        // SCA: tokenize WITH verification details so the bank's 3-D Secure
-        // check runs here (Square shows the challenge if the issuer asks).
+        // SCA: tokenize WITH verification details so the bank's 3-D Secure check
+        // runs here (Square shows the challenge if the issuer asks).
         const result = await squareCard.tokenize(payVerificationDetails());
         if (result.status !== 'OK') {
-            // THE ERROR IS SAID ONCE. Square's own iframe already highlights a
-            // field problem inline ("Enter a valid card number.") — our banner
-            // then restated it in different words directly beneath, two voices
-            // for one mistake (owner screenshot). A pure FIELD-validation
-            // failure keeps the one voice Square already painted; anything
-            // else (network, 3DS, SDK) still reaches the banner below.
-            const fieldOnly =
-                Array.isArray(result.errors) &&
-                result.errors.length > 0 &&
-                result.errors.every((er) => er && (er.type === 'VALIDATION_ERROR' || er.field));
-            if (fieldOnly) {
-                payStepsEnd(false);
-                return; // finally still restores the button
-            }
-            const m =
-                (result.errors && result.errors[0] && result.errors[0].message) ||
-                'Please check your card details and try again.';
-            throw new Error(m);
+            // THE ERROR IS SAID ONCE. Square's own iframe already marks a field
+            // problem inline ("Enter a valid card number"); a banner beneath would
+            // be a second voice for one mistake.
+            const fieldOnly = Array.isArray(result.errors) && result.errors.length > 0 && result.errors.every((er) => er && (er.type === 'VALIDATION_ERROR' || er.field));
+            payStepsEnd(false);
+            if (fieldOnly) return;
+            throw new Error((result.errors && result.errors[0] && result.errors[0].message) || 'Please check your card details and try again.');
         }
-        await payWithToken(result.token);
+        await payWithToken(result.token, '');
+        done = true;
         payStepsEnd(true);
     } catch (e) {
         payStepsEnd(false);
-        const raw = String((e && e.message) || '');
-        setPayMsg(
-            /verification|3.?d.?s|timed out/i.test(raw)
-                ? "Your bank's verification step didn't complete. Please try again — if your bank shows an approval prompt (app or SMS), confirm it and retry."
-                : raw || 'Payment failed. Please try again.',
-        );
+        if (e && e.handled) return;
+        // THE AMOUNT MOVED WHILE THEY READ IT: nothing was charged; redraw at the
+        // new total so the next tap is one they agreed to, and say why.
+        if (e && e.code === 'amount_changed') {
+            await openPayView(payState.token, payState.bookingId, payState.kind);
+        }
+        payShowFail(e);
     } finally {
-        if (btn) {
-            btn.disabled = false;
-            btn.classList.remove('is-busy');
-            // Only if nothing redrew the screen underneath us: on the
-            // amount-changed path openPayView has already written the NEW figure
-            // here, and the old sum is the number the server just refused.
-            if (btn.textContent === 'Processing…') btn.textContent = orig;
+        if (!done && btn && payEl('pay-body') && !payEl('pay-body').hidden) {
+            btn.removeAttribute('aria-busy');
+            payBtnPaint('');
         }
     }
 }
@@ -11737,24 +11599,16 @@ function guestFlowHtml(propKey, b, payToken) {
     const steps = `<div class="bkflow-cap"${at >= 0 && stages[at].now ? ' data-staying="1"' : ''}>${escapeHtml(cap)}</div>`;
     const gt = flow.gt;
     let next;
-    if (flow.hasReg && !b.regSubmitted && b.regUrl) {
+    // A register SHORT of the party is not done (bookingRegComplete): the form
+    // prefills what is there and asks for the rest, and only the guest can finish
+    // it. The pre-arrival hub that used to carry this ask is now this card.
+    if (flow.hasReg && b.regUrl && !bookingRegComplete(b)) {
         next = `<div class="bkflow-next"><span>Add your guest details before you arrive — UK law asks for the name &amp; nationality of everyone 16 or over.</span><a class="btn-glass btn-sm bkflow-cta" href="${escapeHtml(b.regUrl)}" target="_blank" rel="noopener">Add your details</a></div>`;
-    } else if (!gt.fullyPaid) {
-        // NAME THE BUTTON THAT IS ACTUALLY THERE. This said «use "Pay balance"
-        // below» over a control the staged-ask work relabels from
-        // booking_next_payment — measured as "use “Pay balance” below" above a
-        // button reading "Pay deposit £175.00". guestPayCta is the one place that
-        // decides that label, so the sentence reads it instead of restating it.
-        // And an owner-arranged stay has no button at all to point at.
-        const strip = guestPayCta(b, gt);
-        // The whole outstanding is not "the balance" when the ask is the DEPOSIT:
-        // say what the button takes, then what remains, so the two figures beside
-        // each other cannot read as one contradicting the other.
-        const isDep = strip.word === 'deposit' && strip.amount < gt.balance - 0.005;
-        const stripCta = payToken && !bookingOwnerArranged(b)
-            ? (isDep ? ` — the ${gbp(strip.amount)} deposit is due now (“Pay deposit” below).` : ` — use “Pay ${strip.word}” below.`)
-            : '.';
-        next = `<div class="bkflow-next"><span>${gbp(gt.balance)} still to pay${stripCta}</span></div>`;
+    } else if (guestStayAsk(b, gt, payToken).state !== 'paid') {
+        // THE MONEY BLOCK ABOVE IS THE ASK (the pay-screens build): its figure, its
+        // line and its one button say it, so the journey has nothing to add. The
+        // same rule decides both, so the block and this line cannot disagree.
+        return '';
     } else if (flow.inStay) {
         // A GUEST ALREADY IN THE COTTAGE IS NOT WAITING FOR ARRIVAL INFO. Both
         // sentences below are about a stay that has not started — "we'll send
@@ -11767,7 +11621,7 @@ function guestFlowHtml(propKey, b, payToken) {
         // ended — a finished one renders guestDepositTrackerHtml instead, which
         // is where the deposit-back story already lives.)
     } else if (!b.preArrivalSent) {
-        next = `<div class="bkflow-next is-clear"><span>You’re paid up. We’ll email your arrival details nearer the time.</span></div>`;
+        next = `<div class="bkflow-next is-clear"><span>You’re paid up. ${b.arrivalOn && b.arrivalOn >= todayDashed() ? `Your arrival details come on ${escapeHtml(payDay(b.arrivalOn))}.` : 'We’ll email your arrival details nearer the time.'}</span></div>`;
     } else {
         next = `<div class="bkflow-next is-clear"><span>You’re all set — we can’t wait to welcome you.</span></div>`;
     }
@@ -12310,13 +12164,6 @@ function hubLedgerRowHtml(p, bookingId, refundOff) {
 // stamps hold_status, so refunding it here would leave it returnable twice. The
 // dialog said only "Up to £175.00" against a row and a card statement both
 // saying £225.00 (owner's screenshot), so a correct cap read as a wrong figure.
-// Re-open THIS booking's pay screen asking for everything. The token and id are
-// already in payState, and the server re-derives the kind, so nothing about the
-// charge is decided here.
-function payInFull() {
-    if (!payState.token || !payState.bookingId) return;
-    openPayView(payState.token, payState.bookingId, 'balance');
-}
 async function refundPayment(bookingId, squareId, maxAmount, carried) {
     const booking = findBookingById(bookingId);
     if (!booking) return;
@@ -21846,7 +21693,7 @@ const CHB_SK_CARD = '<div class="card glass-panel sk-card"><div class="skeleton 
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'r8night9';
+    const BUILD = 'payscreens1011';
     /** @type {any} */ (window).__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;

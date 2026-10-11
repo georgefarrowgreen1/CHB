@@ -99,7 +99,9 @@ function stub(page, mode, mine) {
   ok(await painted(page, '#guest-msg-fab'), 'on the homepage the pill is there');
   await page.evaluate(() => openGuestArea());
   await page.waitForTimeout(900);
-  ok(await page.evaluate(() => !!document.querySelector('#view-guest-bookings.active .my-stay-hub')), '(fixture) a stay hub is on screen');
+  // The soonest stay's card IS its hub now (.gb2-next: the countdown, the tiles
+  // and Contact host joined the card), so either one stands the pill down.
+  ok(await page.evaluate(() => !!document.querySelector('#view-guest-bookings.active :is(.my-stay-hub, .gb2-next)')), '(fixture) a stay hub is on screen');
   ok(!(await painted(page, '#guest-msg-fab')), 'on My Stays with a hub the pill is gone — Contact host is the chat');
   const hits = await page.evaluate(async () => {
     const fab = document.getElementById('guest-msg-fab'); const out = [];
@@ -122,7 +124,7 @@ function stub(page, mode, mine) {
   page = await open('guest', NOSTAYS);
   await page.evaluate(() => openGuestArea());
   await page.waitForTimeout(900);
-  ok(await page.evaluate(() => !document.querySelector('#view-guest-bookings.active .my-stay-hub')), '(fixture) a guest with nothing booked has no hub');
+  ok(await page.evaluate(() => !document.querySelector('#view-guest-bookings.active :is(.my-stay-hub, .gb2-next)')), '(fixture) a guest with nothing booked has no hub');
   ok(await painted(page, '#guest-msg-fab'), 'a guest with no hub keeps the pill — there is no Contact host to stand in for it');
   // PR2 added two more stand-downs, and the "nowhere else" this section used to
   // claim is no longer true: the pay screen (where the pill covered the journey's
@@ -157,11 +159,15 @@ function stub(page, mode, mine) {
   await page.evaluate(() => openGuestArea());
   await page.waitForTimeout(900);
   const head = await page.evaluate(() => {
-    const card = document.querySelector('.my-stay-hub-soon'); if (!card) return null;
-    const title = card.querySelector('.hub-title'); const badge = card.querySelector('.hub-count');
-    const range = document.createRange(); range.selectNodeContents(title);
+    // The soonest stay's own card: the name heads it, the countdown rides its photo.
+    const card = document.querySelector('.gb2-next'); if (!card) return null;
+    const title = card.querySelector('.gb2-name'); const badge = card.querySelector('.gb2-count');
+    if (!title || !badge) return null;
+    // The NAME's own text — the status capsule beside it is its own box.
+    const name = [...title.childNodes].find((n) => n.nodeType === 3 && n.textContent.trim());
+    const range = document.createRange(); range.selectNodeContents(name || title);
     const lines = new Set([...range.getClientRects()].filter((r) => r.width > 0).map((r) => Math.round(r.top))).size;
-    return { title: title.textContent.trim(), lines, badge: badge.textContent.trim().replace(/\s+/g, ' ') };
+    return { title: (name || title).textContent.trim(), lines, badge: badge.textContent.trim().replace(/\s+/g, ' ') };
   });
   ok(head && !/\d+ days|Tomorrow|day to go/.test(head.title), `the title names the cottage only (${head && head.title})`);
   ok(head && /10/.test(head.badge) && /days to go/.test(head.badge), `the badge carries the figure (${head && head.badge})`);
@@ -337,7 +343,7 @@ function stub(page, mode, mine) {
   const sc2 = await page.evaluate(() => {
     const tt = (q) => { const e = document.querySelector(q); return e ? getComputedStyle(e).textTransform : 'missing'; };
     const call = document.getElementById('enq-call-btn'); // My stays' twin moved to Account → Help as a row
-    return { sm: tt('.btn-sm'), badge: tt('.guest-status-badge'), cap: tt('.gtl-cap'), call: call ? call.textContent.trim() : 'missing', weight: getComputedStyle(document.querySelector('.btn-sm')).fontWeight };
+    return { sm: tt('.btn-sm'), badge: tt('.guest-status-badge'), cap: tt('.gbm-leg'), call: call ? call.textContent.trim() : 'missing', weight: getComputedStyle(document.querySelector('.btn-sm')).fontWeight };
   });
   ok(sc2.sm === 'none' && sc2.badge === 'none' && sc2.cap === 'none' && Number(sc2.weight) >= 600, `My Stays: small buttons, badges and captions are sentence case at 600 (${sc2.sm}/${sc2.badge}/${sc2.cap}, ${sc2.weight})`);
   ok(sc2.call === 'Call to discuss', `…and the Title Case the caps used to hide is corrected (“${sc2.call}”)`);

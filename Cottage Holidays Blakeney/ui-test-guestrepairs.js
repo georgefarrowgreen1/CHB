@@ -383,7 +383,9 @@ const { boot } = require('./ui-test-lib');
     check(!!inProgress && !/Upcoming/i.test(inProgress.head), '…and it is NOT under “Upcoming stays”', inProgress && inProgress.head);
     check(!!inProgress && /Staying now/i.test(inProgress.head), '…it has its own group, matching the hub above it', inProgress && inProgress.head);
     // …and the repair must not swallow the two states that were already right.
-    check(!!future && /Upcoming/i.test(future.badge) && /Upcoming/i.test(future.head), 'a genuinely future stay is still Upcoming', future && future.badge + ' / ' + future.head);
+    // The soonest future stay leads under "Your next stay" (one card since the
+    // pay-screens build); either heading is a future one, never "Staying now".
+    check(!!future && /Upcoming/i.test(future.badge) && /^(Upcoming stays|Your next stay)$/i.test(future.head), 'a genuinely future stay is still Upcoming', future && future.badge + ' / ' + future.head);
     check(!!past && /Past/i.test(past.badge) && /Past/i.test(past.head), 'a finished stay is still a Past stay', past && past.badge + ' / ' + past.head);
     check(stays.heads.filter((h) => /^Staying now$/i.test(h)).length === 1, 'the new group appears exactly once', JSON.stringify(stays.heads));
 

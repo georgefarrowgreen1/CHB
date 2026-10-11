@@ -363,11 +363,11 @@ async function waitForServer(url, tries = 40) {
       await renderGuestBookings();
     });
     await page.waitForTimeout(800);
-    // The in-stay hub (:not(.my-stay-hub-soon)) is the in-residence card; a guest
-    // with a back-to-back FUTURE stay also gets a pre-arrival countdown hub
-    // (.my-stay-hub-soon), so assert the in-stay hub specifically, not a bare count.
-    (await page.locator('.my-stay-hub:not(.my-stay-hub-soon)').count()) === 1 ? pass('in-stay hub rendered') : fail('in-stay hub missing (fully-paid current stay)');
-    (await page.locator('.my-stay-hub:not(.my-stay-hub-soon) .hub-tile').count()) >= 4 ? pass('hub tiles rendered') : fail('hub tiles missing');
+    // .my-stay-hub is the in-residence card. A back-to-back FUTURE stay is its own
+    // card now (.gb2-next, the countdown and tiles on the stay's card), so the hub
+    // count stays exactly one whatever else is booked.
+    (await page.locator('.my-stay-hub').count()) === 1 ? pass('in-stay hub rendered') : fail('in-stay hub missing (fully-paid current stay)');
+    (await page.locator('.my-stay-hub .hub-tile').count()) >= 4 ? pass('hub tiles rendered') : fail('hub tiles missing');
     (await page.locator('#guest-bookings-list .guest-booking').count()) >= 1 ? pass('booking card rendered') : fail('booking card missing');
 
     console.log('== 7. Guest chat: polls in a host reply (no reload) ==');

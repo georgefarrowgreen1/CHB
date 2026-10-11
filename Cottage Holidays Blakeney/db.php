@@ -3002,6 +3002,19 @@ function booking_price_is_custom($nightly, $txFee, $rentalTotal)
     return abs(((float) $nightly + (float) $txFee) - (float) $rentalTotal) > 0.005;
 }
 
+// WHERE A RECEIPT WENT, without handing the address to whoever holds the link:
+// "d•••@example.co.uk". The pay screen is reached by a login-free link that can be
+// forwarded, so it names the inbox to look in and no more. '' for no address.
+function email_hint($email)
+{
+    $e = trim((string) $email);
+    $at = strrpos($e, '@');
+    if ($at === false || $at < 1 || $at === strlen($e) - 1) {
+        return '';
+    }
+    return mb_substr($e, 0, 1) . '•••' . substr($e, $at);
+}
+
 // Unguessable, login-free token that authorises PAYING a specific booking.
 // One-way from APP_SECRET (same idea as ical_token) — leaks nothing if seen.
 function pay_token($bookingId)

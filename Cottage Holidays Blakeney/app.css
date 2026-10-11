@@ -2784,7 +2784,6 @@ a.card {
 /* A note must not end on a lone word (admin.css's settings rows had this; the guest notes did not). */
 .card p,
 .things-note,
-.pay-error p,
 .amenity-sheet-note,
 #exp-empty p,
 #exp-grid p {
@@ -3500,188 +3499,1297 @@ a.card {
 #enq-steps.is-open {
   margin-bottom: 12px;
 }
-/* Guest online-payment view (Square) */
-.pay-wrap {
-  max-width: 480px;
-  margin: 40px auto 60px;
+/* ---- WHERE A GUEST PAYS (the approved pay-screens demo) ----
+   One figure leads, the money story says the rest once, the one button names the
+   amount and stays in reach on a phone. Every colour is a theme token; the money
+   and the cottage's name are the serif, everything else the sans. */
+#view-pay {
+  --pp-line: color-mix(in srgb, var(--text-light) 11%, transparent);
+  --pp-line2: color-mix(in srgb, var(--text-light) 20%, transparent);
+  --pp-well: color-mix(in srgb, var(--text-light) 7%, transparent);
+  --pp-raise: #2c2d32;
+  --pp-gutter: clamp(16px, 4vw, 20px);
 }
-.pay-card {
-  padding: 28px;
-  border-radius: var(--r-panel);
-  /* The cottage's accent rule is the card's TOP EDGE, so it is pulled out of
-     the padding box and clipped to the card's own corner (see .pay-stay-band).
-     Nothing else reaches the edge — the Pay button's glow stops well inside. */
-  overflow: clip;
+body.light-mode #view-pay {
+  --pp-raise: #ffffff;
 }
-.pay-head {
-  margin-bottom: 18px;
+/* The container's own side padding, which the pay bar bleeds through to the
+   screen's edges (the ≤480 container rule is 14px). */
+@media (max-width: 480px) {
+  #view-pay {
+    --pp-gutter: 14px;
+  }
 }
-.pay-sub {
-  font-size: var(--fs-body);
-  color: var(--text-muted);
-  margin: 6px 0 0;
+#view-pay [hidden] {
+  display: none !important;
 }
-.pay-loading {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-  padding: 10px 0;
-}
-/* The amount hero: soft tinted panel, no hard border — the figure is the page's
-   one big statement, with the money shape and the deposit note as quiet lines. */
-.pay-amount-box {
-  text-align: center;
-  padding: 22px 18px;
-  margin-bottom: 20px;
-  border-radius: var(--r-lg); /* the iOS-sheet curve — matches .pay-express */
-  background: var(--glass-bg);
-}
-.pay-amount-label {
-  font-size: var(--fs-caption);
-  color: var(--text-muted);
-  font-weight: 600;
-}
-.pay-amount {
-  font-family: var(--font-serif);
-  font-size: 2.6rem;
-  line-height: 1.15;
-  color: var(--text-light);
-  padding: 4px 0 2px;
-}
-.pay-amount-sub {
-  font-size: var(--fs-sub);
-  color: var(--text-muted);
-}
-/* WHAT THE CARD TAKES, ITEMISED — the sub was one centred run-on carrying four
-   figures. Left/right like every other money list here (.bhub-kv), so the
-   amounts share a rail instead of being read out of a sentence. */
-.pay-amount-sub.is-lines {
+.pp {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 20px;
+  max-width: 560px;
+  margin: 0 auto;
   text-align: left;
-  margin-top: 10px;
 }
-.pay-line {
+/* On a phone the two columns are ONE flow, so the pay bar's sticky box is the
+   whole screen and Pay is in reach from the first scroll position. Inside a
+   column it could only stick while that column was on screen. */
+.pp-col {
+  display: contents;
+}
+.pp-back {
+  justify-self: start;
+  margin-bottom: -8px;
+}
+.pp-panel {
+  background: var(--glass-bg);
+  border: 1px solid var(--glass-border);
+  border-radius: var(--r-lg);
+}
+.pp-sec {
   display: flex;
   align-items: baseline;
   justify-content: space-between;
-  gap: 14px;
-  padding: 7px 0;
-  border-top: 1px solid var(--glass-border);
+  gap: 12px;
+  font-size: var(--fs-sub);
+  font-weight: 600;
+  color: var(--text-muted);
 }
-.pay-line-lbl {
+.pp-sec-r {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-weight: 500;
+}
+.pp-sec-r svg {
+  width: 12px;
+  height: 12px;
+}
+.pp-sec-out {
+  margin: 4px 4px -8px;
+}
+.pp-cap {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 12px;
+  border-radius: var(--r-pill);
+  font-size: var(--fs-caption);
+  font-weight: 600;
+  line-height: 1.2;
+  white-space: nowrap;
+  background: var(--pp-well);
+  color: var(--text-muted);
+}
+.pp-cap svg {
+  width: 12px;
+  height: 12px;
+}
+.pp-cap.is-ok {
+  background: color-mix(in srgb, var(--ok) 15%, transparent);
+  color: var(--ok-text);
+}
+.pp-cap.is-warn {
+  background: color-mix(in srgb, var(--warn) 15%, transparent);
+  color: var(--warn-text);
+}
+.pp-cap.is-info {
+  background: color-mix(in srgb, var(--info) 14%, transparent);
+  color: var(--info-text);
+}
+.pp-dot {
+  flex: 0 0 auto;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--pp-dot, var(--accent));
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--pp-dot, var(--accent)) 22%, transparent);
+}
+/* ---- the stay ---- */
+.pp-stay {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 12px 16px 12px 12px;
+  background: var(--glass-bg);
+  border: 1px solid var(--glass-border);
+  border-radius: var(--r-lg);
+}
+.pp-art {
+  flex: 0 0 auto;
+  width: 60px;
+  height: 60px;
+  border-radius: var(--r-sm);
+  background-color: var(--pp-tint, var(--accent));
+  background-image: linear-gradient(160deg, color-mix(in srgb, var(--pp-tint, var(--accent)) 70%, white), var(--pp-tint, var(--accent)));
+  background-size: cover;
+  background-position: center;
+  box-shadow: inset 0 0 0 1px var(--pp-line);
+}
+.pp-stay-in {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+}
+.pp-stay-tx {
+  display: grid;
+  gap: 2px;
   min-width: 0;
 }
-/* The deposit's one explanation, on its own line so a long label can never
-   push the figure off the edge. */
-/* NO SECOND DIMMING: --text-muted at 0.75 measured 2.95:1 in light on the white
-   card, for the 12px "returned after your stay" — the sentence that says the £75
-   comes back. The 12px size is the hierarchy. */
-.pay-line-lbl small {
-  display: block;
-  font-size: var(--fs-caption);
+.pp-stay-n {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-family: var(--font-serif);
+  font-size: var(--fs-title);
+  font-weight: 600;
+  line-height: 1.15;
+}
+.pp-stay-d {
+  font-size: var(--fs-sub);
   color: var(--text-muted);
 }
-/* Never shrinks, never wraps: a clipped amount is a different number. */
-.pay-line-amt {
-  flex: none;
+/* ---- the hero: one figure, said once ---- */
+.pp-hero {
+  padding: 0 4px;
+}
+.pp-hero-cap {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  font-size: var(--fs-sub);
+  font-weight: 600;
+  color: var(--text-muted);
+}
+.pp-fig {
+  margin-top: 4px;
+  font-family: var(--font-serif);
+  font-size: 48px;
+  font-weight: 500;
+  line-height: 1.05;
+  letter-spacing: -0.01em;
+  font-variant-numeric: lining-nums tabular-nums;
+}
+.pp-hero-line {
+  margin: 8px 0 0;
+  font-size: var(--fs-body);
+  color: var(--text-muted);
+  text-wrap: pretty;
+}
+.pp-what {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-height: 44px;
+  margin-top: 4px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--accent-text);
+  font: inherit;
+  font-size: var(--fs-sub);
+  font-weight: 600;
+  text-align: left;
+  cursor: pointer;
+}
+.pp-chev {
+  width: 16px;
+  height: 16px;
+  flex: 0 0 auto;
+  transition: transform 320ms var(--sheet);
+}
+.pp-what[aria-expanded='true'] .pp-chev {
+  transform: rotate(90deg);
+}
+.pp-fold {
+  display: grid;
+  grid-template-rows: 0fr;
+  transition: grid-template-rows 320ms var(--unfold);
+}
+.pp-foldin {
+  min-height: 0;
+  overflow: hidden;
+}
+.pp-fold.is-open {
+  grid-template-rows: 1fr;
+}
+.pp-fold:not(.is-open) .pp-foldin {
+  visibility: hidden;
+  transition: visibility 0s linear 320ms;
+}
+.pp-rows {
+  padding: 4px 16px;
+}
+.pp-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 12px 0;
+  font-size: var(--fs-body);
+}
+.pp-row + .pp-row {
+  border-top: 1px solid var(--pp-line);
+}
+.pp-row-l {
+  min-width: 0;
+}
+.pp-row-l small {
+  display: block;
+  margin-top: 2px;
+  font-size: var(--fs-sub);
+  color: var(--text-muted);
+}
+.pp-row-v {
   white-space: nowrap;
-  font-variant-numeric: tabular-nums;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums lining-nums;
+}
+.pp-row.is-total,
+.pp-row.is-total .pp-row-v {
+  font-weight: 700;
+}
+.pp-row.is-credit .pp-row-v {
+  color: var(--ok-text);
+}
+/* ---- the one choice: the deposit, or the whole stay ---- */
+.pp-seg {
+  position: relative;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 4px;
+  padding: 4px;
+  border-radius: var(--r-lg);
+  background: var(--pp-well);
+}
+.pp-seg-pill {
+  position: absolute;
+  top: 4px;
+  bottom: 4px;
+  left: 4px;
+  width: calc((100% - 12px) / 2);
+  border-radius: var(--r-sm);
+  background: var(--pp-raise);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.12), 0 4px 12px rgba(0, 0, 0, 0.1);
+  transform: translateX(calc(var(--i, 0) * (100% + 4px)));
+  transition: transform 420ms var(--sheet);
+}
+.pp-seg-opt {
+  position: relative;
+  z-index: 1;
+  min-height: 56px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  border-radius: var(--r-sm);
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: color 240ms var(--out);
+}
+.pp-seg-opt input {
+  position: absolute;
+  inset: 0;
+  margin: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+.pp-seg-opt:has(input:checked) {
   color: var(--text-light);
 }
-/* PAY PART OF IT — now the FIRST decision on the form (decide the amount, then
-   choose how to pay it), so its toggle stopped being a buried text link and
-   became a visible choice control: a full-width bordered pill at the house
-   44px floor. The open row is a soft panel, so "I'm paying part" reads as a
-   mode you are in, not a field floating in space. */
-.pay-part {
-  margin: 2px 0 14px;
+.pp-seg-opt:has(input:focus-visible) {
+  outline: 2px solid var(--accent-text);
+  outline-offset: 2px;
 }
-#pay-part-toggle {
-  display: block;
-  width: 100%;
-  min-height: 44px;
-  padding: 11px 14px;
-  font: inherit;
+.pp-seg-t {
+  font-size: var(--fs-sub);
+  font-weight: 600;
+}
+.pp-seg-v {
+  font-size: var(--fs-caption);
+  font-weight: 500;
+  font-variant-numeric: tabular-nums lining-nums;
+}
+/* ---- THE MONEY STORY — one component wherever money is talked about ---- */
+.pp-story {
+  padding: 16px 16px 16px;
+}
+.pp-rail {
+  position: relative;
+  display: grid;
+  grid-template-columns: repeat(var(--n, 3), minmax(0, 1fr));
+  gap: 12px;
+  margin: 16px 0 0;
+  padding: 0;
+  list-style: none;
+}
+.pp-stop {
+  position: relative;
+  display: grid;
+  align-content: start;
+  gap: 2px;
+  min-width: 0;
+}
+.pp-stop::before {
+  content: '';
+  position: absolute;
+  top: 8px;
+  left: 20px;
+  right: -8px;
+  height: 2px;
+  border-radius: 2px;
+  background: var(--pp-line2);
+}
+.pp-stop:last-child::before {
+  display: none;
+}
+.pp-stop.is-done::before {
+  background: var(--ok);
+}
+.pp-stop-dot {
+  position: relative;
+  z-index: 1;
+  width: 18px;
+  height: 18px;
+  margin-bottom: 8px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  background: var(--dark-grey);
+  box-shadow: inset 0 0 0 2px var(--pp-line2);
+  color: var(--accent-ink);
+}
+.pp-stop-dot svg {
+  width: 11px;
+  height: 11px;
+}
+.is-done > .pp-stop-dot {
+  background: var(--ok);
+  box-shadow: none;
+}
+.is-now > .pp-stop-dot {
+  background: var(--accent);
+  box-shadow: none;
+}
+.is-auto > .pp-stop-dot {
+  background: var(--info);
+  box-shadow: none;
+}
+.is-warn > .pp-stop-dot {
+  background: var(--warn);
+  box-shadow: none;
+}
+.is-back > .pp-stop-dot {
+  box-shadow: inset 0 0 0 2px var(--ok);
+}
+.pp-stop-when {
+  font-size: var(--fs-caption);
+  font-weight: 600;
+  color: var(--text-muted);
+}
+.pp-stop-amt {
+  font-size: var(--fs-headline);
+  font-weight: 700;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums lining-nums;
+}
+.pp-stop.is-done .pp-stop-amt,
+.pp-stop.is-back .pp-stop-amt {
+  font-weight: 600;
+}
+.pp-stop-sub {
+  font-size: var(--fs-caption);
+  color: var(--text-muted);
+  text-wrap: pretty;
+}
+.pp-stop.is-now .pp-stop-sub {
+  color: var(--accent-text);
+  font-weight: 600;
+}
+.pp-stop.is-auto .pp-stop-sub {
+  color: var(--info-text);
+  font-weight: 600;
+}
+.pp-stop.is-done .pp-stop-sub {
+  color: var(--ok-text);
+  font-weight: 600;
+}
+/* …told down the page (a monthly plan, the receipt's what happens next). */
+.pp-vstory {
+  padding: 4px 16px;
+}
+.pp-vstop {
+  position: relative;
+  display: grid;
+  grid-template-columns: 18px minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: start;
+  padding: 12px 0;
+}
+.pp-vstop::before {
+  content: '';
+  position: absolute;
+  left: 8px;
+  top: 32px;
+  bottom: -12px;
+  width: 2px;
+  border-radius: 2px;
+  background: var(--pp-line2);
+}
+.pp-vstop:last-child::before {
+  display: none;
+}
+.pp-vstop.is-done::before {
+  background: var(--ok);
+}
+.pp-vstop .pp-stop-dot {
+  margin: 1px 0 0;
+}
+.pp-vstop-m {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+.pp-vstop-t {
   font-size: var(--fs-body);
   font-weight: 600;
-  color: var(--accent-text);
-  text-decoration: none;
-  background: color-mix(in srgb, var(--accent) 7%, transparent);
-  border: 1px solid color-mix(in srgb, var(--accent) 35%, transparent);
-  border-radius: var(--r-sm);
-  cursor: pointer;
-  transition: background 0.16s var(--fluid-bezier), border-color 0.16s var(--fluid-bezier);
 }
-@media (hover: hover) {
-  #pay-part-toggle:hover {
-    border-color: color-mix(in srgb, var(--accent) 55%, transparent);}
-}
-.pay-part-row {
-  margin-top: 12px;
-  padding: 16px;
-  border: 1px solid var(--glass-border);
-  border-radius: var(--r-sm);
-  background: color-mix(in srgb, var(--accent) 4%, transparent);
-}
-.pay-part-lbl {
-  display: block;
+.pp-vstop-s {
   font-size: var(--fs-sub);
   color: var(--text-muted);
-  margin-bottom: 6px;
+  text-wrap: pretty;
 }
-/* The field is the house .input-glass — a second glass control drawn beside the
-   first would say the same thing in a different accent. Only the money-specific
-   bits are stated here; the 16px font-size that stops iOS zooming on focus is
-   already the shared rule's. The £ is IN the field: the unit used to be carried
-   by the label's trailing ", in pounds?" and appeared nowhere near the number. */
-.pay-money {
-  position: relative;
+.pp-vstop.is-auto .pp-vstop-s {
+  color: var(--info-text);
 }
-.pay-money-sign {
-  position: absolute;
-  /* On the field's own 16px inset, so the sign and the figure share one rail. */
-  left: 16px;
-  top: 50%;
-  translate: 0 -50%;
+.pp-vstop.is-warn .pp-vstop-s {
+  color: var(--warn-text);
+}
+.pp-vstop-v {
+  white-space: nowrap;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums lining-nums;
+}
+/* ---- the balance plan: one inset list, one choice ---- */
+.pp-plan {
+  overflow: hidden;
+}
+.pp-plan-head {
+  display: grid;
+  gap: 2px;
+  padding: 16px 16px 12px;
+}
+.pp-plan-head b {
+  font-size: var(--fs-headline);
+}
+.pp-plan-head span {
+  font-size: var(--fs-sub);
   color: var(--text-muted);
+}
+.pp-opt {
+  position: relative;
+  display: grid;
+  grid-template-columns: 24px minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: center;
+  min-height: 64px;
+  padding: 12px 16px;
+  border-top: 1px solid var(--pp-line);
+  cursor: pointer;
+}
+.pp-opt input {
+  position: absolute;
+  inset: 0;
+  margin: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+.pp-opt-r {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  box-shadow: inset 0 0 0 2px var(--pp-line2);
+  transition: box-shadow 240ms var(--out);
+}
+.pp-opt-r::after {
+  content: '';
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--accent);
+  transform: scale(0);
+  transition: transform 320ms var(--sheet);
+}
+.pp-opt:has(input:checked) .pp-opt-r {
+  box-shadow: inset 0 0 0 2px var(--accent);
+}
+.pp-opt:has(input:checked) .pp-opt-r::after {
+  transform: scale(1);
+}
+.pp-opt:has(input:focus-visible) {
+  outline: 2px solid var(--accent-text);
+  outline-offset: -2px;
+}
+.pp-opt-m {
+  display: grid;
+  gap: 2px;
+}
+.pp-opt-t {
+  font-size: var(--fs-body);
+  font-weight: 600;
+}
+.pp-opt-s {
+  font-size: var(--fs-sub);
+  color: var(--text-muted);
+}
+.pp-opt-v {
+  font-weight: 600;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums lining-nums;
+}
+.pp-sched {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 0 16px 16px 52px;
+}
+.pp-sched span {
+  padding: 4px 12px;
+  border-radius: var(--r-sm);
+  background: var(--pp-well);
+  font-size: var(--fs-caption);
+  font-weight: 600;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums lining-nums;
+}
+.pp-sched b {
+  color: var(--text-light);
+  font-weight: 600;
+}
+/* ---- how to pay: wallets, then the card box ---- */
+.pp-method {
+  display: grid;
+  gap: 12px;
+  padding: 16px;
+}
+.pp-method-lead {
+  margin: 0;
+  font-size: var(--fs-sub);
+  color: var(--text-muted);
+}
+.pp-wallets {
+  transition: opacity 300ms var(--out);
+}
+.pp-wallets.is-off {
+  opacity: 0.35;
   pointer-events: none;
 }
-#pay-part-amt {
-  margin-bottom: 0;
-  padding-left: 32px;
-  font-variant-numeric: tabular-nums;
-}
-.pay-part-hint {
-  margin-top: 6px;
-  font-size: var(--fs-caption);
-  color: var(--text-muted);
-}
-.pay-amount-note {
-  font-size: var(--fs-caption);
-  color: var(--text-muted);
-  margin-top: 8px;
-  padding-top: 8px;
-  border-top: 1px solid var(--glass-border);
-}
-/* Settle the whole stay rather than the deposit — a quiet text action, because
-   it is an alternative to the primary button and must not compete with it.
-   44px floor: it is a real control on a payment screen. */
-.pay-full-link {
-  display: block;
-  width: 100%;
-  min-height: 44px;
-  margin-top: 6px;
-  padding: 8px 0;
-  background: none;
-  border: 0;
-  font: inherit;
+.pp-wnote {
+  margin: 0;
   font-size: var(--fs-sub);
+  color: var(--text-muted);
+  text-wrap: pretty;
+}
+.pp-wnote b {
+  color: var(--text-light);
   font-weight: 600;
-  color: var(--accent-text);
-  cursor: pointer;
+}
+.pp-or {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: var(--fs-caption);
+  font-weight: 600;
+  color: var(--text-muted);
+}
+.pp-or::before,
+.pp-or::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: var(--pp-line);
+}
+.pp-alert-slot:empty {
+  display: none;
+}
+/* DO NOT FRAME THIS. Square draws its own bordered field inside the iframe; a
+   frame of ours around it is a box in a box. */
+#view-pay .sq-card {
+  min-height: 56px;
+}
+#view-pay .sq-card.is-bad {
+  border-radius: var(--r-sm);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--danger) 40%, transparent);
+}
+.pp-sandbox {
+  margin: 0;
+  padding: 12px;
+  border-radius: var(--r-sm);
+  border: 1px dashed var(--info);
+  font-size: var(--fs-caption);
+  color: var(--text-muted);
+}
+.pp-sandbox b {
+  color: var(--text-light);
+}
+.pp-msg {
+  margin: 0;
+  font-size: var(--fs-sub);
+  color: var(--danger-text);
+}
+.pp-msg:empty {
+  display: none;
+}
+/* ONE ALERT BLOCK — a refusal says what happened and what to do, and sits on
+   the card it is about. */
+.pp-alert {
+  display: grid;
+  grid-template-columns: 24px minmax(0, 1fr);
+  gap: 12px;
+  padding: 12px 16px;
+  border-radius: var(--r-sm);
+  background: color-mix(in srgb, var(--danger) 15%, transparent);
+}
+.pp-alert > svg {
+  width: 22px;
+  height: 22px;
+  margin-top: 1px;
+  color: var(--danger-text);
+}
+.pp-alert b {
+  display: block;
+  font-size: var(--fs-body);
+  color: var(--danger-text);
+}
+.pp-alert p {
+  margin: 4px 0 0;
+  font-size: var(--fs-sub);
+  color: var(--text-light);
+  text-wrap: pretty;
+}
+.pp-alert.is-warn {
+  background: color-mix(in srgb, var(--warn) 15%, transparent);
+}
+.pp-alert.is-warn > svg,
+.pp-alert.is-warn b {
+  color: var(--warn-text);
+}
+.pp-alert.is-ok {
+  background: color-mix(in srgb, var(--ok) 15%, transparent);
+}
+.pp-alert.is-ok > svg,
+.pp-alert.is-ok b {
+  color: var(--ok-text);
+}
+.pp-alert.is-info {
+  background: color-mix(in srgb, var(--info) 14%, transparent);
+}
+.pp-alert.is-info > svg,
+.pp-alert.is-info b {
+  color: var(--info-text);
+}
+.pp-alert-acts {
+  margin-top: 12px;
+}
+.pp-consent {
+  margin: 0 4px;
+  font-size: var(--fs-sub);
+  line-height: 1.5;
+  color: var(--text-muted);
+  text-wrap: pretty;
+}
+.pp-consent b {
+  color: var(--text-light);
+  font-weight: 600;
+}
+.pp-center {
   text-align: center;
 }
-.pay-full-link:hover {
-  text-decoration: underline;
+/* ---- the buttons: the one primary pill, an outlined second choice, a link ---- */
+.pp-cta,
+.pp-btn {
+  width: 100%;
+  min-height: 52px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 0 20px;
+  border: 0;
+  border-radius: var(--r-pill);
+  background: var(--accent);
+  color: var(--accent-ink);
+  font: inherit;
+  font-size: var(--fs-headline);
+  font-weight: 600;
+  cursor: pointer;
+  box-shadow: 0 8px 24px color-mix(in srgb, var(--accent) 34%, transparent);
+  transition: transform 320ms var(--settle), background-color 300ms var(--out), box-shadow 300ms var(--out);
+}
+.pp-cta svg,
+.pp-btn svg {
+  width: 18px;
+  height: 18px;
+  flex: 0 0 auto;
+}
+.pp-cta:active,
+.pp-btn:active {
+  transform: scale(var(--sc, 0.98));
+  transition: transform 80ms var(--in);
+}
+.pp-cta[aria-busy='true'] {
+  pointer-events: none;
+}
+/* Busy is the spinner, never a dim: the dispatcher disables the button while it
+   works, and money moving must not look like a control switched off. */
+.pp-cta:disabled:not([aria-busy='true']) {
+  opacity: 0.6;
+  box-shadow: none;
+  cursor: default;
+}
+.pp-cta.is-ok {
+  background: var(--ok);
+  color: var(--accent-ink);
+  box-shadow: 0 8px 24px color-mix(in srgb, var(--ok) 30%, transparent);
+}
+.pp-btn-sm {
+  width: auto;
+  min-height: 44px;
+  font-size: var(--fs-body);
+  box-shadow: none;
+}
+.pp-btn2 {
+  width: 100%;
+  min-height: 52px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 0 20px;
+  border: 0;
+  border-radius: var(--r-pill);
+  background: transparent;
+  color: var(--text-light);
+  box-shadow: inset 0 0 0 1.5px var(--pp-line2);
+  font: inherit;
+  font-size: var(--fs-headline);
+  font-weight: 600;
+  cursor: pointer;
+  transition: transform 320ms var(--settle);
+}
+.pp-btn2:active {
+  transform: scale(var(--sc, 0.98));
+  transition: transform 80ms var(--in);
+}
+.pp-link {
+  min-height: 44px;
+  padding: 0 4px;
+  border: 0;
+  background: none;
+  color: var(--accent-text);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+.pp-off {
+  color: var(--text-muted);
+  font-weight: 500;
+}
+.pp-spin {
+  width: 18px;
+  height: 18px;
+  flex: 0 0 auto;
+  border-radius: 50%;
+  border: 2.5px solid currentColor;
+  border-right-color: transparent;
+  animation: paySpin 0.75s linear infinite;
+}
+.pp-acts {
+  display: grid;
+  gap: 12px;
+}
+/* ---- the card on file, and the armed plan's quiet controls ---- */
+.pp-chip {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 16px;
+}
+.pp-chip > svg {
+  width: 26px;
+  height: 26px;
+  flex: 0 0 auto;
+  color: var(--accent-text);
+}
+.pp-chip-m {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: grid;
+}
+.pp-chip-m b {
+  font-size: var(--fs-body);
+}
+.pp-chip-m span {
+  font-size: var(--fs-sub);
+  color: var(--text-muted);
+}
+#pay-armed:empty,
+#pay-plan:empty,
+#pay-seg:empty,
+#pay-story:empty,
+#pay-alert-top:empty {
+  display: none;
+}
+#pay-armed {
+  display: grid;
+  gap: 20px;
+}
+/* ---- the pay bar: always in reach on a phone ---- */
+.pp-bar {
+  position: sticky;
+  bottom: 0;
+  z-index: 5;
+  display: grid;
+  gap: 8px;
+  margin: 0 calc(-1 * var(--pp-gutter));
+  padding: 16px var(--pp-gutter) calc(16px + var(--safe-b));
+  background: linear-gradient(to top, var(--dark-grey) 72%, color-mix(in srgb, var(--dark-grey) 0%, transparent));
+}
+.pp-cancel {
+  justify-self: center;
+}
+.pp-secure {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  margin: 0;
+  font-size: var(--fs-caption);
+  color: var(--text-muted);
+  text-align: center;
+}
+.pp-secure svg {
+  width: 12px;
+  height: 12px;
+  flex: 0 0 auto;
+}
+/* THE WAIT, NARRATED, rising out of the pay bar right above the button it is
+   about. (The enquiry's send keeps the caption-and-hairline narration.) */
+#view-pay .pay-steps-in {
+  display: grid;
+  margin-bottom: 4px;
+  padding: 12px 16px;
+  border: 1px solid var(--glass-border);
+  border-radius: var(--r-lg);
+  background: var(--sheet-surface);
+  box-shadow: var(--shadow-soft);
+}
+#view-pay .pay-step {
+  display: grid;
+  grid-template-columns: 20px minmax(0, 1fr);
+  gap: 12px;
+  align-items: start;
+  padding: 8px 0;
+}
+#view-pay .pay-step + .pay-step::before {
+  content: none;
+}
+#view-pay .pay-step-dot {
+  width: 20px;
+  height: 20px;
+  margin: 1px 0 0;
+  border: 0;
+  border-radius: 50%;
+  opacity: 1;
+  display: grid;
+  place-items: center;
+  box-shadow: inset 0 0 0 2px var(--pp-line2);
+  color: var(--accent-ink);
+}
+#view-pay .pay-step-dot svg {
+  width: 12px;
+  height: 12px;
+}
+#view-pay .pay-step.is-ok .pay-step-dot {
+  background: var(--ok);
+  box-shadow: none;
+}
+#view-pay .pay-step.is-ok .pay-step-dot::after {
+  content: none;
+}
+#view-pay .pay-step.is-run .pay-step-dot {
+  border: 2px solid color-mix(in srgb, var(--accent) 34%, transparent);
+  border-top-color: var(--accent);
+  box-shadow: none;
+}
+#view-pay .pay-step-lbl {
+  font-size: var(--fs-body);
+}
+#view-pay .pay-step:not(.is-ok):not(.is-run) .pay-step-lbl {
+  color: var(--text-muted);
+  font-weight: 500;
+}
+#view-pay .pay-step-sub {
+  font-size: var(--fs-sub);
+}
+/* ---- the receipt ---- */
+.pp-rc {
+  display: grid;
+  gap: 20px;
+  max-width: 520px;
+  margin: 0 auto;
+  text-align: center;
+}
+.pp-rc-top {
+  padding: 16px 0 0;
+}
+.pp-tick {
+  width: 76px;
+  height: 76px;
+  margin: 0 auto;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  background: color-mix(in srgb, var(--ok) 15%, transparent);
+  color: var(--ok-text);
+}
+.pp-tick svg {
+  width: 44px;
+  height: 44px;
+}
+.pp-rc-h,
+.pp-calm-h {
+  margin: 16px 0 0;
+  font-family: var(--font-serif);
+  font-size: var(--fs-display);
+  font-weight: 500;
+  line-height: 1.15;
+  text-wrap: balance;
+  outline: none;
+}
+.pp-rc-fig {
+  margin: 4px 0 12px;
+  font-family: var(--font-serif);
+  font-size: 44px;
+  line-height: 1.1;
+  font-variant-numeric: lining-nums tabular-nums;
+}
+.pp-rc-lead {
+  margin: 12px auto 0;
+  max-width: 36ch;
+  font-size: var(--fs-body);
+  color: var(--text-muted);
+  text-wrap: pretty;
+}
+.pp-rc .pp-sec-out,
+.pp-rc .pp-vstory {
+  text-align: left;
+}
+.pp-ticket {
+  text-align: left;
+  background: var(--glass-bg);
+  border: 1px solid var(--glass-border);
+  border-radius: var(--r-lg);
+}
+.pp-ticket-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 16px;
+}
+.pp-ticket-head .pp-art {
+  width: 44px;
+  height: 44px;
+}
+.pp-ticket-head b {
+  display: block;
+  font-family: var(--font-serif);
+  font-size: var(--fs-headline);
+  font-weight: 600;
+}
+.pp-ticket-head span span {
+  display: block;
+  font-size: var(--fs-sub);
+  color: var(--text-muted);
+}
+.pp-ticket-cut {
+  position: relative;
+  margin: 0 16px;
+  border-top: 1.5px dashed var(--pp-line2);
+}
+.pp-ticket-cut::before,
+.pp-ticket-cut::after {
+  content: '';
+  position: absolute;
+  top: -11px;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: var(--dark-grey);
+  box-shadow: inset 0 0 0 1px var(--glass-border);
+}
+.pp-ticket-cut::before {
+  left: -27px;
+  clip-path: inset(0 0 0 50%);
+}
+.pp-ticket-cut::after {
+  right: -27px;
+  clip-path: inset(0 50% 0 0);
+}
+.pp-kvs {
+  margin: 0;
+}
+.pp-kv {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 12px 16px;
+  font-size: var(--fs-sub);
+}
+.pp-kv + .pp-kv {
+  border-top: 1px solid var(--pp-line);
+}
+.pp-kv dt {
+  color: var(--text-muted);
+}
+.pp-kv dd {
+  margin: 0;
+  font-weight: 600;
+  text-align: right;
+  font-variant-numeric: tabular-nums lining-nums;
+}
+.pp-mail {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  margin: 0;
+  font-size: var(--fs-sub);
+  color: var(--text-muted);
+}
+.pp-mail svg {
+  width: 16px;
+  height: 16px;
+  flex: 0 0 auto;
+}
+/* ---- a calm screen: an expired link, nothing to pay, a dropped connection ---- */
+.pp-calm {
+  display: grid;
+  gap: 12px;
+  max-width: 440px;
+  margin: 0 auto;
+  padding: 40px 0 8px;
+  text-align: center;
+}
+.pp-calm > p {
+  margin: 0 auto;
+  max-width: 36ch;
+  color: var(--text-muted);
+  text-wrap: pretty;
+}
+.pp-calm .pp-acts {
+  margin-top: 12px;
+}
+.pp-calm .pp-story {
+  text-align: left;
+}
+.pp-calm-foot {
+  font-size: var(--fs-sub);
+}
+.pp-calm-i {
+  width: 72px;
+  height: 72px;
+  margin: 0 auto 4px;
+  border-radius: var(--r-lg);
+  display: grid;
+  place-items: center;
+  background: var(--pp-well);
+  color: var(--text-muted);
+}
+.pp-calm-i svg {
+  width: 34px;
+  height: 34px;
+}
+.pp-calm-i.is-warn {
+  background: color-mix(in srgb, var(--warn) 15%, transparent);
+  color: var(--warn-text);
+}
+.pp-calm-i.is-ok {
+  background: color-mix(in srgb, var(--ok) 15%, transparent);
+  color: var(--ok-text);
+}
+.pp-calm-h {
+  margin: 0;
+}
+/* ---- loading: the screen that is coming ---- */
+.pp-sk .pp-art {
+  background-image: none;
+}
+.pp-sk-lines {
+  flex: 1;
+  display: grid;
+  gap: 8px;
+}
+.pp-sk-lines .sk-line,
+.pp-sk .pp-hero .sk-line {
+  margin: 0;
+}
+.pp-sk .pp-hero {
+  display: grid;
+  gap: 12px;
+}
+.pp-sk-fig {
+  display: block;
+  height: 48px;
+  width: 58%;
+}
+.pp-sk-block {
+  height: 112px;
+  border-radius: var(--r-lg);
+}
+.pp-sk-tall {
+  height: 160px;
+}
+.pp-sk-cta {
+  height: 52px;
+  border-radius: var(--r-pill);
+}
+/* ---- motion: a figure that changed settles, the receipt's tick draws ---- */
+@media (prefers-reduced-motion: no-preference) {
+  .pp-fig.is-swap {
+    animation: ppFig 420ms var(--sheet);
+  }
+  @keyframes ppFig {
+    from {
+      opacity: 0.25;
+      transform: translateY(6px);
+    }
+  }
+  .is-now > .pp-stop-dot::after {
+    content: '';
+    position: absolute;
+    inset: -5px;
+    border-radius: 50%;
+    border: 2px solid var(--accent);
+    opacity: 0;
+    animation: ppPing 2.4s var(--out) infinite;
+  }
+  @keyframes ppPing {
+    0% {
+      opacity: 0.55;
+      transform: scale(0.7);
+    }
+    70%,
+    100% {
+      opacity: 0;
+      transform: scale(1.25);
+    }
+  }
+  #view-pay .pay-steps-in {
+    animation: ppUp 420ms var(--sheet);
+  }
+  #view-pay .pay-step.is-ok .pay-step-dot {
+    animation: payPop 280ms var(--out);
+  }
+  #view-pay .pay-step.is-run .pay-step-dot {
+    animation: paySpin 0.8s linear infinite;
+  }
+  @keyframes ppUp {
+    from {
+      opacity: 0;
+      transform: translateY(12px);
+    }
+  }
+  .pp-alert {
+    animation: ppIn 420ms var(--sheet);
+  }
+  @keyframes ppIn {
+    from {
+      opacity: 0;
+      transform: translateY(6px);
+    }
+  }
+  .pp-tick circle,
+  .pp-tick path {
+    stroke-dasharray: 80;
+    stroke-dashoffset: 80;
+    animation: ppDraw 0.8s var(--out) forwards;
+  }
+  .pp-tick path {
+    animation-delay: 0.35s;
+  }
+  @keyframes ppDraw {
+    to {
+      stroke-dashoffset: 0;
+    }
+  }
+  .pp-rc > *,
+  .pp-calm > * {
+    animation: ppIn 420ms var(--sheet) backwards;
+  }
+  .pp-rc > :nth-child(2),
+  .pp-calm > :nth-child(2) {
+    animation-delay: 80ms;
+  }
+  .pp-rc > :nth-child(3),
+  .pp-calm > :nth-child(3) {
+    animation-delay: 160ms;
+  }
+  .pp-rc > :nth-child(n + 4),
+  .pp-calm > :nth-child(n + 4) {
+    animation-delay: 240ms;
+  }
+}
+/* ---- on a computer: the same screen in two columns ---- */
+@media (min-width: 900px) {
+  .pp {
+    max-width: 1020px;
+    grid-template-columns: minmax(0, 1fr) 400px;
+    gap: 32px;
+    align-items: start;
+  }
+  .pp-back {
+    grid-column: 1 / -1;
+  }
+  .pp-col {
+    display: grid;
+    gap: 20px;
+    min-width: 0;
+  }
+  /* The summary stays in view while the form beside it scrolls; 100px is the
+     app's own clearance under the fixed bar. */
+  .pp-main {
+    position: sticky;
+    top: calc(100px + var(--safe-t));
+  }
+  .pp-stay-in {
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+  }
+  .pp-stay .pp-art {
+    width: 104px;
+    height: 76px;
+  }
+  .pp-fig {
+    font-size: 56px;
+  }
+  .pp-bar {
+    position: static;
+    margin: 0;
+    padding: 0;
+    background: none;
+  }
+  .pp-rc {
+    max-width: 560px;
+  }
 }
 /* DO NOT FRAME THIS. Square's card element draws its own bordered field inside the
    iframe, and the iframe is TALLER than what it paints (it reserves room for an inline
@@ -3693,338 +4801,29 @@ a.card {
   min-height: 56px;
   padding: 4px 0;
 }
-/* EXPRESS CHECKOUT — the wallets in a captioned panel whose caption names the
-   LIVE figure they are priced to (mountWallets writes it). This is what makes a
-   re-priced part payment legible: "Express checkout · £120.00" in words,
-   directly above the buttons that will take it. Boxing is safe here — these are
-   OUR buttons; the card iframe below stays unboxed (see .sq-card's note). */
-.pay-express {
-  padding: 14px;
-  border: 1px solid var(--glass-border);
-  border-radius: var(--r-lg);
-  background: color-mix(in srgb, var(--glass-bg) 60%, transparent);
-}
-.pay-sec-cap {
-  font-size: var(--fs-caption);
-  color: var(--text-muted);
-  margin-bottom: 10px;
-  font-weight: 600;
-}
-.pay-sec-amt {
-  color: var(--accent-text);
-  font-weight: 700;
-  letter-spacing: 0.02em;
-}
-/* THE PLAN-FIRST STEPS (approved demo): numbered chips on step 1 (the plan
-   card's own cap) and step 2 (Pay today), the honest wallet stand-down note,
-   and the one consent sentence above the button. */
-.pay-step-n {
-  display: inline-block;
-  min-width: 17px;
-  height: 17px;
-  line-height: 17px;
-  margin-right: 7px;
-  border-radius: 999px;
-  background: var(--text-muted);
-  /* --bg IS NOT A TOKEN IN THIS SHEET (getPropertyValue('--bg') === ''), so this
-     fell to the #fff fallback and the step digits were white on the muted fill:
-     1.98:1 in dark. --dark-grey is the page ground in BOTH themes and is the
-     right ink on a --text-muted disc (≈9.5:1 dark, 5.4:1 light). */
-  color: var(--dark-grey);
-  font-size: var(--fs-micro);
-  font-weight: 700;
-  letter-spacing: 0;
-  text-align: center;
-  vertical-align: 1px;
-}
-.pay-today-cap {
-  margin-top: 4px;
-}
-.pay-walnote {
-  font-size: var(--fs-sub);
-  color: var(--text-light);
-  background: color-mix(in srgb, var(--warn) 10%, transparent);
-  border: 1px solid color-mix(in srgb, var(--warn) 35%, transparent);
-  border-radius: var(--r-lg);
-  padding: 11px 13px;
-  margin-bottom: 14px;
-}
-/* A SENTENCE, NOT A PANEL. The consent restates the whole arrangement directly
-   above the button that acts on it — it is read in the flow, and the box it
-   used to wear was one more frame in a card that had thirteen. */
-.pay-consent {
-  font-size: var(--fs-caption);
-  /* Body ink, not muted: unboxing already flattens it, and this is the sentence
-     the guest is agreeing to — the one thing on the screen not to dim. */
-  color: var(--text-light);
-  line-height: 1.5;
-  margin: 12px 4px;
-}
-.pay-sec-amt:not(:empty)::before {
-  content: ' · ';
-  color: var(--text-muted);
-  font-weight: 400;
-}
+/* Apple Pay and Google Pay side by side, the demo's pair; one alone takes the
+   row (auto-fit drops the empty track). */
 .sq-wallets {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(132px, 1fr));
+  gap: 12px;
 }
 .sq-wallets > div {
   min-height: 48px;
-}
-/* Hairline divider between the wallet buttons and the card form. */
-.sq-or {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  color: var(--text-muted);
-  font-size: var(--fs-caption);
-  margin: 18px 0 12px;
-}
-.sq-or::before,
-.sq-or::after {
-  content: '';
-  flex: 1;
-  height: 1px;
-  background: var(--glass-border);
 }
 .sq-apple-btn {
   -webkit-appearance: -apple-pay-button;
   appearance: -apple-pay-button;
   -apple-pay-button-type: plain;
-  -apple-pay-button-style: white-outline;
+  -apple-pay-button-style: white;
   height: 48px;
   width: 100%;
   border-radius: var(--r-sm);
   cursor: pointer;
   border: none;
 }
-/* The automatic-payment consent. A ROW, not a note: it is a decision, so it
-   takes the 44px floor. Above the Pay button, because permission agreed after
-   the money has gone was never offered. */
-.pay-autopay {
-  display: flex;
-  align-items: flex-start;
-  gap: 10px;
-  margin-top: 14px;
-  padding: 12px 14px;
-  border-radius: var(--r-md);
-  background: color-mix(in srgb, var(--info) 10%, transparent);
-  font-size: var(--fs-sub);
-  line-height: 1.45;
-  color: var(--text);
-  cursor: pointer;
-  min-height: 44px;
-}
-.pay-autopay input {
-  width: 20px;
-  height: 20px;
-  flex-shrink: 0;
-  margin-top: 1px;
-  accent-color: var(--accent);
-}
-/* The off switch for an arranged payment. Quiet — an arrangement working as
-   agreed should not shout — but at the 44px floor: it is the only way out. */
-.hub-autopay-off {
-  background: none;
-  border: none;
-  padding: 12px 4px;
-  min-height: 44px;
-  font: inherit;
-  font-size: var(--fs-sub);
-  color: var(--text-muted);
-  text-decoration: underline;
-  text-underline-offset: 3px;
-  cursor: pointer;
-}
-/* Quiet trust lines under the Pay button — a small lock, not a loud banner.
-   A BLOCK, not a flex row: the sentence wraps to two lines at 390 and as a
-   flex sibling the glyph was pinned at the left edge, vertically between them
-   and 20px clear of the first word. It is an inline mark in its own sentence. */
-.pay-secure {
-  display: block;
-  margin-top: 14px;
-  font-size: var(--fs-caption);
-  color: var(--text-muted);
-  text-align: center;
-}
-/* The padlock was the only colour on the screen, green, on the least important
-   line — the GLYPH is the signal, so it takes its sentence's muted ink. */
-.pay-secure .ic {
-  width: 13px;
-  height: 13px;
-  flex-shrink: 0;
-  display: inline-block;
-  vertical-align: -2px;
-  margin-right: 5px;
-}
-/* THE ONE THING THIS SCREEN IS FOR. It was .btn-glass — a translucent outline —
-   under Square's solid-black and heavy-bordered wallet buttons, so the action
-   most guests take was the faintest thing on the page. --accent-ink, not white:
-   the rose-gold is mid-light and white fails AA on it. */
-#pay-btn.pay-cta {
-  background: var(--accent);
-  color: var(--accent-ink);
-  border: none;
-  border-radius: var(--r-pill);
-  font-size: var(--fs-headline);
-  font-weight: 600;
-  letter-spacing: 0.01em;
-  box-shadow: 0 6px 18px color-mix(in srgb, var(--accent) 38%, transparent);
-  transition: transform 0.16s var(--spring), box-shadow 0.18s var(--fluid-bezier), filter 0.18s var(--fluid-bezier);
-}
-@media (hover: hover) {
-  #pay-btn.pay-cta:hover {
-    box-shadow: 0 8px 24px color-mix(in srgb, var(--accent) 46%, transparent);}
-}
-#pay-btn.pay-cta:active {
-  transform: translateY(1px) scale(0.995);
-}
-/* Busy is a STATE: it keeps its fill, so the screen does not appear to lose its
-   primary action at the moment money is moving. */
-#pay-btn.pay-cta:disabled {
-  opacity: 0.72;
-  box-shadow: none;
-  transform: none;
-}
-@media (prefers-reduced-motion: reduce) {
-  #pay-btn.pay-cta {
-    transition: none;
-  }
-  #pay-btn.pay-cta:active {
-    transform: none;
-  }
-}
-.pay-receipt-note {
-  margin-top: 6px;
-  font-size: var(--fs-caption);
-  color: var(--text-muted);
-  text-align: center;
-}
-/* Sandbox-only: which test card works. --info stays a BORDER (a thing). */
-.pay-sandbox-note {
-  margin: 12px 0 0;
-  padding: 9px 12px;
-  border-left: 3px solid var(--info);
-  border-radius: var(--r-sm);
-  background: color-mix(in srgb, var(--info) 10%, transparent);
-  color: var(--text-light);
-  font-size: var(--fs-sub);
-  line-height: 1.45;
-}
-.pay-msg {
-  display: none;
-  margin: 14px 0 0;
-  padding: 11px 14px;
-  border-radius: var(--r-sm);
-  background: rgba(229, 57, 53, 0.12);
-  border: 1px solid rgba(229, 57, 53, 0.35);
-  color: var(--danger-text); /* theme-tuned: light red on dark, dark red on light — a payment error must stay legible */
-  font-size: var(--fs-sub);
-  line-height: 1.4;
-}
-.pay-msg.show {
-  display: block;
-}
-/* THE ARRANGEMENT CARD (payAutopayRender) + the schedule vocabulary it shares
-   with My Stays' plan block. Two visual languages for two truths: NUMBERED
-   step chips (.ap-step) for a schedule not yet running — dots inside a
-   selected radio option read as unchecked radios — and STATE dots + a slim
-   progress bar for a plan in flight (green done, accent next, hollow to come;
-   the words beside them always carry the state too). */
-/* STEP 1 IS A STEP, NOT A BOX. It carried a border and a tint of its own around
-   three more bordered option cards around a bordered schedule — 13 framed
-   blocks in one card, three deep, and the plan step was the worst of it. It is
-   unboxed like step 2 beside it (a numbered caption is what names a step here);
-   the OPTIONS are the one frame, joined into a single group below. */
-.pay-autopay {
-  display: block;
-  margin: 16px 0 4px;
-}
-.pay-ap-lead {
-  margin: 4px 0 12px;
-  font-size: var(--fs-sub);
-  color: var(--text-muted);
-}
-/* ONE GROUP, HAIRLINE-SEPARATED — the house list material (no shadow, a
-   hairline, radius only on the run's ends). Three separate cards read as three
-   things to weigh; one group reads as one choice with three answers. */
-.pay-ap-opts {
-  display: grid;
-  gap: 0;
-  border: 1px solid var(--glass-border);
-  border-radius: var(--r-lg);
-  overflow: clip;
-}
-.pay-ap-opt {
-  display: block;
-  padding: 12px;
-  cursor: pointer;
-  /* The pill-control press from the #1000 makeover — these are the same
-     species of control as the part toggle. */
-  transition: transform 320ms var(--settle), filter 320ms var(--settle), background 0.18s var(--fluid-bezier);
-}
-.pay-ap-opt + .pay-ap-opt {
-  border-top: 1px solid var(--glass-border);
-}
-.pay-ap-opt:active {
-  transform: scale(var(--sc, 0.97));
-  transition: transform 80ms var(--in), filter 80ms var(--in);}
-/* The chosen row wears the tint; the checked radio beside it is the other half
-   of the state. The 62% accent RING is gone with the per-option border — a ring
-   inside a joined group is the second edge the group exists to remove. */
-.pay-ap-opt.is-sel {
-  background: color-mix(in srgb, var(--accent) 7%, transparent);
-}
-.pay-ap-optrow {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-}
-/* 24px, not the UA's ~20: WCAG 2.2's 2.5.8 floor, on the control that chooses how
-   a guest's money is taken. Found the day a11y-test gained a pay scene. */
-.pay-ap-optrow input {
-  accent-color: var(--accent);
-  flex: none;
-  width: 24px;
-  height: 24px;
-}
-.pay-ap-opttxt {
-  min-width: 0;
-  flex: 1;
-}
-.pay-ap-title {
-  display: block;
-  font-weight: 600;
-  font-size: var(--fs-body);
-  color: var(--text-light);
-}
-.pay-ap-sub {
-  display: block;
-  font-size: var(--fs-caption);
-  color: var(--text-muted);
-  margin-top: 1px;
-}
-.pay-ap-fig {
-  font-weight: 600;
-  font-size: var(--fs-sub);
-  color: var(--accent-text);
-  font-variant-numeric: tabular-nums;
-  white-space: nowrap;
-}
-.pay-ap-body {
-  display: block;
-  margin: 11px 0 2px 26px;
-  /* The schedule REVEALS when monthly is chosen — the same easing as every
-     other pay-state change, instead of the one remaining hard cut. */
-  animation: payRise 0.32s var(--fluid-bezier);
-}
-.pay-ap-fine {
-  margin: 11px 2px 0;
-  font-size: var(--fs-caption);
-  color: var(--text-muted);
-  line-height: 1.45;
+body.light-mode .sq-apple-btn {
+  -apple-pay-button-style: black;
 }
 .ap-rail {
   display: grid;
@@ -4036,19 +4835,6 @@ a.card {
   gap: 9px;
   font-size: var(--fs-sub);
   color: var(--text-light);
-}
-.ap-step {
-  width: 16px;
-  height: 16px;
-  border-radius: 50%;
-  flex: none;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  font-size: var(--fs-micro);
-  font-weight: 700;
-  color: var(--accent-ink);
-  background: color-mix(in srgb, var(--accent) 55%, transparent);
 }
 .ap-date {
   min-width: 84px;
@@ -4062,19 +4848,6 @@ a.card {
 .ap-note {
   color: var(--text-muted);
   white-space: nowrap;
-}
-.ap-sum {
-  display: flex;
-  gap: 9px;
-  font-size: var(--fs-caption);
-  color: var(--text-muted);
-  border-top: 1px solid var(--glass-border);
-  padding-top: 7px;
-}
-.ap-sum::before {
-  content: '';
-  width: 16px;
-  flex: none;
 }
 .ap-dot {
   width: 10px;
@@ -4107,221 +4880,10 @@ a.card {
   border-radius: var(--r-pill);
   background: var(--ok-text);
 }
-.hub-plan {
-  margin: 12px 0 10px;
-  padding: 12px 14px;
-  border: 1px solid var(--glass-border);
-  border-radius: var(--r-md);
-  background: color-mix(in srgb, var(--glass-bg) 60%, transparent);
-  text-align: left;
-}
-.hub-plan-head {
-  display: flex;
-  justify-content: space-between;
-  align-items: baseline;
-  margin-bottom: 8px;
-}
-.hub-plan-sum {
-  font-size: var(--fs-caption);
-  color: var(--text-muted);
-}
-/* THE PLAN IN TROUBLE (My Stays) — warn, never danger: the booking is safe
-   and the fix is a minute. The fix button is the block's one loud control. */
-.hub-plan-trouble {
-  border-color: color-mix(in srgb, var(--warn) 34%, transparent);
-}
-.hub-plan-sum-warn {
-  color: var(--warn-text);
-  font-weight: 600;
-}
-.hub-plan-why {
-  margin: 8px 0 6px;
-  font-size: var(--fs-caption);
-  line-height: 1.5;
-  color: var(--text-light);
-}
-.ap-note-warn {
-  color: var(--warn-text);
-  font-weight: 600;
-}
-.hub-plan-fix {
-  width: 100%;
-  margin-top: 10px;
-  font-weight: 600;
-}
-/* THE REPAIR CARD (pay screen) — stores a card, touches no money. */
-.pay-repair {
-  margin: 0 0 14px;
-  padding: 13px 14px;
-  border: 1px solid color-mix(in srgb, var(--warn) 34%, transparent);
-  border-radius: var(--r-lg);
-  background: color-mix(in srgb, var(--warn) 10%, transparent);
-}
-.pay-repair .pay-sec-cap {
-  color: var(--warn-text);
-}
-.pay-repair .pay-rep-ok {
-  color: var(--ok-text);
-}
-.pay-rep-body {
-  margin: 6px 0 10px;
-  font-size: var(--fs-sub);
-  line-height: 1.55;
-  color: var(--text-light);
-}
-.pay-rep-btn {
-  width: 100%;
-  padding: 12px;
-  font-weight: 600;
-}
-.pay-rep-fine {
-  margin: 8px 0 0;
-  font-size: var(--fs-caption);
-  color: var(--text-muted);
-  line-height: 1.5;
-}
-.pay-done,
-.pay-error {
-  text-align: center;
-  padding: 16px 0;
-}
-/* ONE GEOMETRY FOR THE PAIR. Retry is the accent fill now, and .btn-glass
-   .btn-accent's guest-CTA 17px padding would make it taller than the plain
-   "Back to the site" beside it — the same mismatch the other way round. Stated
-   at (1,1,0) so it outranks .btn-glass.btn-accent (0,2,0) whatever the order. */
-#pay-error .btn-glass {
-  min-height: 44px;
-  font-size: var(--fs-body);
-  padding: 12px 26px;
-}
 .pay-done-tick .ic {
   width: 64px;
   height: 64px;
   color: var(--ok-text);
-}
-/* ---- THE JOURNEY (the approved payments demo): deposit → balance → deposit
-   back as dotted rows, "you are here" marked. One composer (payJourneyRows,
-   app.js) feeds the pay screen AND the done panel's what-happens-next. ---- */
-.pay-journey {
-  margin-top: 16px;
-  border: 1px solid var(--glass-border);
-  border-radius: var(--r-lg);
-  overflow: hidden;
-  text-align: left;
-}
-.pay-journey-cap {
-  font-size: var(--fs-caption);
-  font-weight: 600;
-  color: var(--text-muted);
-  padding: 12px 15px 0;
-}
-.pj-row {
-  display: flex;
-  align-items: center;
-  gap: 11px;
-  padding: 10px 15px;
-}
-.pj-row {
-  position: relative;
-}
-/* Separators start at the TEXT, not the card edge — the iOS inset-list rule
-   the hub's grouped rows already follow. */
-.pj-row + .pj-row::before {
-  content: '';
-  position: absolute;
-  left: 36px;
-  right: 0;
-  top: 0;
-  height: 1px;
-  background: var(--glass-border);
-}
-.pj-dot {
-  flex: none;
-  width: 10px;
-  height: 10px;
-  border-radius: 50%;
-  border: 2px solid var(--text-muted);
-  opacity: 0.55;
-}
-.pj-row.is-done .pj-dot { background: var(--ok); border-color: var(--ok); opacity: 1; }
-.pj-row.is-now .pj-dot { background: var(--accent); border-color: var(--accent); opacity: 1; }
-.pj-main { min-width: 0; flex: 1; }
-.pj-lbl { display: block; font-size: var(--fs-sub); font-weight: 600; }
-.pj-row.is-dim .pj-lbl { font-weight: 500; color: var(--text-muted); }
-.pj-sub { display: block; font-size: var(--fs-caption); color: var(--text-muted); margin-top: 1px; }
-.pj-fig { flex-shrink: 0; font-weight: 700; font-variant-numeric: tabular-nums; font-size: var(--fs-body); }
-.pj-row.is-dim .pj-fig { font-weight: 500; color: var(--text-muted); }
-/* The cottage's own colour opens the card — the money follows the thing it
-   buys. Painted by openPayView from propertyMeta's accent; hidden without one. */
-/* It IS the top edge, not a rule floating in the padding: a 4px bar with its
-   own 4px radius, inset 8px inside a card whose own corner is 28px, read as a
-   stray bar above the title. Pulled the full 28px out of the padding box and
-   squared off — the card's `overflow: clip` gives it the card's corner. The
-   24px beneath restores the card's own top rhythm (4 + 24 = 28), so a cottage
-   with no accent (band display:none) is unmoved. */
-.pay-stay-band {
-  height: 4px;
-  border-radius: 0;
-  margin: -28px -28px 24px;
-}
-.pay-stay-cap {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  font-size: var(--fs-caption);
-  font-weight: 600;
-  padding: 2px 10px;
-  border-radius: var(--r-pill);
-  margin-left: 8px;
-  vertical-align: 1px;
-  white-space: nowrap;
-  color: var(--ok-text);
-  background: color-mix(in srgb, var(--ok) 14%, transparent);
-  border: 1px solid color-mix(in srgb, var(--ok) 24%, transparent);
-}
-.pay-stay-cap.is-held {
-  color: var(--warn-text);
-  background: color-mix(in srgb, var(--warn) 13%, transparent);
-  border-color: color-mix(in srgb, var(--warn) 24%, transparent);
-}
-/* An ARRANGED balance's marked row — the sea-blue "handled" state, not the
-   accent's "you are here": there is nothing to do. */
-.pj-row.is-arr .pj-dot { background: var(--info); border-color: var(--info); opacity: 1; }
-/* While the charge runs, the journey's own marker is the thing that spins —
-   one pulse, one place (payStepsArm swaps is-now for this; End settles it). */
-.pj-row.is-run .pj-dot {
-  opacity: 1;
-  background: transparent;
-  border-color: color-mix(in srgb, var(--accent) 34%, transparent);
-  border-top-color: var(--accent);
-}
-/* The demoted ask on an armed plan: paying now is offered, never shouted.
-   AT THE WINNING SPECIFICITY. This shipped as `.pay-cta.is-quiet` (0,2,0)
-   against `#pay-btn.pay-cta` (1,1,0) directly above, so the rule existed and
-   LOST: an already-arranged balance painted the accent fill, the accent-ink
-   text and the 18px rose glow — byte-identical to an unpaid ask, on the one
-   screen where "nothing to do" and "pay me now" must not look the same. The
-   hover twin is load-bearing too, or the pointer re-glows what this demotes. */
-#pay-btn.pay-cta.is-quiet {
-  background: transparent;
-  border: 1px solid var(--glass-border);
-  color: var(--text-light);
-  box-shadow: none;
-  text-transform: none;
-  letter-spacing: 0;
-  font-weight: 600;
-}
-@media (hover: hover) {
-  #pay-btn.pay-cta.is-quiet:hover {
-    filter: none;
-    box-shadow: none;}
-}
-.pay-armed-note {
-  font-size: var(--fs-caption);
-  color: var(--text-muted);
-  text-align: center;
-  margin-top: 10px;
-  line-height: 1.5;
 }
 /* THE NARRATED WAIT (#pay-steps, payStepsArm): unfolds via grid-rows so it
    grows in rather than jumping; each step's dot spins while its real phase
@@ -4408,13 +4970,6 @@ a.card {
 .pay-step-lbl { display: block; font-size: var(--fs-sub); font-weight: 600; }
 .pay-step.is-run .pay-step-lbl { color: var(--accent-text); }
 .pay-step-sub { display: block; font-size: var(--fs-caption); color: var(--text-muted); margin-top: 1px; }
-/* The loading wait wears the shape of the coming screen (index.html). */
-.pay-sk-box {
-  border: 1px solid var(--glass-border);
-  border-radius: var(--r-lg);
-  padding: 16px;
-  margin-bottom: 12px;
-}
 /* MONEY COMING BACK (guestDepositTrackerHtml, My Stays): issued → your bank,
    the solid stretch is the days already behind the guest, the dashes what's
    left. The dates are ledger facts; the fill is arithmetic on them. */
@@ -4433,67 +4988,13 @@ a.card {
 .dep-f { font-size: var(--fs-sub); color: var(--text-muted); margin-top: 16px; padding-top: 16px; border-top: 1px solid var(--glass-border); text-wrap: pretty; }
 .dep-f b { color: var(--text-light); font-weight: 600; }
 @media (prefers-reduced-motion: reduce) { .dep-track, .dep-bar b { animation: none; } }
-/* ---- MONEY IN FLIGHT ANIMATES; money at rest is still (the approved motion
-   grammar). The "you are here" dot pings; a processing button spins and
-   shimmers; success is a green beat on the control BEFORE the done panel;
-   the receipt's tick draws itself. All stand down under reduced motion. ---- */
-.pay-cta.is-busy {
-  position: relative;
-  overflow: hidden;
-  pointer-events: none;
-}
-/* .btn-glass.is-busy::before is (0,3,0) and this was (0,2,0), so the shared
-   13px chbSpin ring painted here and the ring declared for the money screen
-   never did — the same "the rule exists and loses" shape as the quiet button
-   above. Restated at (0,3,0) and LATER in the sheet, so the pay ring wins. */
-.btn-glass.pay-cta.is-busy::before {
-  content: '';
-  display: inline-block;
-  width: 14px;
-  height: 14px;
-  border: 2.5px solid color-mix(in srgb, currentColor 30%, transparent);
-  border-top-color: currentColor;
-  border-radius: 50%;
-  vertical-align: -2px;
-  margin-right: 8px;
-  animation: paySpin 0.7s linear infinite;
-}
-/* BUSY IS THE SPINNER, NOT A DIM. The dispatcher disables the control while the
-   charge runs and `#pay-btn.pay-cta:disabled` (1,2,0) outranks the shared
-   `.btn-glass.is-busy:disabled` (0,3,0), so the button faded to 72% at the one
-   moment money is moving. (1,3,0) settles it. */
-#pay-btn.pay-cta.is-busy:disabled {
-  opacity: 1;
-}
-.pay-cta.is-busy::after {
-  content: '';
-  position: absolute;
-  inset: 0;
-  background: linear-gradient(100deg, transparent 30%, rgba(255, 255, 255, 0.22) 50%, transparent 70%);
-  transform: translateX(-100%);
-  animation: paySweep 1.1s ease-in-out infinite;
-}
 @keyframes paySpin { to { transform: rotate(360deg); } }
-@keyframes paySweep { to { transform: translateX(100%); } }
-.pay-cta.is-paid {
-  /* 15%, not stronger — --ok-text on its own tint fails AA past ~20% (a11y §1b
-     measured 28% at 4.15:1); the beat's emphasis is the border + the ✓. */
-  background: color-mix(in srgb, var(--ok) 15%, transparent);
-  border-color: color-mix(in srgb, var(--ok) 45%, transparent);
-  color: var(--ok-text);
-}
 @media (prefers-reduced-motion: no-preference) {
-  /* THE UNHURRIED PAYMENT: success slows; the WAIT (spinner, sweep), the
-     decline and My Stays' 2.4s dot do not. See CLAUDE.md. */
-  .pj-row.is-now .pj-dot { animation: pjPing 3.2s ease-out infinite; }
   @keyframes pjPing {
     0% { box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 26%, transparent); }
     70% { box-shadow: 0 0 0 10px transparent; }
     100% { box-shadow: 0 0 0 3px transparent; }
   }
-  /* The plan's NEXT collection is money waiting — same ping, My Stays' own
-     dots. A troubled plan does not ping: red is not "on its way". */
-  .hub-plan:not(.hub-plan-trouble) .ap-dot.is-next { animation: pjPing 2.4s ease-out infinite; }
   /* The receipt's tick draws itself on reveal (display flips restart CSS
      animations, so this needs no JS). */
   .pay-done-tick .ic path {
@@ -4505,18 +5006,15 @@ a.card {
      the narration unfolds, a finished step's tick POPS, the working dot spins,
      a decline SETTLES, the receipt cascades in behind its tick's halo. */
   .pay-steps { transition: grid-template-rows 0.7s var(--spring); }
-  .pay-step.is-run .pay-step-dot,
-  .pj-row.is-run .pj-dot { animation: paySpin 0.8s linear infinite; }
-  .pay-step.is-ok .pay-step-dot,
-  .pj-row.is-done .pj-dot { animation: payPop 280ms var(--out); }
+  .pay-step.is-run .pay-step-dot { animation: paySpin 0.8s linear infinite; }
+  .pay-step.is-ok .pay-step-dot { animation: payPop 280ms var(--out); }
   /* Appear: from 0.94 on a deceleration — never from half size, never past 1. */
   @keyframes payPop {
     0% { transform: scale(0.94); opacity: 0.6; }
     100% { transform: scale(1); opacity: 1; }
   }
-  .pay-cta.is-paid { animation: payPop2 320ms var(--settle); }
   @keyframes payPop2 { from { transform: scale(0.96); } }
-  .pay-msg.show { animation: paySettle 0.5s var(--spring); } /* unhurried-exempt: bad news is read, not savoured */
+   /* unhurried-exempt: bad news is read, not savoured */
   @keyframes paySettle {
     0% { transform: translateX(0) translateY(4px); opacity: 0; }
     30% { transform: translateX(-5px) translateY(0); opacity: 1; }
@@ -4546,11 +5044,6 @@ a.card {
     35% { opacity: 1; }
     100% { opacity: 0; transform: translate(-50%, -50%) scale(1.6); }
   }
-  .pay-done > *:nth-child(2) { animation: payCasc 0.7s var(--spring) 0.7s backwards; }
-  .pay-done > *:nth-child(3) { animation: payCasc 0.7s var(--spring) 0.95s backwards; }
-  .pay-done > *:nth-child(4) { animation: payCasc 0.7s var(--spring) 1.2s backwards; }
-  .pay-done > *:nth-child(5) { animation: payCasc 0.7s var(--spring) 1.45s backwards; }
-  .pay-done > *:nth-child(6) { animation: payCasc 0.7s var(--spring) 1.65s backwards; }
   @keyframes payCasc { from { opacity: 0; transform: translateY(8px); } }
 }
 /* ---- THE BOOKING FLOW SPEAKS AND MOVES (the approved demo): the picker's
@@ -4718,89 +5211,11 @@ a.card {
   #enquire-step-account > *:nth-child(6) { animation: payCasc 0.5s var(--spring) 0.95s backwards; }
 }
 @media (prefers-reduced-motion: reduce) {
-  .pay-cta.is-busy::before,
-  .btn-glass.pay-cta.is-busy::before,
-  .pay-cta.is-busy::after {
-    animation: none;
-    content: none;
-  }
   /* The unfold becomes an instant reveal; the states still read. */
   .pay-steps { transition: none; }
 }
-/* PAY-JOURNEY MOTION — states used to CUT. Animations replay on display:none →
-   shown, so each panel eases in at its own state change with no JS; the hero
-   ticks over via .pay-amt-swap (payPartRender, real change only). Close stays
-   instant; all of it stands down under reduced motion (decoration only). */
-@keyframes payRise {
-  from {
-    opacity: 0;
-    transform: translateY(10px);
-  }
-  to {
-    opacity: 1;
-    transform: none;
-  }
-}
-@keyframes payPop {
-  0% {
-    opacity: 0;
-    transform: scale(0.55);
-  }
-  70% {
-    transform: scale(1.06);
-  }
-  100% {
-    opacity: 1;
-    transform: scale(1);
-  }
-}
-@keyframes payAmtSwap {
-  from {
-    opacity: 0.2;
-    transform: translateY(-6px);
-  }
-  to {
-    opacity: 1;
-    transform: none;
-  }
-}
-#pay-body,
-.pay-error {
-  animation: payRise 0.38s var(--fluid-bezier);
-}
-.pay-done {
-  animation: payRise 0.42s var(--fluid-bezier);
-}
 .pay-done-tick .ic {
   animation: payPop 280ms var(--out) 0.08s backwards;
-}
-.pay-part-row,
-.pay-express,
-.pay-autopay {
-  animation: payRise 0.32s var(--fluid-bezier);
-}
-.pay-msg.show {
-  animation: payRise 0.3s var(--fluid-bezier);
-}
-#pay-amount.pay-amt-swap {
-  animation: payAmtSwap 0.3s var(--fluid-bezier);
-}
-/* THE APPLE PAY VOCABULARY. Sheet cascade (backwards fill holds each block
-   until its turn); the confirm DRAWS — ring then check (dash lengths cover the
-   real geometry: circle r=9 → 2πr≈57, check ≈15); a spinner rides the button
-   while money moves; the pill controls compress under the finger. */
-.pay-summary > *,
-.pay-form > * {
-  animation: payRise 0.42s var(--fluid-bezier) backwards;
-}
-.pay-form > :nth-child(2) {
-  animation-delay: 0.05s;
-}
-.pay-form > :nth-child(3) {
-  animation-delay: 0.1s;
-}
-.pay-form > :nth-child(n + 4) {
-  animation-delay: 0.16s;
 }
 .pay-done-tick circle {
   stroke-dasharray: 57;
@@ -4817,45 +5232,8 @@ a.card {
     stroke-dashoffset: 0;
   }
 }
-/* …and the done words follow the mark. */
-#pay-done h2 {
-  animation: payRise 0.4s var(--fluid-bezier) 0.3s backwards;
-}
-#pay-done p {
-  animation: payRise 0.4s var(--fluid-bezier) 0.42s backwards;
-}
-#pay-done button {
-  animation: payRise 0.4s var(--fluid-bezier) 0.54s backwards;
-}
-/* An older 13px TRAILING ring lived here (`#pay-btn.is-busy::after`, with a
-   duplicate @keyframes paySpin). At (1,1,0) it beat `.pay-cta.is-busy::after`
-   — the shimmer sweep — on display/size/border/animation while INHERITING its
-   `position:absolute; inset:0`, so the pay button painted a SECOND ring pinned
-   half-clipped at its top-left corner and the sweep never appeared at all. One
-   spinner: the ::before ring beside "Processing…", the ::after sweep behind it. */
-#view-pay .pay-full-link,
-#pay-done button {
-  transition: transform 320ms var(--settle), filter 320ms var(--settle);
-}
-#view-pay .pay-full-link:active,
-#pay-done button:active {
-  transform: scale(var(--sc, 0.97));
-  transition: transform 80ms var(--in), filter 80ms var(--in);}
 @media (prefers-reduced-motion: reduce) {
-  #pay-body,
-  .pay-done,
-  .pay-done-tick .ic,
-  .pay-part-row,
-  .pay-express,
-  .pay-autopay,
-  .pay-msg.show,
-  .pay-error,
-  #pay-amount.pay-amt-swap,
-  .pay-summary > *,
-  .pay-form > *,
-  #pay-done h2,
-  #pay-done p,
-  #pay-done button {
+  .pay-done-tick .ic {
     animation: none;
   }
   /* The DRAW starts invisible: with its animation gone the strokes must be
@@ -4865,49 +5243,6 @@ a.card {
     animation: none;
     stroke-dasharray: none;
     stroke-dashoffset: 0;
-  }
-  #view-pay .pay-full-link:active,
-  #pay-done button:active {
-    transform: none;
-  }
-  .pay-ap-body {
-    animation: none;
-  }
-  .pay-ap-opt {
-    transition: none;
-  }
-  .pay-ap-opt:active {
-    transform: none;
-  }
-}
-/* Desktop: make use of the wider screen — order summary beside the card form
-           (the narrow single column is kept on phones, where it reads as a clean
-           checkout). pay-head stays full-width above; pay-done/pay-error replace the
-           body and stay centred. */
-@media (min-width: 769px) {
-  #view-pay .pay-wrap {
-    /* 700 gave the FORM a 338px column — a phone layout inside a desktop card,
-       with the plan open at 1,152px beside a 607px summary and 290px of empty
-       ground each side. The plan options stay a vertical list (they are
-       mutually exclusive, with a schedule that expands under the chosen one);
-       what changes is that the column is no longer phone-width. */
-    max-width: 880px;
-  }
-  #view-pay #pay-body {
-    display: grid;
-    grid-template-columns: 0.9fr 1.1fr;
-    gap: 28px;
-    align-items: start;
-  }
-  /* …and the summary travels with the form instead of leaving dead ground
-     beside it. 100px is the app's own clearance under the fixed bar (the
-     scroll-margin-top pattern). */
-  #view-pay .pay-summary {
-    position: sticky;
-    top: calc(100px + var(--safe-t));
-  }
-  #view-pay .pay-summary .pay-amount-box {
-    margin-bottom: 0;
   }
 }
 /* Enquiry CTAs are for customers; hide them while the owner is signed in. */
@@ -8152,57 +8487,6 @@ body.light-mode .feed-dot-bad {
   color: var(--text-muted);
   margin-top: 2px;
 }
-/* Pre-arrival countdown hub — the anticipation card for the soonest upcoming
-   stay. A sea-blue countdown badge sits at the head's trailing edge. */
-.hub-head-text {
-  flex: 1 1 auto;
-  min-width: 0;
-}
-.my-stay-hub-soon .hub-count {
-  flex: 0 0 auto;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  min-width: 62px;
-  padding: 8px 10px;
-  border-radius: var(--r-md);
-  background: var(--info-bg, rgba(56, 132, 197, 0.16));
-  line-height: 1;
-}
-.hub-count-n {
-  font-family: var(--font-serif);
-  font-size: var(--fs-display);
-  font-weight: 700;
-  color: var(--info-text, var(--text-light));
-}
-.hub-count-u {
-  font-size: var(--fs-caption);
-  color: var(--text-muted);
-  margin-top: 3px;
-  text-align: center;
-  font-weight: 600;
-}
-.hub-warn {
-  color: var(--warn-text);
-  font-weight: 600;
-}
-.hub-ok {
-  color: var(--ok-text, var(--ok));
-  font-weight: 600;
-}
-.hub-cta {
-  margin: 4px 0 2px;
-}
-/* The FILL is stated once, with the card's own CTA, further down — the two
-   painted the same "Pay balance £350.00" in two colours a screen apart, this
-   one in the green that means DONE everywhere else on the page. */
-.hub-cta-btn {
-  display: inline-flex;
-  align-items: center;
-  gap: 7px;
-  text-decoration: none;
-}
 /* Desktop: drop the tides line from the My Stay hub (kept on mobile, where
            it's a handy at-a-glance during a stay). */
 @media (min-width: 641px) {
@@ -8210,11 +8494,9 @@ body.light-mode .feed-dot-bad {
     display: none;
   }
 }
-/* ---- The My Stays companion (approved demo): the stay timeline, weather
-   strip and the arrival-day code hero. Token colours only, so both themes
-   hold. The door code follows the keeper's gate — see guestStayTimelineHtml /
-   guestDoorCodeHeroHtml. ---- */
-.gtl,
+/* ---- The My Stays companion (approved demo): the weather strip and the
+   arrival-day code hero. Token colours only, so both themes hold. The door code
+   follows the keeper's gate — see guestDoorCodeHeroHtml. ---- */
 .gwx {
   margin-top: 14px;
 }
@@ -8223,72 +8505,6 @@ body.light-mode .feed-dot-bad {
   font-weight: 600;
   color: var(--text-muted);
   margin-bottom: 6px;
-}
-.gtj {
-  display: flex;
-  align-items: flex-start;
-  gap: 11px;
-  padding: 9px 2px;
-  position: relative;
-}
-.gtj + .gtj::before {
-  content: '';
-  position: absolute;
-  left: 24px;
-  right: 0;
-  top: 0;
-  height: 1px;
-  background: var(--glass-border);
-}
-.gtj-dot {
-  width: 11px;
-  height: 11px;
-  border-radius: 50%;
-  margin-top: 4px;
-  flex: none;
-  box-sizing: border-box;
-  border: 2px solid var(--glass-border);
-  background: transparent;
-}
-.gtj.is-done .gtj-dot {
-  background: var(--ok);
-  border-color: var(--ok);
-}
-.gtj.is-now .gtj-dot {
-  background: var(--accent);
-  border-color: var(--accent);
-}
-.gtj.is-arr .gtj-dot {
-  background: var(--info);
-  border-color: var(--info);
-}
-.gtj-m {
-  flex: 1;
-  min-width: 0;
-}
-.gtj-l {
-  display: block;
-  font-size: var(--fs-sub);
-  font-weight: 600;
-  color: var(--text-light);
-}
-.gtj-s {
-  display: block;
-  font-size: var(--fs-caption);
-  color: var(--text-muted);
-  margin-top: 1px;
-}
-.gtj-f {
-  font-size: var(--fs-sub);
-  font-weight: 700;
-  font-variant-numeric: tabular-nums;
-  white-space: nowrap;
-  color: var(--text-light);
-}
-.gtj.is-dim .gtj-l,
-.gtj.is-dim .gtj-f {
-  font-weight: 500;
-  color: var(--text-muted);
 }
 /* Weather strip — the stay's own days, absent beyond the forecast horizon. */
 .gwx-row {
@@ -8407,11 +8623,6 @@ body.light-mode .feed-dot-bad {
   color: var(--text-light);
   border-color: var(--glass-border);
 }
-@media (prefers-reduced-motion: no-preference) {
-  .gtj.is-now .gtj-dot {
-    animation: pjPing 2.4s ease-out infinite;
-  }
-}
 /* ---- The stay card, rebuilt (gb2): accent band + serif name, spoken
    when-line, ONE payline with the breakdown folded under it, quiet action
    links (flatten-by-CSS — the buttons keep their classes + data-acts). The
@@ -8484,18 +8695,6 @@ body.light-mode .feed-dot-bad {
 .gb2-tick {
   color: var(--ok-text);
 }
-.gb2-plr {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  white-space: nowrap;
-}
-.gb2-fig {
-  font-family: var(--font-serif);
-  font-size: var(--fs-headline);
-  font-weight: 600;
-  font-variant-numeric: tabular-nums;
-}
 .gb2-chev {
   display: inline-block;
   color: var(--text-muted);
@@ -8556,6 +8755,120 @@ body.light-mode .feed-dot-bad {
   color: var(--text-muted);
   margin: 8px 0 0;
 }
+/* ---- ONE MONEY BLOCK PER STAY (the pay-screens build): the figure and its
+   line, the one button, a bar of what is paid, and the breakdown folded under
+   "Payment details" — one well, its last row on a hairline. ---- */
+.gbm {
+  margin: 0 0 16px;
+  border: 1px solid var(--glass-border);
+  border-radius: var(--r-lg);
+  background: var(--well-bg);
+  overflow: hidden;
+}
+.gbm-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 16px 16px 12px;
+}
+.gbm-t {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+}
+.gbm-fig {
+  font-size: var(--fs-headline);
+  font-weight: 700;
+  color: var(--text-light);
+  font-variant-numeric: tabular-nums lining-nums;
+  text-wrap: balance;
+}
+.gbm-s {
+  font-size: var(--fs-sub);
+  color: var(--text-muted);
+  text-wrap: pretty;
+}
+.gbm-s.is-warn {
+  color: var(--warn-text);
+  font-weight: 600;
+}
+.gbm-s.is-info {
+  color: var(--info-text);
+  font-weight: 600;
+}
+.gbm-btn {
+  flex: 0 0 auto;
+  min-height: 44px;
+  padding: 0 20px;
+  border: 0;
+  border-radius: var(--r-pill);
+  background: transparent;
+  box-shadow: inset 0 0 0 1.5px var(--glass-border);
+  color: var(--text-light);
+  font: inherit;
+  font-size: var(--fs-body);
+  font-weight: 600;
+  cursor: pointer;
+  transition: transform 320ms var(--settle);
+}
+.gbm-btn.is-accent {
+  background: var(--accent);
+  box-shadow: 0 6px 18px color-mix(in srgb, var(--accent) 30%, transparent);
+  color: var(--accent-ink);
+}
+.gbm-btn:active {
+  transform: scale(var(--sc, 0.97));
+  transition: transform 80ms var(--in);
+}
+.gbm-bar {
+  height: 6px;
+  margin: 0 16px;
+  border-radius: var(--r-pill);
+  background: color-mix(in srgb, var(--text-muted) 22%, transparent);
+  overflow: hidden;
+}
+.gbm-bar > span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--ok);
+}
+.gbm-leg {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 16px 12px;
+  font-size: var(--fs-caption);
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums lining-nums;
+}
+/* "Payment details" is the well's last row, not a well of its own. */
+.gbm .gb2-payline,
+.gbm .gb2-payline.is-open {
+  min-height: 48px;
+  margin: 0;
+  padding: 0 16px;
+  border: 0;
+  border-top: 1px solid var(--glass-border);
+  border-radius: 0;
+  background: none;
+}
+.gbm .gb2-fold {
+  margin: 0;
+  padding: 0 16px 14px;
+  border: 0;
+  border-radius: 0;
+  background: none;
+}
+.gbm .gb2-fold[hidden] {
+  padding-top: 0;
+  padding-bottom: 0;
+}
+/* The soonest stay's countdown sits on its photo, the You page's badge. */
+.gb2-count {
+  z-index: 1;
+}
 /* The booking-progress panel joins the 16px beat and matches the well's
    internal air. */
 .gb2 .bkflow {
@@ -8564,34 +8877,6 @@ body.light-mode .feed-dot-bad {
 }
 .gb2-cta {
   margin: 0 0 14px;
-}
-/* THE PRIMARY ASK IS NOT THE SMALLEST TYPE IN THE CARD. On base .btn-sm, "PAY
-   BALANCE £250.00" was 10.88px uppercase 400 while "Invoice" beneath it was
-   12.8px 600. This is .gb2-again's tier: 14.4 primary / 12.8 quiet. The hub's
-   CTA moves with it or the two hubs disagree.
-   ONE RULE, ONE COLOUR. The hub's ask painted a 22% green fill with the
-   booked-border while the card's — the SAME "Pay balance £350.00", 1.2 screens
-   below — carried an inline accent fill; green is the done state everywhere
-   else on this page. Both are this rule now: the card's inline style is gone
-   and the hub's green with it, so they cannot drift again. */
-/* THE HOVER MUST BE STATED TOO. `.hub-cta-btn` alone is (0,1,0) and
-   `.btn-glass:hover` is (0,2,0), so under a pointer the hub's ask went
-   accent → glass with its ink inverted while the card's twin (0,2,0, later)
-   kept the accent: the two "one rule" buttons diverged exactly where the
-   comment below says they cannot. Mirrors .btn-glass.btn-accent:hover. */
-.gb2-cta .btn-sm:hover,
-.hub-cta-btn:hover {
-  color: var(--accent-ink);
-  border-color: transparent;}
-.gb2-cta .btn-sm,
-.hub-cta-btn {
-  background: var(--accent);
-  color: var(--accent-ink);
-  border-color: transparent;
-  font-size: var(--fs-body);
-  font-weight: 600;
-  text-transform: none;
-  letter-spacing: 0;
 }
 /* DESKTOP IS NOT A STRETCHED PHONE. At 1280 the hub and every card ran the
    container's full 1160px: a timeline label at x87 with its figure at x913 —
@@ -11955,7 +12240,6 @@ header nav a {
 header nav a:active {
   transform: scale(var(--sc, 0.97));
   transition: transform 80ms var(--in), filter 80ms var(--in);}
-
 /* SETTLE — a value landing from a fetch, first fill only. */
 .card-price.is-landed,
 .card-rating.is-landed,
@@ -11964,7 +12248,6 @@ header nav a:active {
 }
 /* APPEAR */
 .cottages-list .cott-fav.is-in,
-.hub-count.chb-appear,
 .hub-code.chb-appear,
 .chat-bot.chb-appear {
   animation: chbAppear 280ms var(--out);
@@ -12085,9 +12368,10 @@ header nav a:active {
 .dp-nav-btn { position: relative; }
 .dp-nav-btn::after { content: ''; position: absolute; inset: -3px; }
 .theme-switch::after { content: ''; position: absolute; inset: -6px; }
-/* The rag: pretty is the default for prose; a booking ref and "£X to pay" hold as units. */
+/* The rag: pretty is the default for prose; a stay's dates, its party and its
+   booking ref each hold as a unit. */
 p, .gb2-when, .prop-feature-sub, .stayed-before-chip { text-wrap: pretty; }
-.gb2-ref, .gb2-pl-unit { white-space: nowrap; }
+.gb2-ref { white-space: nowrap; }
 
 /* ===== PR2 — EVERYTHING MEETS THE THUMB (the guest half) =====
    HIT REGIONS, NOT BIGGER CONTROLS, wherever the paint is deliberate: an
@@ -13227,6 +13511,14 @@ div.ga-row {
 .ga-ask.is-ok b {
   color: var(--ok-text);
 }
+.ga-ask-t span.is-warn {
+  color: var(--warn-text);
+  font-weight: 600;
+}
+.ga-ask-t span.is-info {
+  color: var(--info-text);
+  font-weight: 600;
+}
 .ga-code {
   font-family: var(--font-serif);
   font-size: var(--fs-title);
@@ -13311,6 +13603,10 @@ div.ga-row {
 .ga-pill.is-ok {
   color: var(--ok-text);
   background: color-mix(in srgb, var(--ok) 14%, transparent);
+}
+.ga-pill.is-info {
+  color: var(--info-text);
+  background: color-mix(in srgb, var(--info) 14%, transparent);
 }
 .ga-empty {
   text-align: center;

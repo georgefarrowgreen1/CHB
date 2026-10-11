@@ -279,9 +279,12 @@ chk('the confirmation states the deposit the card took, once taken',
     strpos($bclW, "in_array(\$holdStatus, ['charged', 'captured', 'kept'], true) && (float) (\$b['hold_amount'] ?? 0) > 0) {") !== false
     && strpos($bclW, "\$deposit = round((float) \$b['hold_amount'], 2);") !== false);
 $appW = (string) file_get_contents(__DIR__ . '/app.js');
+// The pay screen states its money once (payFig): the deposit that came back or is
+// still to come joins the whole, and one already charged joins what is paid.
 chk('…and the client folds it into the total AND the paid figure',
-    strpos($appW, 'Number(s.total) + dep + depCharged') !== false
-    && strpos($appW, 'Number(s.alreadyPaid || 0) + depCharged') !== false);
+    strpos($appW, 'const back = dep > 0 ? dep : depCharged;') !== false
+    && strpos($appW, 'grand: payR2(Number(s.total || 0) + back)') !== false
+    && strpos($appW, 'paid: payR2(Number(s.alreadyPaid || 0) + depCharged)') !== false);
 // A CASH deposit counts as paid in the confirmation's own derivation too —
 // hold_status is a card-rail fact, and $rentalPaid caps at the total, so a
 // re-sent confirmation for £750 handed over in cash read "Paid so far £700 ·
@@ -1088,7 +1091,7 @@ chk('…and an absent/unknown kind becomes null, not a silent "deposit" preferen
 chk('the client stops reading a stale k=deposit off the URL',
     strpos((string) file_get_contents(__DIR__ . '/app.js'), "usp.get('k') === 'balance' ? 'balance' : null") !== false);
 chk('…and pins the resolved stage so the charge asks for what was quoted',
-    strpos((string) file_get_contents(__DIR__ . '/app.js'), "if (s.kind === 'deposit' || s.kind === 'balance' || s.kind === 'hold') payState.kind = s.kind;") !== false);
+    strpos((string) file_get_contents(__DIR__ . '/app.js'), "payState.kind = s.kind === 'deposit' || s.kind === 'balance' || s.kind === 'hold' ? s.kind : payState.kind;") !== false);
 
 // ---- AUTOPAY: never take money without a recorded, current agreement -------
 //
@@ -1387,8 +1390,12 @@ chk('...and a refused amount REDRAWS the screen rather than just erroring',
 // The label the guest taps is part of the figure. Restoring a remembered
 // "Pay £225" after the screen has been redrawn at £300 re-states the number the
 // server has just refused.
+// The button's words are drawn from the summary on screen (payBtnLabel reads
+// payState.amountDue), never restored from a remembered string.
 chk('...without putting the stale figure back on the button',
-    strpos($appSrcQ, "if (btn.textContent === 'Processing…') btn.textContent = orig;") !== false);
+    strpos($appSrcQ, "btn.removeAttribute('aria-busy');\n            payBtnPaint('');") !== false
+    && strpos($appSrcQ, 'Pay ${gbp(payState.amountDue)}') !== false
+    && preg_match('/const orig\w*\s*=\s*btn\.(textContent|innerHTML)/', $appSrcQ) === 0);
 
 // ============================================================
 //  THE TWO EMAILS AUTOMATIC COLLECTION OWES THE GUEST — driven through the REAL
@@ -1597,8 +1604,12 @@ chk('the quote is verified BEFORE the part is applied', $qAt !== false && $cAt !
 // The refundable deposit rides the payment that COMPLETES the stage, not a
 // slice of it: bundling £50 onto a £20 request makes the sum not what they typed.
 chk('a part payment carries no refundable deposit', strpos($paySrc, '$damagesDue = 0.0;') !== false);
-chk('the client only ever ASKS', strpos($appSrc2, 'part_amount: partOverride !== undefined ? partOverride : payState.partAmount || 0,') !== false);
-chk('...and the field is offered only when the server sends bounds', strpos($appSrc2, 'if (partWrap) partWrap.style.display = payState.part ? \'\' : \'none\';') !== false);
+// THE GUEST PAY SCREEN NO LONGER OFFERS A PART PAYMENT (the pay-screens build:
+// "the other payment amount" was removed at the owner's ask). The server keeps its
+// support above — a slice is still clamped, quoted and answered — and the client
+// simply never asks for one, so no request from the screen can carry a slice.
+chk('the guest pay screen never asks for a part payment', strpos($appSrc2, 'part_amount') === false);
+chk('...and draws no field for one', preg_match('/id="pay-part/', (string) file_get_contents(__DIR__ . '/index.html')) === 0);
 
 echo "\n-- part payment: the done screen is not a dead end --\n";
 // The charge answers with `remaining` — what is left of the ask the guest was
@@ -1609,14 +1620,11 @@ $fcAt = strpos($paySrc, '$fullCharge = $chargeTotal;');
 $pcAt = strpos($paySrc, "isset(\$in['part_amount'])");
 chk('the full ask is captured BEFORE the clamp', $fcAt !== false && $pcAt !== false && $fcAt < $pcAt);
 chk('the charge response carries what is left of it', strpos($paySrc, "'remaining' => \$partial ? round(\$fullCharge - \$chargeTotal, 2) : 0,") !== false);
-// The client half: the done screen reads it (checked before fullyPaid — a max
-// slice settles the rental while the deposit is still to come), the button is
-// named for it, and "pay the rest" re-opens the same screen to re-ask the server.
-chk('the done screen states the remaining figure', strpos($appSrc2, 'is still to pay') !== false && strpos($appSrc2, "Number(res.remaining || 0)") !== false);
-$remAt = strpos($appSrc2, 'rem > 0.005');
-$fpAt = strpos($appSrc2, 'res.fullyPaid');
-chk('...checked before fullyPaid', $remAt !== false && $fpAt !== false && $remAt < $fpAt);
-chk('...with a button that re-opens the same screen', strpos($appSrc2, 'function payRestNow()') !== false && strpos($appSrc2, 'openPayView(payState.token, payState.bookingId, payState.kind)') !== false);
+// The client half (the done screen's "£X is still to pay" and its Pay the rest)
+// went with the part payment: a screen that never asks for a slice is never
+// answered with a remainder. What it reads is the stay's own balance — the receipt
+// says paid in full only when nothing of the stay is left.
+chk('the receipt reads the stay\'s balance, not this stage\'s', strpos($appSrc2, 'fullyPaid: Number(s.balance) <= 0.005') !== false);
 
 // ============================================================
 //  A CANCELLED BOOKING'S DEPOSIT IS ACCOUNTED FOR ON ALL THREE SURFACES.
@@ -2406,6 +2414,56 @@ chk('every displayed due date is the told one (confirmation, invoice, My stays, 
     && strpos((string) file_get_contents(__DIR__ . '/booking-confirm-lib.php'), 'booking_balance_due_shown($b)') !== false);
 chk('the confirmation\'s Payment row only says "Paid in full" when its balance is clear',
     strpos($mlS, "(\$b['payment'] ?? 'unpaid') === 'paid' && \$balNow > 0.005") !== false);
+
+// THE PAY SCREEN'S FACTS (the pay-screens build). The summary names the stay, the
+// day the first money arrived, when the arrival details go out, the inbox a receipt
+// goes to and a monthly plan's rows; the charge says which card paid. Pure helpers
+// driven here; the wiring scanned, because Square is off wherever pay.php could run.
+echo "\n== The pay screen's facts ==\n";
+// WHERE THE RECEIPT WENT, named without the address: the screen opens from a link
+// that can be forwarded, so it says which inbox to look in and no more.
+chk('email_hint names the inbox without quoting the address', email_hint('debbie.mcg@example.co.uk') === 'd•••@example.co.uk');
+chk('…and never carries the rest of the local part', strpos(email_hint('debbie.mcg@example.co.uk'), 'ebbie') === false);
+chk('…a first letter outside ASCII stays whole', email_hint('élodie@example.fr') === 'é•••@example.fr');
+chk('…and says nothing for no address or a malformed one',
+    email_hint('') === '' && email_hint('nobody') === '' && email_hint('@example.com') === '' && email_hint('a@') === '');
+// THE ARRIVAL DAY is the pre-arrival job's own: PRE_ARRIVAL_DAYS before check-in,
+// counted in days (noon-anchored, so a clock change cannot move it).
+$paDays = defined('PRE_ARRIVAL_DAYS') ? max(1, (int) PRE_ARRIVAL_DAYS) : 3;
+$paIn = date('Y-m-d', strtotime('+40 days'));
+chk('the arrival details are dated from the job\'s own window',
+    booking_arrival_details_on(['check_in' => $paIn]) === date('Y-m-d', strtotime($paIn . ' 12:00:00 -' . $paDays . ' days')));
+chk('…across the October clock change (days, not seconds)', $paDays !== 3 || booking_arrival_details_on(['check_in' => '2026-10-27']) === '2026-10-24');
+chk('…and no date for a stay with no check-in', booking_arrival_details_on([]) === '' && booking_arrival_details_on(['check_in' => 'soon']) === '');
+$paJob = (string) file_get_contents(__DIR__ . '/pre-arrival.php');
+$paLib = (string) file_get_contents(__DIR__ . '/pricing.php');
+$paRule = "defined('PRE_ARRIVAL_DAYS') ? max(1, (int) PRE_ARRIVAL_DAYS) : 3";
+chk('the job and the date read the window one way', strpos($paJob, $paRule) !== false && strpos($paLib, $paRule) !== false);
+// A MONTHLY PLAN'S ROWS — one definition for My stays and the pay screen.
+$pvSched = booking_instalment_schedule($dueDay, 3);
+$pvBase = $ap(['autopay_consent_at' => '2026-04-24 10:00:00', 'autopay_card_id' => 'ccof:abc123',
+    'autopay_amount' => 200.0, 'autopay_due' => $dueDay, 'autopay_instalments' => 3, 'autopay_next_at' => $pvSched[0]]);
+$pv = booking_autopay_plan_view($pvBase);
+chk('an armed monthly plan reads as its schedule',
+    is_array($pv) && $pv['n'] === 3 && count($pv['dates']) === 3 && $pv['dates'][0]['state'] === 'next' && $pv['state'] === 'on');
+chk('…its rows summing to what is left', is_array($pv) && abs(array_sum(array_column($pv['dates'], 'fig')) - $pv['toGo']) < 0.005 && abs($pv['toGo'] - 600.0) < 0.005);
+$pvS = booking_autopay_plan_view(array_merge($pvBase, ['deposit_paid' => 650.0]));
+chk('…and after a payment by hand the NEXT row is what will be taken, not the ceiling',
+    is_array($pvS) && abs($pvS['dates'][0]['fig'] - 150.0) < 0.005 && abs($pvS['dates'][1]['fig']) < 0.005 && abs($pvS['per'] - 200.0) < 0.005);
+chk('a single collection has no plan rows', booking_autopay_plan_view($ap($agreed)) === null);
+chk('…nor does a plan nobody agreed to', booking_autopay_plan_view($ap()) === null);
+// THE WIRING: the summary and My stays read these helpers; the charge names the card.
+$pfPay = (string) file_get_contents(__DIR__ . '/pay.php');
+$pfMine = (string) file_get_contents(__DIR__ . '/my-bookings.php');
+chk('the pay summary sends the arrival day, the inbox hint and the plan rows',
+    strpos($pfPay, "'arrivalOn' => booking_arrival_details_on(\$b),") !== false
+    && strpos($pfPay, "'emailHint' => email_hint(\$b['email'] ?? ''),") !== false
+    && strpos($pfPay, "'autopayPlan' => booking_autopay_plan_view(\$b, \$apStateNow),") !== false);
+chk('…never the address itself', preg_match("/'email'\s*=>/", substr($pfPay, (int) strpos($pfPay, "if (\$action === 'summary')"), 9000)) === 0);
+chk('My stays reads the same plan rows and the same arrival day',
+    strpos($pfMine, 'booking_autopay_plan_view($bk, $ap)') !== false && strpos($pfMine, "\$bk['arrival_on'] = booking_arrival_details_on(\$bk);") !== false);
+chk('the charge answers with the card that paid (brand + last four only)',
+    strpos($pfPay, "'card' => \$cardInfo['last4'] !== '' ? ['brand' => \$cardInfo['brand'], 'last4' => \$cardInfo['last4']] : null,") !== false);
 
 echo "\n== Summary ==\n";
 if ($fail) {

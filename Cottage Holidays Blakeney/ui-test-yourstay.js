@@ -1,11 +1,14 @@
-// Guest "Your stay" pre-arrival hub, end to end in a real browser:
-//  1. a signed-in guest with an upcoming stay gets a countdown hub with the
-//     days-to-go badge, planning tiles, and the one thing left to sort
-//  2. a balance-due stay shows "balance due" + a Pay balance CTA
-//  3. a fully-paid, details-in guest sees "you're all set" and no CTA
-//  4. "Tomorrow" wording at +1 day
-//  5. only the SOONEST upcoming stay gets the hub (one, not per-booking)
-//  6. a past-only guest, and a logged-out visitor, get no hub
+// Guest "My stays" — the soonest stay is ONE card, end to end in a real browser.
+// The pay-screens build merged the pre-arrival hub into the stay's own card
+// (.gb2-next): the same stay was told twice and Pay offered twice. Now:
+//  1. the soonest upcoming stay carries the countdown on its photo, the stay's
+//     planning tiles and ONE money block (the figure, its line, one button)
+//  2. a stay that owes says the figure the button takes, and when it is due —
+//     spoken, with its weekday, the pay screen's own form
+//  3. a fully-paid, details-in guest is "Paid in full" with no button
+//  4. "Tomorrow" at +1 day
+//  5. only the SOONEST upcoming stay gets the countdown card (one, not per-booking)
+//  6. a past-only guest, and a logged-out visitor, get no countdown card
 //  7. DEPARTURE edge (time-aware): a stay whose checkout time has passed on the
 //     checkout day drops to "Past stays" the same day — not at the next midnight;
 //     one whose checkout time is still to come stays in-residence
@@ -61,19 +64,40 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
     return page;
   };
 
+  // The soonest stay's card. `say` is the money block's line, `next` the journey's
+  // sentence beneath it; `btn` the money block's one button.
   const hub = (page) => page.evaluate(() => {
-    const el = document.querySelector('.my-stay-hub-soon');
+    const el = document.querySelector('#guest-bookings-list .gb2-next');
     if (!el) return null;
+    const t = (q) => ((el.querySelector(q) || {}).textContent || '').replace(/\s+/g, ' ').trim();
+    const badge = t('.gb2-count');
+    const m = badge.match(/^(\d+) (days? to go)$/);
+    const name = el.querySelector('.gb2-name');
+    const nameNode = name ? [...name.childNodes].find((n) => n.nodeType === 3 && n.textContent.trim()) : null;
+    const say = el.querySelector('.gbm-s');
     return {
-      n: (el.querySelector('.hub-count-n') || {}).textContent || '',
-      u: (el.querySelector('.hub-count-u') || {}).textContent || '',
-      title: (el.querySelector('.hub-title') || {}).textContent || '',
-      sub: (el.querySelector('.hub-sub') || {}).textContent || '',
+      n: badge === 'Tomorrow' ? '1' : m ? m[1] : '',
+      u: m ? m[2] : badge,
+      badge,
+      title: nameNode ? nameNode.textContent.trim() : '',
+      fig: t('.gbm-fig'),
+      say: t('.gbm-s'),
+      tone: say ? say.className.replace('gbm-s', '').trim() : '',
+      next: t('.bkflow-next'),
+      btn: t('.gbm-btn'),
+      accent: !!el.querySelector('.gbm-btn.is-accent'),
+      bar: (el.querySelector('.gbm-bar > span') || { style: {} }).style.width || '',
+      leg: [...el.querySelectorAll('.gbm-leg span')].map((s) => s.textContent.trim()),
       tiles: el.querySelectorAll('.hub-tile').length,
-      pay: /Pay balance/.test(el.textContent),
-      count: document.querySelectorAll('.my-stay-hub-soon').length,
+      pay: [...el.querySelectorAll('.gbm-btn')].some((b) => b.textContent.trim() === 'Pay'),
+      // Pay offered anywhere on the card (the merge's point: once, not twice).
+      pays: [...el.querySelectorAll('button, a')].filter((b) => /^Pay\b/.test(b.textContent.trim())).length,
+      count: document.querySelectorAll('#guest-bookings-list .gb2-next').length,
+      oldHub: document.querySelectorAll('.my-stay-hub-soon').length,
     };
   });
+  // The spoken date, read off the page's own helper rather than re-implemented.
+  const spoken = (page, iso) => page.evaluate((x) => payDay(x), iso);
 
   // A locked agreed price so the balance is deterministic (independent of rate
   // synthesis) — exactly how a confirmed booking carries its price.
@@ -82,20 +106,23 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
   // 1+2) Balance due, 10 days out.
   let page = await openPage({ name: 'Cara Nunn', email: 'c@x.co' }, [mk('jollyboat', d(10), d(13), Object.assign({ payment: 'unpaid', pay_token: 'tok1' }, priced))]);
   let h = await hub(page);
-  ok(!!h, 'the pre-arrival countdown hub renders for an upcoming stay');
-  ok(h && h.n === '10' && /days to go/.test(h.u), `countdown reads 10 days to go (${h && h.n} / ${h && h.u})`);
+  ok(!!h, 'the soonest upcoming stay is one card with its countdown');
+  ok(h && h.oldHub === 0, 'there is no separate pre-arrival hub above it — the same stay is told once');
+  ok(h && h.n === '10' && /days to go/.test(h.u), `countdown reads 10 days to go (${h && h.badge})`);
   // The countdown is said ONCE, on the badge — the title used to repeat it and the
   // duplicate forced the name onto two lines beside the badge at 390px.
-  ok(h && /Jollyboat/.test(h.title) && !/\d+ days|Tomorrow/.test(h.title), `hub names the cottage, and the countdown only on the badge (${h && h.title.trim()})`);
-  ok(h && h.tiles === 6, `hub carries the planning tiles (${h && h.tiles})`);
-  ok(h && /balance/i.test(h.sub) && h.pay, 'balance-due stay shows the balance note + Pay CTA');
+  ok(h && /Jollyboat/.test(h.title) && !/\d+ days|Tomorrow/.test(h.title), `the card names the cottage, and the countdown only on the badge (${h && h.title})`);
+  ok(h && h.tiles === 6, `the card carries the planning tiles (${h && h.tiles})`);
+  ok(h && /^£400\.00 balance$/.test(h.fig) && h.pay && h.accent, `a stay that owes states the figure, with the one accent Pay (${h && h.fig} · ${h && h.btn})`);
+  ok(h && h.pays === 1, `Pay is offered once on the card, not twice (${h && h.pays})`);
   // 2a-ii) THE ASK IS NOT THE SMALLEST TYPE IN THE CARD, AND NOTHING HERE IS UNDER
   // THE PHONE TOUCH FLOOR. Two rules this screen was breaking on the DEFAULT theme
   // at phone width: `#view-guest-bookings .btn-sm` out-specified BOTH the ≤480px 44px
   // floor and `.gb2-links .btn-sm`'s own 44 (whose comment claims that floor and
-  // never painted), so every control here — Pay included — was 4px shorter than the
-  // same button anywhere else; and the primary CTA sat on base .btn-sm at 10.88px
-  // uppercase 400 while the quiet links under it were 12.8px sentence-case 600.
+  // never painted), so every control here was 4px shorter than the same button
+  // anywhere else; and the primary CTA sat on base .btn-sm at 10.88px uppercase 400
+  // while the quiet links under it were 12.8px sentence-case 600. The money block's
+  // button is that primary now.
   await page.setViewportSize({ width: 390, height: 844 });
   await page.waitForTimeout(250);
   const cardType = await page.evaluate(() => {
@@ -106,18 +133,13 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
     document.body.appendChild(ref);
     const refH = Math.round(ref.getBoundingClientRect().height);
     ref.remove();
-    return { cta: box('.gb2-cta .btn-sm, .hub-cta-btn'), quiet: box('.gb2-links .btn-sm'), refH,
-      // THE FLOOR IS min-height, and that is what to measure. The painted box is the
-      // wrong instrument here: .gb2-cta carries an entrance animation, so the Pay
-      // button samples mid-scale — 43.8px in CI, 44 after rounding locally, which is a
-      // flake and not a finding. The defect this guards was a `min-height: 40px` rule
-      // winning a specificity fight, which a computed read answers exactly. The
-      // painted height rides along in the message for context.
+    return { cta: box('.gb2-next .gbm-btn'), quiet: box('.gb2-links .btn-sm'), refH,
+      // THE FLOOR IS min-height, and that is what to measure: a painted box samples
+      // mid-entrance (43.8px in CI), a flake and not a finding. The defect this
+      // guards was a `min-height: 40px` rule winning a specificity fight, which a
+      // computed read answers exactly.
       short: (() => {
-        // .hub-code-copy joins the sweep (PR2): it is a control on this screen
-        // and it was 40px, but it is neither .btn-sm nor .btn-glass, so the
-        // sweep could not see it.
-        const all = [...document.querySelectorAll('#view-guest-bookings .btn-sm, #view-guest-bookings .btn-glass, #view-guest-bookings .hub-code-copy')]
+        const all = [...document.querySelectorAll('#view-guest-bookings .btn-sm, #view-guest-bookings .btn-glass, #view-guest-bookings .hub-code-copy, #view-guest-bookings .gbm-btn')]
           .filter((e) => e.getClientRects().length)
           .map((e) => ({
             min: parseFloat(getComputedStyle(e).minHeight) || 0,
@@ -131,33 +153,33 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
   ok(cardType.cta && cardType.quiet && cardType.cta.fs >= cardType.quiet.fs,
     `the primary ask is not smaller than the quiet links (${cardType.cta && cardType.cta.fs}px vs ${cardType.quiet && cardType.quiet.fs}px)`);
   ok(cardType.cta && cardType.cta.tt === 'none' && cardType.cta.fw >= 600,
-    `…and it reads as a sentence at a ladder weight (${cardType.cta && cardType.cta.tt} / ${cardType.cta && cardType.cta.fw})`);
+    `…and it reads as a word at a ladder weight (${cardType.cta && cardType.cta.tt} / ${cardType.cta && cardType.cta.fw})`);
   ok(cardType.short.min >= 44,
     `every control on the guest's own account screen takes the phone floor (lowest min-height ${cardType.short.min}px on ${cardType.short.who}, painting ${cardType.short.h.toFixed(1)}px; same button outside this view ${cardType.refH}px)`);
   await page.close();
 
-  // 2b) …AND WHEN IT IS DUE. The card's job is "the one outstanding thing before
-  //     you arrive", and a deadline is the actionable half of that. The pay screen
-  //     its own button leads to has said the date since #969; this card knew least,
-  //     because my-bookings.php never sent one. `balance_due_by` is the DERIVED
-  //     date (custom plan, else the site standard) — deliberately its own field,
-  //     since the raw `balance_due_date` column means "custom override, NULL =
-  //     standard" and the owner side reads it for exactly that.
+  // 2b) …AND WHEN IT IS DUE. The deadline is the actionable half of "what is left
+  //     to do", and it is said the pay screen's way: spoken, with its weekday
+  //     ("Due by Wed 27 Jan") — a guest money screen reads a date once and acts on
+  //     it. `balance_due_by` is the DERIVED date (custom plan, else the site
+  //     standard) — deliberately its own field, since the raw `balance_due_date`
+  //     column means "custom override, NULL = standard".
   page = await openPage({ name: 'Due Guest', email: 'due@x.co' },
     [mk('jollyboat', d(20), d(23), Object.assign({ payment: 'unpaid', pay_token: 'tok3', balance_due_by: d(9) }, priced))]);
   h = await hub(page);
-  ok(h && /balance .* due by /i.test(h.sub), `the outstanding line names the due date (${h && h.sub.trim().slice(-52)})`);
-  ok(h && h.sub.indexOf(ukD(d(9))) !== -1, `…in the house DD/MM/YYYY form (${ukD(d(9))})`);
+  const due9 = await spoken(page, d(9));
+  ok(h && h.say === 'Due by ' + due9, `the money line names the due date, spoken (${h && h.say})`);
+  ok(h && /^\w{3} \d{1,2} \w{3}$/.test(due9), `…with its weekday, in the pay screen's form (${due9})`);
   await page.close();
 
   // 2c) THE BUTTON FOLLOWS THE PLAN. It used to read "Pay balance <everything
   //     outstanding>" and post kind:'balance', so a guest on a deposit plan
   //     standing 60 days out was offered the whole stay — the emailed link asked
-  //     for the deposit and the button in their own account did not. Both the
-  //     LABEL and the charge now come from booking_next_payment, and the button
-  //     names no stage at all (the server derives it, exactly like the link).
+  //     for the deposit and the button in their own account did not. The figure
+  //     comes from booking_next_payment, and the button names no stage at all
+  //     (the server derives it, exactly like the link).
   const payBtnOf = (pg) => pg.evaluate(() => {
-    const el = document.querySelector('.my-stay-hub-soon .hub-cta-btn');
+    const el = document.querySelector('.gb2-next .gbm-btn');
     return { txt: (el ? el.textContent : '').replace(/\s+/g, ' ').trim(), args: el ? el.getAttribute('data-args') || '' : '' };
   });
   page = await openPage({ name: 'Plan Guest', email: 'plan@x.co' },
@@ -165,11 +187,10 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
       next_payment: { kind: 'deposit', due: 100, damages: 50, charge: 150 } }, priced))]);
   h = await hub(page);
   let pb = await payBtnOf(page);
-  ok(/Pay deposit £150\.00/.test(pb.txt), `the button asks for the PLAN's next payment (${pb.txt})`);
-  ok(!/£400\.00/.test(pb.txt), '…not the whole outstanding balance');
-  ok(!/balance/i.test(pb.args), `…and it names no stage — the server derives it (${pb.args})`);
-  ok(h && /deposit £150\.00 due/.test(h.sub) && !/due by/.test(h.sub),
-    `the line above it says the same thing, with no date on a deposit (${h.sub.trim().slice(-40)})`);
+  ok(h && h.fig === '£150.00 deposit' && pb.txt === 'Pay', `the card asks for the PLAN's next payment (${h && h.fig} · ${pb.txt})`);
+  ok(h && !/£400\.00/.test(h.fig + ' ' + h.say), '…not the whole outstanding balance');
+  ok(!/balance/i.test(pb.args) && /tokp/.test(pb.args), `…and the button names no stage — the server derives it (${pb.args})`);
+  ok(h && /^Due now/.test(h.say) && !/Due by/.test(h.say), `a deposit is due now, so its line carries no date (${h && h.say})`);
   await page.close();
 
   // …and once the deposit is in, the SAME card moves to the balance, dated.
@@ -177,77 +198,99 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
     [mk('jollyboat', d(60), d(63), Object.assign({ payment: 'deposit', pay_token: 'tokq', balance_due_by: d(30),
       next_payment: { kind: 'balance', due: 300, damages: 0, charge: 300 } }, priced))]);
   h = await hub(page);
-  pb = await payBtnOf(page);
-  ok(/Pay balance £300\.00/.test(pb.txt), `the next stage reads as the balance (${pb.txt})`);
-  ok(h && /balance £300\.00 due by /.test(h.sub), `…and the balance carries its date again (${h.sub.trim().slice(-42)})`);
+  const due30 = await spoken(page, d(30));
+  ok(h && h.fig === '£300.00 balance', `the next stage reads as the balance (${h && h.fig})`);
+  ok(h && h.say === 'Due by ' + due30, `…and the balance carries its date again (${h && h.say})`);
   await page.close();
 
-  // An older server sends no next_payment: the card reads exactly as it did.
+  // An older server sends no next_payment: the card falls back to the balance.
   page = await openPage({ name: 'Old Payload', email: 'oldp@x.co' },
     [mk('jollyboat', d(60), d(63), Object.assign({ payment: 'unpaid', pay_token: 'tokr' }, priced))]);
-  pb = await payBtnOf(page);
-  ok(/Pay balance £400\.00/.test(pb.txt), `no next_payment falls back to the balance (${pb.txt})`);
+  h = await hub(page);
+  ok(h && h.fig === '£400.00 balance' && h.pay, `no next_payment falls back to the balance (${h && h.fig})`);
   await page.close();
 
-  // A date already PAST reads plain "due" — it is due NOW, and a past deadline is
-  // a reprimand rather than a fact. Same rule as the pay screen's headline, from
-  // the same helper, which is the point of there being one.
+  // A date already PAST reads plain "Due now" — it is due NOW, and a past deadline
+  // is a reprimand rather than a fact. Same rule as the pay screen's headline.
   page = await openPage({ name: 'Late Guest', email: 'late@x.co' },
     [mk('jollyboat', d(20), d(23), Object.assign({ payment: 'unpaid', pay_token: 'tok4', balance_due_by: d(-3) }, priced))]);
   h = await hub(page);
-  ok(h && /balance/i.test(h.sub) && !/due by/i.test(h.sub), `a passed due date reads plain "due" (${h && h.sub.trim().slice(-40)})`);
+  ok(h && h.say === 'Due now', `a passed due date reads plain "Due now" (${h && h.say})`);
   await page.close();
 
-  // An older server sends no date at all — the card reads exactly as it did.
+  // An older server sends no date at all — no dangling "by".
   page = await openPage({ name: 'Old Server', email: 'old@x.co' },
     [mk('jollyboat', d(20), d(23), Object.assign({ payment: 'unpaid', pay_token: 'tok5' }, priced))]);
   h = await hub(page);
-  ok(h && /balance/i.test(h.sub) && !/due by/i.test(h.sub) && !/by\s*$/.test(h.sub.trim()),
-    `no date sent → no dangling "by" (${h && h.sub.trim().slice(-40)})`);
+  ok(h && h.say === 'Due now' && !/by\s*$/.test(h.say), `no date sent → no dangling "by" (${h && h.say})`);
   await page.close();
 
-  // 3) Fully paid + details submitted → "all set", no CTA.
-  page = await openPage({ name: 'Paid Guest', email: 'p@x.co' }, [mk('jollyboat', d(6), d(9), { payment: 'paid', reg_submitted: true, reg_url: 'guest-details.php?b=1&token=z' })]);
+  // 3) Fully paid + details submitted → "Paid in full", no button.
+  page = await openPage({ name: 'Paid Guest', email: 'p@x.co' }, [mk('jollyboat', d(6), d(9), Object.assign({ payment: 'paid', deposit_paid: 400, reg_submitted: true, reg_url: 'guest-details.php?b=1&token=z' }, priced))]);
   h = await hub(page);
-  ok(h && /all set/i.test(h.sub) && !h.pay, `fully-paid, details-in guest reads "you're all set" with no CTA (${h && h.sub.trim().slice(-30)})`);
+  ok(h && /^Paid in full/.test(h.fig) && !h.btn && h.pays === 0, `fully paid: "Paid in full" with no button (${h && h.fig})`);
+  ok(h && h.say === 'Nothing more to pay', `…and nothing more asked of them (${h && h.say})`);
+  ok(h && /paid up|all set/i.test(h.next), `…and the journey says they are set (${h && h.next.slice(0, 50)})`);
   await page.close();
 
-  // 3b) …but a register SHORT of the party is not "all set". guest-details.php
-  // refuses a short submission against the booking's adult count at the time;
-  // edit the booking up afterwards and the legal record covers some of them.
-  // The form prefills what is there and asks for the rest, so re-offering it is
-  // the whole fix — the guest is the only one who can finish it.
-  page = await openPage({ name: 'Grown Party', email: 'g@x.co' }, [mk('jollyboat', d(6), d(9), { payment: 'paid', reg_submitted: true, reg_count: 2, adults: 4, reg_url: 'guest-details.php?b=1&token=z' })]);
+  // 3b) …but a register SHORT of the party is not done. guest-details.php refuses a
+  // short submission against the booking's adult count at the time; edit the
+  // booking up afterwards and the legal record covers some of them. The form
+  // prefills what is there and asks for the rest, so re-offering it is the whole
+  // fix — the guest is the only one who can finish it.
+  page = await openPage({ name: 'Grown Party', email: 'g@x.co' }, [mk('jollyboat', d(6), d(9), Object.assign({ payment: 'paid', deposit_paid: 400, reg_submitted: true, reg_count: 2, adults: 4, reg_url: 'guest-details.php?b=1&token=z' }, priced))]);
   h = await hub(page);
-  ok(h && /add your guest details/i.test(h.sub), `a short register re-offers the form (${h && h.sub.trim().slice(-40)})`);
-  ok(h && !/all set/i.test(h.sub), '…and never tells them they are all set');
+  ok(h && /add your guest details/i.test(h.next), `a short register re-offers the form (${h && h.next.slice(0, 40)})`);
+  ok(h && !/all set|paid up/i.test(h.next), '…and never tells them they are all set');
+  ok(await page.evaluate(() => !!document.querySelector('.gb2-next .bkflow-cta[href*="guest-details.php"]')), '…with the link to the form on the card');
+  await page.close();
+
+  // 3c) FIGURES THE PAGE CANNOT WORK OUT ARE NEVER CALLED PAID. With no price
+  // snapshot and a rates row missing its parts, the totals come out NaN, and every
+  // comparison against NaN is false — so "is anything owed?" answered no and the
+  // card read "Paid in full" over a stay the server says is part-paid. The server's
+  // own payment state decides then; the figure shows as £— rather than a guess.
+  page = await openPage({ name: 'Odd Figures', email: 'odd@x.co' }, [mk('jollyboat', d(6), d(9), { payment: 'deposit', pay_token: 'tokn' })]);
+  h = await hub(page);
+  ok(h && !/Paid in full/.test(h.fig) && h.say !== 'Nothing more to pay', `unknown figures on a part-paid stay are not called paid (${h && h.fig} · ${h && h.say})`);
+  await page.close();
+  page = await openPage({ name: 'Odd Paid', email: 'oddp@x.co' }, [mk('jollyboat', d(6), d(9), { payment: 'paid' })]);
+  h = await hub(page);
+  ok(h && /^Paid in full/.test(h.fig) && /paid up|all set/i.test(h.next), `…and the server's "paid" still reads paid, the block and the journey agreeing (${h && h.fig} · ${h && h.next.slice(0, 30)})`);
   await page.close();
 
   // 4) Tomorrow wording at +1 day.
   page = await openPage({ name: 'Soon Guest', email: 's@x.co' }, [mk('21a', d(1), d(3), { payment: 'unpaid', pay_token: 'tok2' })]);
   h = await hub(page);
-  ok(h && h.n === '1' && /day to go/.test(h.u) && !/Tomorrow/.test(h.title), `+1 day reads 1 day to go on the badge, and the title does not say it again (${h && h.title.trim()})`);
+  ok(h && h.badge === 'Tomorrow' && !/Tomorrow/.test(h.title), `+1 day reads Tomorrow on the badge, and the title does not say it again (${h && h.badge} / ${h && h.title})`);
   await page.close();
 
-  // 5) Two upcoming stays → exactly one hub, for the soonest.
+  // 5) Two upcoming stays → exactly one countdown card, for the soonest.
   page = await openPage({ name: 'Two Stays', email: 't@x.co' }, [
     mk('jollyboat', d(5), d(8), Object.assign({ payment: 'unpaid', pay_token: 'a' }, priced)),
     mk('21a', d(20), d(23), Object.assign({ payment: 'unpaid', pay_token: 'b' }, priced)),
   ]);
   h = await hub(page);
-  ok(h && h.count === 1 && h.n === '5', `only the soonest upcoming stay gets a hub (count ${h && h.count}, days ${h && h.n})`);
+  ok(h && h.count === 1 && h.n === '5', `only the soonest upcoming stay gets the countdown card (count ${h && h.count}, days ${h && h.n})`);
+  const later = await page.evaluate(() => {
+    const cards = [...document.querySelectorAll('#guest-bookings-list .guest-booking.gb2:not(.gb2-next)')];
+    return { n: cards.length, tiles: cards.reduce((a, c) => a + c.querySelectorAll('.hub-tile').length, 0),
+      heads: [...document.querySelectorAll('#guest-bookings-list .gb-hdr')].map((x) => x.textContent.trim()) };
+  });
+  ok(later.n === 1 && later.tiles === 0, `the later stay is an ordinary card, without the tiles (${later.n} card, ${later.tiles} tiles)`);
+  ok(later.heads.includes('Your next stay') && later.heads.includes('Later stays'), `…under its own heading (${later.heads.join(' · ')})`);
   await page.close();
 
-  // 6) Past-only guest → no hub.
+  // 6) Past-only guest → no countdown card.
   page = await openPage({ name: 'Past Guest', email: 'past@x.co' }, [mk('jollyboat', d(-30), d(-27), { payment: 'paid' })]);
   h = await hub(page);
-  ok(h === null, 'a past-only guest gets no pre-arrival hub');
+  ok(h === null, 'a past-only guest gets no countdown card');
   await page.close();
 
-  // 7) Logged out → no hub.
+  // 7) Logged out → no countdown card.
   page = await openPage(null, []);
   h = await hub(page);
-  ok(h === null, 'logged out → no pre-arrival hub');
+  ok(h === null, 'logged out → no countdown card');
   await page.close();
 
   // Reads the guest My Stays classification: is the in-residence hub shown, and
@@ -255,7 +298,7 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
   const stayState = (page) => page.evaluate(() => {
     const list = document.getElementById('guest-bookings-list');
     return {
-      inStay: !!document.querySelector('.my-stay-hub:not(.my-stay-hub-soon)'),
+      inStay: !!document.querySelector('.my-stay-hub'),
       badges: [...list.querySelectorAll('.guest-status-badge')].map((b) => b.textContent.trim()),
       headers: [...list.querySelectorAll('h3')].map((h) => h.textContent.trim()),
     };
@@ -339,178 +382,101 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
     `…so the lines now SUM to the total shown (${custom.slice(-60)})`);
   await page.close();
 
-  // 13) AN ARMED MONTHLY PLAN SHOWS ITS SCHEDULE. The hub's "one outstanding
-  // thing" line reads on-track (a plan running means nothing IS outstanding),
-  // the plan block carries the progress bar + the state-dot rail whose rows
-  // sum to what is left, and the off-switch is one tap away — all from the
-  // my-bookings payload, so the card can never promise money the server's own
-  // derivation disagrees with.
-  page = await openPage({ name: 'Cara Nunn', email: 'c@x.co' }, [mk('jollyboat', d(80), d(83), {
-    payment: 'deposit', pay_token: 'tok9',
-    agreed_total: 700, agreed_per_night: 233.33, agreed_nights: 3, agreed_nightly: 700,
-    agreed_txn_fee: 0, agreed_txn_pct: 0, agreed_booking_fee: 0,
-    autopay_state: 'armed', autopay_says: 'Scheduled — £175.00 monthly, next on 28/08/2026.',
-    autopay_plan: {
-      n: 3, per: 175, toGo: 350, next: d(20),
-      dates: [
-        { date: d(-10), state: 'done', fig: 175 },
-        { date: d(20), state: 'next', fig: 175 },
-        { date: d(50), state: 'todo', fig: 175 },
-      ],
-    },
-  })]);
-  const plan = await page.evaluate(() => {
-    const hub = document.querySelector('.my-stay-hub-soon');
-    const block = hub && hub.querySelector('.hub-plan');
-    return {
-      ready: hub ? (hub.querySelector('.hub-ok') || {}).textContent || '' : '',
-      block: !!block,
-      sum: block ? (block.querySelector('.hub-plan-sum') || {}).textContent || '' : '',
-      rows: block ? block.querySelectorAll('.ap-row').length : 0,
-      dots: block ? [...block.querySelectorAll('.ap-dot')].map((e) => e.className.replace('ap-dot ', '')).join('|') : '',
-      barW: block ? (block.querySelector('.ap-bar > span') || { style: {} }).style.width || '' : '',
-      figs: block ? [...block.querySelectorAll('.ap-figc')].map((e) => e.textContent).join('|') : '',
-      off: hub ? (hub.querySelector('.hub-autopay-off') || {}).textContent || '' : '',
-    };
-  });
-  ok(/payments on track — nothing needed from you/.test(plan.ready),
-    `an armed plan reads on-track, not outstanding (${plan.ready})`);
-  ok(plan.block && plan.rows === 3, `the plan block shows one row per collection (${plan.rows})`);
-  ok(plan.dots === 'is-done|is-next|is-todo', `…in the live-plan vocabulary (${plan.dots})`);
-  ok(plan.sum === '1 of 3 done · £350.00 to go', `…with the summary line (${plan.sum})`);
-  ok(plan.barW === '33%', `…and the progress bar a third full (${plan.barW})`);
-  ok(plan.figs === '£175.00|£175.00|£175.00', `…rows carrying the payload's own figures (${plan.figs})`);
-  ok(/Turn off automatic payments/.test(plan.off), `the off-switch is one tap away (${plan.off})`);
-  await page.close();
-
-  // 14) A PLAN IN TROUBLE STAYS ON THE CARD, WITH ITS FIX. A failed try
-  // ('retrying') marks the declined row in place, says why + when in one
-  // sentence, and leads with "Update card & keep the plan" — the same pay
-  // screen the failure email points at. A plan silently vanishing the moment
-  // it needs the guest would read as "sorted".
-  const troublePlan = (state, extra) => ({
-    n: 3, per: 175, toGo: 350, next: d(20), state,
-    why: 'The card was declined.', ...extra,
+  // 13) AN ARMED MONTHLY PLAN IS ARRANGED, NOT OWED. The money block states what is
+  // left, the line names the plan (its monthly figure and next date), in the
+  // arranged (info) tone, and the one button MANAGES the plan — it opens the pay
+  // screen, which shows the schedule and the way to stop it. No Pay: offering to
+  // take money the guest has already arranged asks them to do what they have done.
+  const p700 = { agreed_total: 700, agreed_per_night: 233.33, agreed_nights: 3, agreed_nightly: 700, agreed_txn_fee: 0, agreed_txn_pct: 0, agreed_booking_fee: 0 };
+  const armedPlan = (extra) => Object.assign({
+    n: 3, per: 175, toGo: 350, next: d(20),
     dates: [
       { date: d(-10), state: 'done', fig: 175 },
       { date: d(20), state: 'next', fig: 175 },
       { date: d(50), state: 'todo', fig: 175 },
     ],
-  });
-  page = await openPage({ name: 'Cara Nunn', email: 'c@x.co' }, [mk('jollyboat', d(80), d(83), {
-    payment: 'deposit', pay_token: 'tok9',
-    agreed_total: 700, agreed_per_night: 233.33, agreed_nights: 3, agreed_nightly: 700,
-    agreed_txn_fee: 0, agreed_txn_pct: 0, agreed_booking_fee: 0,
-    autopay_state: 'armed', autopay_says: 'Scheduled.',
-    autopay_plan: troublePlan('retrying', { retry: d(2) }),
-  })]);
-  const retryState = await page.evaluate(() => {
-    const hub = document.querySelector('.my-stay-hub-soon');
-    const block = hub && hub.querySelector('.hub-plan');
-    return {
-      warn: hub ? (hub.querySelector('.hub-warn') || {}).textContent || '' : '',
-      trouble: !!(block && block.classList.contains('hub-plan-trouble')),
-      why: block ? (block.querySelector('.hub-plan-why') || {}).textContent || '' : '',
-      note: block ? [...block.querySelectorAll('.ap-note')].map((e) => e.textContent).join('|') : '',
-      fix: block ? (block.querySelector('.hub-plan-fix') || {}).textContent || '' : '',
-      off: hub ? !!hub.querySelector('.hub-autopay-off') : false,
-    };
-  });
-  ok(/didn’t go through — needs a new card/.test(retryState.warn), `a failed try turns the hub line amber (${retryState.warn})`);
-  ok(retryState.trouble && /declined/.test(retryState.note), `…and the declined row says so in place (${retryState.note})`);
-  ok(/We couldn't take £175\.00 — The card was declined/.test(retryState.why) && /try again/.test(retryState.why),
-    `…with why and when in one sentence (${retryState.why.slice(0, 90)})`);
-  ok(/Update card & keep the plan/.test(retryState.fix), `…and the fix leads (${retryState.fix})`);
-  ok(retryState.off, '…while the off-switch stays');
+  }, extra || {});
+  page = await openPage({ name: 'Cara Nunn', email: 'c@x.co' }, [mk('jollyboat', d(80), d(83), Object.assign({
+    payment: 'deposit', deposit_paid: 350, pay_token: 'tok9', autopay_state: 'armed', autopay_plan: armedPlan(),
+  }, p700))]);
+  h = await hub(page);
+  const due20 = await spoken(page, d(20));
+  ok(h && h.fig === '£350.00 balance', `an armed plan states what is left (${h && h.fig})`);
+  ok(h && h.say === `£175.00 monthly · next on ${due20}`, `…and the line names the plan, monthly figure and next date (${h && h.say})`);
+  ok(h && h.tone === 'is-info', `…in the arranged tone, never a warning (${h && h.tone})`);
+  ok(h && h.btn === 'Manage' && !h.accent && h.pays === 0, `the one button manages the plan — no Pay (${h && h.btn})`);
+  ok(h && h.bar === '50%' && h.leg[0] === '£350.00 paid' && h.leg[1] === '£700.00 in all', `the bar is what is paid of the whole (${h && h.bar}: ${h && h.leg.join(' / ')})`);
   await page.close();
 
-  // 15) STOPPED (the try cap): the summary reads paused, the sentence promises
-  // no further charge, and the block still renders although autopay_state is
-  // 'failed' — the state that used to drop the guest to a bare Pay button.
-  page = await openPage({ name: 'Cara Nunn', email: 'c@x.co' }, [mk('jollyboat', d(80), d(83), {
-    payment: 'deposit', pay_token: 'tok9',
-    agreed_total: 700, agreed_per_night: 233.33, agreed_nights: 3, agreed_nightly: 700,
-    agreed_txn_fee: 0, agreed_txn_pct: 0, agreed_booking_fee: 0,
-    autopay_state: 'failed', autopay_says: 'Automatic payment didn’t go through.',
-    autopay_plan: troublePlan('stopped', {}),
-  })]);
-  const stopState = await page.evaluate(() => {
-    const hub = document.querySelector('.my-stay-hub-soon');
-    const block = hub && hub.querySelector('.hub-plan');
-    return {
-      warn: hub ? (hub.querySelector('.hub-warn') || {}).textContent || '' : '',
-      sum: block ? (block.querySelector('.hub-plan-sum') || {}).textContent || '' : '',
-      why: block ? (block.querySelector('.hub-plan-why') || {}).textContent || '' : '',
-      fix: block ? !!block.querySelector('.hub-plan-fix') : false,
-    };
-  });
-  ok(/paused — needs a new card/.test(stopState.warn), `a stopped plan reads paused on the hub line (${stopState.warn})`);
-  ok(/paused — 1 of 3 done/.test(stopState.sum), `…and in the block's own summary (${stopState.sum})`);
-  ok(/stopped trying/.test(stopState.why) && stopState.fix, `…promising no further charge, with the fix present (${stopState.why.slice(0, 80)})`);
+  // 14) A PLAN IN TROUBLE SAYS SO, WITH ITS FIX. A failed try ('retrying') turns
+  // the line amber and the one button becomes "Update card" in the accent — the
+  // same pay screen the failure email points at, where the why and the retry date
+  // are told. A plan silently reading "arranged" the moment it needs the guest
+  // would read as sorted.
+  const troublePlan = (state, extra) => armedPlan(Object.assign({ state, why: 'The card was declined.' }, extra || {}));
+  page = await openPage({ name: 'Cara Nunn', email: 'c@x.co' }, [mk('jollyboat', d(80), d(83), Object.assign({
+    payment: 'deposit', deposit_paid: 350, pay_token: 'tok9', autopay_state: 'armed', autopay_plan: troublePlan('retrying', { retry: d(2) }),
+  }, p700))]);
+  h = await hub(page);
+  ok(h && h.say === "A payment didn't go through" && h.tone === 'is-warn', `a failed try turns the line amber (${h && h.say} / ${h && h.tone})`);
+  ok(h && h.btn === 'Update card' && h.accent, `…and the fix is the one accent button (${h && h.btn})`);
+  ok(h && h.fig === '£350.00 balance', `…beside what is still owed (${h && h.fig})`);
   await page.close();
 
-  // 16) A SINGLE "one payment" consent in trouble has NO schedule block, but it
-  // must not read as healthy — the failure email sends the guest here. The
-  // autopay_trouble descriptor drives a warn line + the update-card route.
-  // Retrying keeps autopay_state 'armed'; without this fix that showed green.
-  page = await openPage({ name: 'Cara Nunn', email: 'c@x.co' }, [mk('jollyboat', d(80), d(83), {
-    payment: 'deposit', pay_token: 'tok9',
-    agreed_total: 700, agreed_per_night: 233.33, agreed_nights: 3, agreed_nightly: 700,
-    agreed_txn_fee: 0, agreed_txn_pct: 0, agreed_booking_fee: 0,
-    autopay_state: 'armed', autopay_says: 'Scheduled.', autopay_plan: null,
-    autopay_trouble: { state: 'retrying', why: 'The card was declined.', fig: 525, retry: d(2) },
-  })]);
-  const single = await page.evaluate(() => {
-    const hub = document.querySelector('.my-stay-hub-soon');
-    const block = hub && hub.querySelector('.hub-plan-trouble');
-    return {
-      warn: hub ? (hub.querySelector('.hub-warn') || {}).textContent || '' : '',
-      green: hub ? !!hub.querySelector('.hub-ok') : false,
-      why: block ? (block.querySelector('.hub-plan-why') || {}).textContent || '' : '',
-      fix: block ? (block.querySelector('.hub-plan-fix') || {}).textContent || '' : '',
-      hasSchedule: hub ? !!hub.querySelector('.ap-rail') : false,
-    };
-  });
-  ok(/needs a new card/.test(single.warn) && !single.green, `a single trouble consent reads warn, never green (${single.warn})`);
-  ok(/We couldn.t take £525\.00/.test(single.why) && /try again/.test(single.why), `…with why + when, no schedule block (${single.why.slice(0, 70)})`);
-  ok(/Update card/.test(single.fix) && !single.hasSchedule, `…and the fix, without an instalment rail (${single.fix})`);
+  // 15) STOPPED (the try cap): still trouble, still the fix — although
+  // autopay_state is 'failed', the state that used to drop the guest to a bare Pay
+  // button as though nothing had ever been arranged.
+  page = await openPage({ name: 'Cara Nunn', email: 'c@x.co' }, [mk('jollyboat', d(80), d(83), Object.assign({
+    payment: 'deposit', deposit_paid: 350, pay_token: 'tok9', autopay_state: 'failed', autopay_plan: troublePlan('stopped'),
+  }, p700))]);
+  h = await hub(page);
+  ok(h && h.say === "A payment didn't go through" && h.btn === 'Update card', `a stopped plan reads as trouble with its fix, not a bare Pay (${h && h.say} · ${h && h.btn})`);
   await page.close();
 
-  // 17) THE NEXT figure reflects a manual part-payment — the plan payload now
-  // shrinks each remaining row to min(per, running), so the card announces what
-  // the collector will really take, not the ceiling (a £150-when-£60-owed alarm).
-  page = await openPage({ name: 'Cara Nunn', email: 'c@x.co' }, [mk('jollyboat', d(80), d(83), {
-    payment: 'deposit', pay_token: 'tok9',
-    agreed_total: 700, agreed_per_night: 233.33, agreed_nights: 3, agreed_nightly: 700,
-    agreed_txn_fee: 0, agreed_txn_pct: 0, agreed_booking_fee: 0,
-    autopay_state: 'armed', autopay_says: 'Scheduled.',
-    // One done, £60 left across two rows: next £60, final £0 — never 2×£175.
-    autopay_plan: { n: 3, per: 175, toGo: 60, next: d(20), dates: [
-      { date: d(-10), state: 'done', fig: 175 },
-      { date: d(20), state: 'next', fig: 60 },
-      { date: d(50), state: 'todo', fig: 0 },
-    ] },
-  })]);
-  const shrunk = await page.evaluate(() => {
-    const figs = [...document.querySelectorAll('.my-stay-hub-soon .ap-figc')].map((e) => e.textContent);
-    return { figs: figs.join('|'), sum: (document.querySelector('.my-stay-hub-soon .hub-plan-sum') || {}).textContent || '' };
-  });
-  ok(/£60\.00/.test(shrunk.figs) && !/£175\.00\|£175\.00\|£175\.00/.test(shrunk.figs), `the next figure is what will be taken, not the ceiling (${shrunk.figs})`);
-  ok(/£60\.00 to go/.test(shrunk.sum), `…and the rows agree with what's left (${shrunk.sum})`);
+  // 16) A SINGLE "one payment" consent in trouble has no schedule, but it must not
+  // read as healthy — the failure email sends the guest here. Retrying keeps
+  // autopay_state 'armed'; without the trouble rule that showed as arranged.
+  page = await openPage({ name: 'Cara Nunn', email: 'c@x.co' }, [mk('jollyboat', d(80), d(83), Object.assign({
+    payment: 'deposit', deposit_paid: 350, pay_token: 'tok9', autopay_state: 'armed', autopay_plan: null,
+    autopay_trouble: { state: 'retrying', why: 'The card was declined.', fig: 350, retry: d(2) },
+  }, p700))]);
+  h = await hub(page);
+  ok(h && h.tone === 'is-warn' && h.say === "A payment didn't go through", `a single trouble consent reads amber, never arranged (${h && h.say} / ${h && h.tone})`);
+  ok(h && h.btn === 'Update card', `…with the fix (${h && h.btn})`);
+  await page.close();
+
+  // 17) THE NEXT figure is what will really be taken. After a payment made by hand
+  // the plan payload shrinks each remaining row to min(per, what is left), so the
+  // next collection is £60 — and calling that "£60.00 monthly" would misstate the
+  // plan. The card and the pay screen say it one way (payPlanNext).
+  const shrunk = armedPlan({ toGo: 60, dates: [
+    { date: d(-10), state: 'done', fig: 175 },
+    { date: d(20), state: 'next', fig: 60 },
+    { date: d(50), state: 'todo', fig: 0 },
+  ] });
+  page = await openPage({ name: 'Cara Nunn', email: 'c@x.co' }, [mk('jollyboat', d(80), d(83), Object.assign({
+    payment: 'deposit', deposit_paid: 640, pay_token: 'tok9', autopay_state: 'armed', autopay_plan: shrunk,
+  }, p700))]);
+  h = await hub(page);
+  ok(h && h.say === `Next £60.00 on ${due20}` && !/monthly|£175/.test(h.say), `the next figure is what will be taken, not the ceiling (${h && h.say})`);
+  ok(h && h.fig === '£60.00 balance', `…and it agrees with what is left (${h && h.fig})`);
+  const payLine = await page.evaluate((p) => { const keep = payState.s; payState.s = { autopayPlan: p }; const line = payArmedPlanLine(); payState.s = keep; return line; }, shrunk);
+  ok(payLine.indexOf(`Next £60.00 on ${due20}`) === 0, `the pay screen's armed line says it the same way (${payLine})`);
   await page.close();
 
   // 18) check_in_time is guest-supplied free text (enquiries.php clean() is
-  // trim-only) and reaches the pre-arrival hub's innerHTML — it must be escaped.
-  page = await openPage({ name: 'Cara Nunn', email: 'c@x.co' }, [mk('jollyboat', d(80), d(83), {
+  // trim-only) and reaches the card's innerHTML — it must be escaped.
+  page = await openPage({ name: 'Cara Nunn', email: 'c@x.co' }, [mk('jollyboat', d(80), d(83), Object.assign({
     payment: 'deposit', pay_token: 'tok9', check_in_time: '<img src=x onerror=window.__xss=1>',
-    agreed_total: 700, agreed_per_night: 233.33, agreed_nights: 3, agreed_nightly: 700,
-    agreed_txn_fee: 0, agreed_txn_pct: 0, agreed_booking_fee: 0,
-  })]);
+  }, p700))]);
   const xss = await page.evaluate(() => ({
     fired: !!window.__xss,
-    injected: !!document.querySelector('.my-stay-hub-soon img'),
+    injected: !!document.querySelector('#guest-bookings-list img[src="x"], #guest-bookings-list [onerror]'),
+    // The row mapper vets a time (chbTime) before anything renders it, so the
+    // crafted value never reaches the card even as text; the default stands.
+    time: /in 15:00/.test((document.querySelector('.gb2-next .gb2-addr') || {}).textContent || ''),
   }));
-  ok(!xss.fired && !xss.injected, `a crafted check-in time is escaped, not injected (fired=${xss.fired}, img=${xss.injected})`);
+  ok(!xss.fired && !xss.injected && xss.time, `a crafted check-in time is refused, not injected — the card keeps the default (fired=${xss.fired}, img=${xss.injected}, default=${xss.time})`);
   await page.close();
 
   // 19) openPayView SUPERSEDE — the source carries the stamp guard so a slow
@@ -545,76 +511,65 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
     }
   }
 
-  // 21) THE STAY TIMELINE — "Your road to Blakeney" (the approved companion
-  // demo). Every row reads a payload fact the card already trusts; the balance
-  // row's FIGURE is asserted EQUAL to the Pay button's (guestPayCta feeds
-  // both), and the door-code row follows the keeper's gate exactly as §20 does.
-  console.log('21) the stay timeline');
-  const tlOf = (pg) => pg.evaluate(() => {
-    const tl = document.querySelector('.my-stay-hub-soon .gtl');
-    if (!tl) return null;
+  // 21) THE MONEY BLOCK — the figure, its line, one button, a bar of what is paid
+  // and the breakdown folded under "Payment details". Every figure comes from the
+  // derivations the card already trusts (displayGrand + guestPayCta), and the block
+  // RECONCILES: paid + the figure asked = the stay's whole, the same whole the
+  // folded breakdown states. Asserted as arithmetic, so no pounds are hardcoded
+  // into the property.
+  console.log('21) the money block');
+  const gbp2 = (s) => Number(String(s).replace(/[^0-9.]/g, ''));
+  const moneyOf = (pg) => pg.evaluate(() => {
+    const c = document.querySelector('.gb2-next');
+    const fold = c && c.querySelector('.gb2-fold .guest-price-box');
     return {
-      cap: (tl.querySelector('.gtl-cap') || {}).textContent || '',
-      rows: [...tl.querySelectorAll('.gtj')].map((r) => ({
-        st: r.className.replace('gtj ', ''),
-        l: (r.querySelector('.gtj-l') || {}).textContent || '',
-        s: (r.querySelector('.gtj-s') || {}).textContent || '',
-        f: (r.querySelector('.gtj-f') || {}).textContent || '',
-      })),
-      btn: ((document.querySelector('.my-stay-hub-soon .hub-cta-btn') || {}).textContent || '').trim(),
+      fig: ((c.querySelector('.gbm-fig') || {}).textContent || '').trim(),
+      say: ((c.querySelector('.gbm-s') || {}).textContent || '').trim(),
+      leg: [...c.querySelectorAll('.gbm-leg span')].map((s) => s.textContent.trim()),
+      bar: (c.querySelector('.gbm-bar > span') || { style: {} }).style.width || '',
+      totals: fold ? [...fold.querySelectorAll('.price-row.total')].map((r) => r.textContent.replace(/\s+/g, ' ').trim()) : [],
+      args: ((c.querySelector('.gbm-btn') || { getAttribute: () => '' }).getAttribute('data-args')) || '',
+      next: ((c.querySelector('.bkflow-next') || {}).textContent || '').replace(/\s+/g, ' ').trim(),
     };
   });
   page = await openPage({ name: 'Road Guest', email: 'road@x.co' },
     [mk('jollyboat', d(20), d(23), Object.assign({ payment: 'unpaid', pay_token: 'tokt', balance_due_by: d(9),
       created_at: d(-5) + ' 10:00:00' }, priced, { agreed_booking_fee: 50 }))]);
-  let tl = await tlOf(page);
-  ok(!!tl && /Your road to Blakeney/.test(tl.cap), 'the timeline renders under its own caption');
-  ok(tl.rows[0] && tl.rows[0].st === 'is-done' && tl.rows[0].l === 'Booking confirmed' && tl.rows[0].s.length > 3,
-    `row 1 is the confirmed booking with a spoken date (${tl.rows[0] && tl.rows[0].s})`);
-  const nowRow = tl.rows.find((r) => r.st === 'is-now');
-  ok(!!nowRow && nowRow.l === 'Balance' && /£450\.00/.test(nowRow.f),
-    `the you-are-here row is the balance with its figure (${nowRow && nowRow.l} ${nowRow && nowRow.f})`);
-  ok(!!nowRow && new RegExp('Due by ' + ukD(d(9)).replace(/\//g, '\\/')).test(nowRow.s),
-    `…dated from the plan's own derived date (${nowRow && nowRow.s})`);
-  // EQUALITY OF DERIVATIONS: the row's figure is the button's figure.
-  ok(!!nowRow && tl.btn.indexOf(nowRow.f) !== -1, `the row and the Pay button quote ONE figure (${nowRow && nowRow.f} in "${tl.btn}")`);
-  ok(!tl.rows.some((r) => /arrival details/i.test(r.l)), 'there is no Arrival-details row — it was removed with the door code');
-  const stayRow = tl.rows.find((r) => r.l === 'Your stay');
-  ok(!!stayRow && /Check-in from 15:00/.test(stayRow.s), `the stay row names its check-in (${stayRow && stayRow.s})`);
-  const depRow = tl.rows.find((r) => r.l === 'Deposit back');
-  ok(!!depRow && /£50\.00/.test(depRow.f) && /3–5 working days/.test(depRow.s), 'the deposit-back row carries the refundable figure');
-  ok(!tl.rows.some((r) => /door code|Key safe/i.test(r.l)), 'and no door-code row either, in any state (§20)');
+  let mb = await moneyOf(page);
+  ok(mb.fig === '£450.00 balance', `nothing paid yet: the whole stay, deposit included, is the figure (${mb.fig})`);
+  ok(mb.leg[0] === '£0.00 paid' && mb.leg[1] === '£450.00 in all' && mb.bar === '0%', `…the bar empty beside it (${mb.leg.join(' / ')}, ${mb.bar})`);
+  ok(mb.totals.some((t) => /£450\.00$/.test(t)), `the folded breakdown states the same whole (${mb.totals.join(' | ')})`);
+  ok(/tokt/.test(mb.args), `the one button opens this stay's own pay screen (${mb.args})`);
+  ok(mb.next === '', 'and the journey adds no second sentence about money — the block is the ask');
   await page.close();
 
-  // 21b) …a SENT pre-arrival email adds no row now (the one it used to flip is
-  // gone), and the settled stay still leads with Paid in full.
+  // 21b) …a settled stay: Paid in full, the bar full, nothing more to pay — and the
+  // arrival details said ONCE, in the journey line beneath, not in the block too.
   page = await openPage({ name: 'Sent Guest', email: 'sent@x.co' },
-    [mk('jollyboat', d(5), d(8), Object.assign({ payment: 'paid', pre_arrival_sent: d(-1) }, priced))]);
-  tl = await tlOf(page);
-  ok(!tl.rows.some((r) => /arrival details|check your inbox/i.test(r.l + ' ' + r.s)), 'a sent arrival email adds no row');
-  const paidRow = tl && tl.rows.find((r) => r.l === 'Paid in full');
-  ok(!!paidRow && paidRow.st === 'is-done' && /£400\.00/.test(paidRow.f), `a settled stay leads with Paid in full (${paidRow && paidRow.f})`);
+    [mk('jollyboat', d(10), d(13), Object.assign({ payment: 'paid', arrival_on: d(7) }, priced))]);
+  mb = await moneyOf(page);
+  const arr7 = await spoken(page, d(7));
+  ok(/^Paid in full/.test(mb.fig) && mb.bar === '100%' && mb.leg[0] === '£400.00 paid' && mb.leg[1] === '£400.00 in all',
+    `a settled stay reads Paid in full, the bar full (${mb.fig} · ${mb.leg.join(' / ')})`);
+  ok(mb.say === 'Nothing more to pay', `…its line asks nothing (${mb.say})`);
+  ok(mb.next.indexOf('Your arrival details come on ' + arr7) !== -1 && !/arrival/i.test(mb.say),
+    `…and the arrival date is said once, in the journey (${mb.next})`);
   await page.close();
 
-  // 21c) part-paid: done "Paid so far" above the now-balance, and the two SUM
-  // to the total the card states.
+  // 21c) part-paid: the paid figure and the figure asked SUM to the whole.
   page = await openPage({ name: 'Part Guest', email: 'part@x.co' },
     [mk('jollyboat', d(20), d(23), Object.assign({ payment: 'deposit', deposit_paid: 100, pay_token: 'toku' }, priced))]);
-  tl = await tlOf(page);
-  const soFar = tl && tl.rows.find((r) => r.l === 'Paid so far');
-  const bal = tl && tl.rows.find((r) => r.st === 'is-now');
-  ok(!!soFar && /£100\.00/.test(soFar.f) && !!bal && /£300\.00/.test(bal.f),
-    `paid-so-far + balance rows carry the ledger's own split (${soFar && soFar.f} / ${bal && bal.f})`);
+  mb = await moneyOf(page);
+  ok(mb.fig === '£300.00 balance' && mb.leg[0] === '£100.00 paid' && mb.bar === '25%', `part-paid: the ledger's own split (${mb.fig} · ${mb.leg[0]} · ${mb.bar})`);
+  ok(Math.abs(gbp2(mb.leg[0]) + gbp2(mb.fig) - gbp2(mb.leg[1])) < 0.005, `…and paid + still to pay = the whole (${mb.leg[0]} + ${mb.fig} = ${mb.leg[1]})`);
   await page.close();
 
-  // 21d) THE HELD-BACK STATE adds nothing to the timeline either — the row
-  // that carried it went with the rest. The state still reaches the guest on
-  // arrival day (§25's masked hero), which is the moment it matters.
+  // 21d) THE HELD-BACK STATE adds nothing to the card — the code reaches the guest
+  // on arrival day (§25's masked hero), which is the moment it matters.
   page = await openPage({ name: 'Pending Kate', email: 'pk@x.co' },
     [mk('jollyboat', d(10), d(13), Object.assign({ payment: 'paid', door_code_pending: true }, priced))]);
-  tl = await tlOf(page);
-  ok(!!tl && !tl.rows.some((r) => /door code|key safe/i.test(r.l + ' ' + r.s)),
-    'door_code_pending adds no timeline row');
+  ok(await page.evaluate(() => !/door code|key safe/i.test((document.querySelector('.gb2-next') || {}).textContent || '')),
+    'door_code_pending adds nothing to the card');
   await page.close();
 
   // 22) THE REMOVED ASKS — "When will you arrive?" and the extras chips were
@@ -628,16 +583,16 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
     slots: document.querySelectorAll('.gslots, .gslot, .gslot-row, .gslot-note').length,
     extras: document.querySelectorAll('.gxtra, .gxchip, .gxtra-row, .gxtra-note').length,
     words: /When will you arrive|Anything you'll need|Travel cot|Highchair|Firewood/i.test(
-      (document.querySelector('.my-stay-hub-soon') || {}).textContent || ''),
-    fns: ['guestArrivalSlotsHtml', 'guestSetArrivalWindow', 'guestExtrasHtml', 'guestAskExtra', 'arrivalWindowLabel']
+      (document.querySelector('.gb2-next') || {}).textContent || ''),
+    fns: ['guestArrivalSlotsHtml', 'guestSetArrivalWindow', 'guestExtrasHtml', 'guestAskExtra', 'arrivalWindowLabel',
+      'guestPreArrivalHubHtml', 'guestStayTimelineHtml', 'guestPlanBlockHtml']
       .filter((f) => typeof window[f] === 'function'),
   }));
   ok(removed.slots === 0 && removed.extras === 0, `no arrival-window or extras markup on the card (${removed.slots}/${removed.extras})`);
   ok(!removed.words, 'and none of their words survive in the card');
-  ok(removed.fns.length === 0, `the composers are gone with them (${removed.fns.join(', ') || 'none'})`);
-  // The card still carries what remains — the timeline above them.
-  ok(await page.evaluate(() => !!document.querySelector('.my-stay-hub-soon .gtl')),
-    'the stay timeline is untouched — only the two asks went');
+  ok(removed.fns.length === 0, `the composers are gone with them, the old hub's too (${removed.fns.join(', ') || 'none'})`);
+  ok(await page.evaluate(() => !!document.querySelector('.gb2-next .gbm')),
+    'the money block stands — only the asks went');
   await page.close();
 
   // 23) THE WEATHER STRIP — the stay's own days from the public forecast; a
@@ -646,7 +601,7 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
   page = await openPage({ name: 'Wx Guest', email: 'wx@x.co' },
     [mk('jollyboat', d(3), d(6), Object.assign({ payment: 'paid' }, priced))]);
   let wx = await page.evaluate(() => {
-    const el = document.querySelector('.my-stay-hub-soon .gwx');
+    const el = document.querySelector('.gb2-next .gwx');
     return { present: !!el, hidden: el ? el.hidden : true };
   });
   ok(wx.present && wx.hidden, 'with no forecast the strip stays hidden');
@@ -657,7 +612,7 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
   await page.evaluate(() => { __gwxCache = null; return renderGuestStayWeather(); });
   await page.waitForTimeout(300);
   wx = await page.evaluate(() => {
-    const el = document.querySelector('.my-stay-hub-soon .gwx');
+    const el = document.querySelector('.gb2-next .gwx');
     return {
       hidden: el ? el.hidden : true,
       cells: el ? el.querySelectorAll('.gwx-d').length : 0,
@@ -671,7 +626,7 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
   // …and a stay beyond the horizon renders no strip at all.
   page = await openPage({ name: 'Far Guest', email: 'far@x.co' },
     [mk('jollyboat', d(40), d(43), Object.assign({ payment: 'paid' }, priced))]);
-  ok(await page.evaluate(() => !document.querySelector('.my-stay-hub-soon .gwx')), 'a far-out stay has no weather slot');
+  ok(await page.evaluate(() => !!document.querySelector('.gb2-next') && !document.querySelector('.gb2-next .gwx')), 'a far-out stay has no weather slot');
   await page.close();
 
   // 25) ARRIVAL DAY — the door-code hero on the in-residence card. Digits only
@@ -681,7 +636,7 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
   page = await openPage({ name: 'Hero Kate', email: 'hk@x.co' },
     [mk('jollyboat', d(0), d(3), Object.assign({ payment: 'paid', door_code: '7302' }, priced))], { at: todayAt(11, 0) });
   const hero = await page.evaluate(() => {
-    const hub = document.querySelector('.my-stay-hub:not(.my-stay-hub-soon)');
+    const hub = document.querySelector('.my-stay-hub');
     const code = hub && hub.querySelector('.hub-code');
     return {
       fig: code ? (code.querySelector('.hub-code-fig') || {}).textContent : '',
@@ -696,7 +651,7 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
   page = await openPage({ name: 'Locked Kate', email: 'lk@x.co' },
     [mk('jollyboat', d(0), d(3), Object.assign({ payment: 'paid', door_code_pending: true }, priced))], { at: todayAt(11, 0) });
   const locked = await page.evaluate(() => {
-    const code = document.querySelector('.my-stay-hub:not(.my-stay-hub-soon) .hub-code');
+    const code = document.querySelector('.my-stay-hub .hub-code');
     return {
       present: !!code,
       locked: code ? code.classList.contains('is-locked') : false,
@@ -710,33 +665,35 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
   // …and any other day (or keeper off) renders no hero at all.
   page = await openPage({ name: 'Mid Kate', email: 'mk@x.co' },
     [mk('jollyboat', d(-1), d(3), Object.assign({ payment: 'paid' }, priced))], { at: todayAt(11, 0) });
-  ok(await page.evaluate(() => !document.querySelector('.my-stay-hub:not(.my-stay-hub-soon) .hub-code')),
+  ok(await page.evaluate(() => !document.querySelector('.my-stay-hub .hub-code')),
     'mid-stay with nothing released → no code card at all');
   await page.close();
 
-  // 26) THE STAY CARD, REBUILT — accent band + serif name, spoken when-line,
-  // ONE payline whose fold holds the same guestPriceBoxHtml rows, quiet links.
-  console.log('26) the stay card rebuilt');
+  // 26) THE STAY CARD — accent band + serif name, a spoken when-line, ONE money
+  // block whose "Payment details" fold holds the same guestPriceBoxHtml rows, and
+  // quiet links.
+  console.log('26) the stay card');
   page = await openPage({ name: 'Card Guest', email: 'card@x.co' },
     [mk('jollyboat', d(20), d(23), Object.assign({ payment: 'paid', deposit_paid: 400 }, priced, { id: 5151 }))]);
   const card = await page.evaluate(() => {
     const c = document.querySelector('.guest-booking.gb2');
     if (!c) return null;
-    const pl = c.querySelector('.gb2-payline');
     return {
       band: !!c.querySelector('.gb2-band'),
       when: (c.querySelector('.gb2-when') || {}).textContent || '',
-      pl1: (pl.querySelector('.gb2-pl1') || {}).textContent || '',
-      fig: (pl.querySelector('.gb2-fig') || {}).textContent || '',
+      fig: ((c.querySelector('.gbm-fig') || {}).textContent || '').trim(),
+      leg: [...c.querySelectorAll('.gbm-leg span')].map((s) => s.textContent.trim()),
+      det: ((c.querySelector('.gb2-payline') || {}).textContent || '').replace(/\s+/g, ' ').trim(),
       folded: (document.getElementById('gb2-fold-b5151') || {}).hidden,
       links: [...c.querySelectorAll('.gb2-links .btn-sm')].map((b) => b.textContent.trim()),
+      tiles: [...c.querySelectorAll('.hub-tile span')].map((s) => s.textContent.trim()),
     };
   });
   ok(!!card && card.band, 'the card carries its cottage accent band');
-  ok(card && /^\w{3} \d+ \w+ → /.test(card.when) && /3 nights/.test(card.when) && /ref CHB-/.test(card.when),
-    `the when-line is spoken, with nights + ref (${card && card.when.slice(0, 60)})`);
-  ok(card && /Paid in full/.test(card.pl1) && card.fig === '£400.00', `the payline states the verdict + figure (${card && card.pl1} ${card && card.fig})`);
-  ok(card && card.folded === true, 'the breakdown starts folded');
+  ok(card && /^\w{3} \d{1,2} \w{3}( \d{4})? – \w{3} \d{1,2} \w{3} \d{4}/.test(card.when) && /3 nights/.test(card.when) && /ref CHB-/.test(card.when),
+    `the when-line is spoken — both weekdays, the year once — with nights + ref (${card && card.when.slice(0, 64)})`);
+  ok(card && /^Paid in full/.test(card.fig) && card.leg[1] === '£400.00 in all', `the money block states the verdict and the whole (${card && card.fig} · ${card && card.leg.join(' / ')})`);
+  ok(card && /^Payment details/.test(card.det) && card.folded === true, `the breakdown starts folded under "Payment details" (${card && card.det})`);
   await page.click('.gb2-payline');
   await page.waitForTimeout(150);
   const foldOpen = await page.evaluate(() => ({
@@ -746,10 +703,12 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
     addr: /in 15:00 \/ out 10:00/.test((document.querySelector('.gb2-addr') || {}).textContent || ''),
   }));
   ok(foldOpen.hidden === false && foldOpen.exp === 'true' && foldOpen.box,
-    'the payline opens to the SAME price-box rows (one composer, folded)');
+    'it opens to the SAME price-box rows (one composer, folded)');
   ok(foldOpen.addr, 'the address + in/out times live in the fold');
   ok(card && card.links.length >= 3 && card.links.includes('Invoice') && card.links.includes('Terms'),
     `the secondary actions are one quiet row (${card && card.links.join(' · ')})`);
+  ok(card && card.tiles.includes('Welcome book') && !card.links.includes('Welcome book'),
+    `the welcome book is a tile on this card, not a second link beside it (${card && card.links.join(' · ')})`);
   await page.close();
 
   // 27) AFTER THE STAY — star-tap review, Book again + the returning-guest
@@ -825,9 +784,8 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
   // was archived, propertyMeta had no entry, and one undefined meta.name threw
   // mid-forEach — the guest's ENTIRE My Stays rendered empty, other cottages'
   // stays included). The server's JOIN still names an archived cottage
-  // (property_name), so the card and the pre-arrival hub speak that; the live
-  // booking beside it is never collateral damage; Book again is withheld on a
-  // cottage with no page to land on.
+  // (property_name), so the card speaks that; the live booking beside it is never
+  // collateral damage; Book again is withheld on a cottage with no page to land on.
   console.log('28) a booking at an archived cottage');
   page = await openPage({ name: 'George F', email: 'gf@x.co' }, [
     Object.assign(mk('theannex', d(30), d(33), Object.assign({ payment: 'unpaid', pay_token: 'ta' }, priced)), { property_name: 'The Annex' }),
@@ -837,14 +795,14 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
   const arch = await page.evaluate(() => ({
     cards: document.querySelectorAll('.guest-booking').length,
     names: [...document.querySelectorAll('.gb2-name')].map((n) => n.textContent.trim()),
-    hub: (document.querySelector('.my-stay-hub-soon .hub-title') || {}).textContent || '',
-    tl: !!document.querySelector('.my-stay-hub-soon .gtl'),
+    next: (document.querySelector('.gb2-next .gb2-name') || {}).textContent || '',
+    money: !!document.querySelector('.gb2-next .gbm .gbm-btn'),
     again: document.querySelectorAll('.gb2-again').length,
     rebook: [...document.querySelectorAll('.gb2-links .btn-sm')].filter((b) => /Book again/.test(b.textContent)).length,
   }));
   ok(arch.cards === 3 && arch.names.some((n) => /The Annex/.test(n)) && arch.names.some((n) => /Jollyboat/.test(n)),
     `every stay renders — the archived cottage speaks the server's own name (${arch.names.join(' · ')})`);
-  ok(/The Annex/.test(arch.hub) && arch.tl, `the pre-arrival hub + timeline stand for the archived cottage too (${arch.hub.trim()})`);
+  ok(/The Annex/.test(arch.next) && arch.money, `the countdown card and its money block stand for the archived cottage too (${arch.next.trim()})`);
   ok(arch.again === 0 && arch.rebook === 0, 'Book again is withheld — an archived cottage has no page to land on');
   await page.close();
 
@@ -912,7 +870,7 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
   console.log('\n32. Amenities on the stay');
   const amPage = await openPage({ name: 'Amy Nunn', email: 'amy@x.co' }, [mk('jollyboat', d(9), d(12), Object.assign({ payment: 'paid' }, priced))]);
   const amv = await amPage.evaluate(async () => {
-    const el = document.querySelector('.my-stay-hub-soon');
+    const el = document.querySelector('.gb2-next');
     const labels = [...el.querySelectorAll('.hub-tile span')].map((s) => s.textContent.trim());
     // With a list written up.
     siteContent['amenities-jollyboat'] = ['Wood-burning stove', 'Walled courtyard', 'Sea view'];

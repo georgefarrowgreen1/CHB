@@ -1,1348 +1,563 @@
-// Pay-for-your-stay page, end to end in a real browser (Square stubbed):
-//  1. the header carries the STAY — cottage accent chip + dates + nights
-//  2. one amount hero: kind label, figure, money-shape sub ("of £X total ·
-//     £Y already paid") and the deposit note as its OWN quiet line
-//  3. the loud "Secured by Square" banner is gone — a small lock line +
-//     receipt note sit under the Pay button instead
-//  4. the Pay button names the amount ("Pay £340.00")
-//  5. the wallet divider stays hidden when no wallet mounts
-//  6. happy path: tokenize → charge posts source_id → receipt state
-const { bootBrowser } = require('./ui-test-lib'); // pins TZ=Europe/London at require time
+// ============================================================
+//  ui-test-pay.js — the guest pay screen (the approved pay-screens demo),
+//  end to end in a real browser with Square and pay.php stubbed.
+//
+//   §1  a deposit ask: the stay, ONE figure, the breakdown a tap away and
+//       adding up to it, the Deposit | Whole stay switch, the money story
+//       whose "Today" stop IS the figure, the plan as a decision
+//   §2  the whole stay: its own summary, its own quote, its own figure; the
+//       button waits rather than charge without one
+//   §3  the plan: consent per choice, an automatic plan stands the wallets
+//       down WITH the reason, and the wallet belt refuses before tokenize
+//   §4  paying by card: 3-D Secure verifies the figure being charged, the
+//       narrated wait, the receipt says what was paid and what comes next
+//   §5  a refusal sits ON the card; a field mistake is said once (Square's)
+//   §6  the connection dropped: no Pay button, only "Check whether it went
+//       through", which answers both ways
+//   §7  an arranged plan, the card form on its own, and a plan in trouble
+//   §8  the calm screens: the legacy hold, nothing to pay, an expired link,
+//       payments off, a server error that retries
+//   §9  a deposit-only payment is called that, never "balance"
+//   §10 an earlier open's slow answer never paints over a newer one
+//   §11 the paint: one primary, a quiet second choice, one spinner, a sticky
+//       bar on a phone, two columns on a computer, nothing wider than the page
+// ============================================================
+const { bootBrowser, d } = require('./ui-test-lib'); // pins TZ=Europe/London at require time
 let fails = 0;
-// The app's own money format, for comparing a figure against rendered text.
+const ok = (b, m) => {
+  console.log(`  ${b ? '✓' : '✗'} ${m}`);
+  if (!b) fails++;
+};
 const gbpJS = (n) => '£' + Number(n).toLocaleString('en-GB', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails++; };
+const money = (t) => Number(String(t).replace(/[^0-9.]/g, '') || 0);
+
+// ---- fixtures: one stay, the states a guest meets ----
+const stay = { ok: true, propName: 'Jollyboat', propKey: 'jollyboat', guestName: 'Debbie McGoldrick', checkIn: d(130), checkOut: d(133), currency: 'GBP', adults: 2, children: 0, emailHint: 'd•••@example.com', arrivalOn: d(127), hasEmail: true };
+const due = d(100);
+const SUM = {
+  '8:deposit': { ...stay, kind: 'deposit', total: 700, alreadyPaid: 0, balance: 700, depositPct: 25, amountDue: 175, damagesDue: 50, holdAmount: 50, holdStatus: 'none', balanceDueDate: due, quote: '8:deposit:225.00:q', autopayTerms: { amount: 525, due }, autopayState: 'off', instalmentOffer: { n: 3, per: 175, last: 175, due, dates: [d(40), d(70), due] }, paidOn: null },
+  '8:balance': { ...stay, kind: 'balance', total: 700, alreadyPaid: 0, balance: 700, depositPct: 25, amountDue: 700, damagesDue: 50, holdAmount: 50, holdStatus: 'none', balanceDueDate: due, quote: '8:balance:750.00:q', autopayTerms: null, autopayState: 'off', paidOn: null },
+  '9:balance': { ...stay, kind: 'balance', total: 700, alreadyPaid: 175, balance: 525, depositPct: 25, amountDue: 525, damagesDue: 0, depositCharged: 50, holdAmount: 50, holdStatus: 'charged', balanceDueDate: due, quote: '9:balance:525.00:q', autopayTerms: null, autopayState: 'off', paidOn: d(-1) },
+  '14:balance': { ...stay, kind: 'balance', total: 700, alreadyPaid: 350, balance: 350, depositPct: 25, amountDue: 350, damagesDue: 0, depositCharged: 50, holdAmount: 50, holdStatus: 'charged', balanceDueDate: due, quote: '14:balance:350.00:q', autopayTerms: null, autopayState: 'armed', paidOn: d(-40),
+    autopayPlan: { n: 3, per: 175, toGo: 2, next: d(30), state: 'on', dates: [{ date: d(-1), state: 'done', fig: 175 }, { date: d(30), state: 'next', fig: 175 }, { date: due, state: 'todo', fig: 175 }] } },
+  '13:balance': { ...stay, kind: 'balance', total: 700, alreadyPaid: 350, balance: 350, depositPct: 25, amountDue: 350, damagesDue: 0, depositCharged: 50, holdAmount: 50, holdStatus: 'charged', balanceDueDate: due, quote: '13:balance:350.00:q', autopayTerms: null, autopayState: 'armed', paidOn: d(-40),
+    autopayRepair: { stopped: false, why: 'The card was declined.', monthly: true, retry: d(3) },
+    autopayPlan: { n: 3, per: 175, toGo: 2, next: d(2), state: 'retrying', retry: d(3), dates: [{ date: d(-28), state: 'done', fig: 175 }, { date: d(2), state: 'next', fig: 175 }, { date: due, state: 'todo', fig: 175 }] } },
+  '16:hold': { ...stay, kind: 'hold', total: 700, alreadyPaid: 700, balance: 0, amountDue: 50, damagesDue: 0, holdAmount: 50, holdStatus: 'requested', quote: '16:hold:50.00:q', paidOn: d(-5) },
+  '17:balance': { ...stay, kind: 'balance', total: 700, alreadyPaid: 700, balance: 0, amountDue: 0, damagesDue: 0, depositCharged: 50, holdAmount: 50, holdStatus: 'charged', balanceDueDate: due, quote: '17:balance:0.00:q', paidOn: d(-5) },
+  '18:balance': { ...stay, kind: 'balance', total: 700, alreadyPaid: 700, balance: 0, amountDue: 0, damagesDue: 75, holdAmount: 0, holdStatus: 'none', balanceDueDate: due, quote: '18:balance:75.00:q', paidOn: d(-5) },
+};
 
 (async () => {
-  const { browser, base, done: harnessDone } = await bootBrowser();
-  const page = await browser.newPage({ viewport: { width: 390, height: 900 } });
-  page.on('pageerror', (e) => { console.log('  PAGEERR:', e.message); fails++; });
-  await page.addInitScript(() => {
-    if (navigator.serviceWorker) navigator.serviceWorker.register = () => new Promise(() => {});
-    // Stub the Square SDK: loadSquareSdk() short-circuits on window.Square, the
-    // card field attaches as a no-op, tokenize approves, and paymentRequest
-    // throwing means no wallet mounts (so the divider must stay hidden).
-    // RECORD what tokenize is asked to verify. The stub dropped its argument, so the
-    // one figure the guest's own bank shows them was invisible to every check in this
-    // suite — and on a part payment it was the full ask, not the slice.
-    window.__tokArgs = [];
-    window.Square = {
-      payments: () => ({
-        card: async () => ({ attach: async () => {}, tokenize: async (v) => { window.__tokArgs.push(v); return { status: 'OK', token: 'tok_test_1' }; } }),
-        paymentRequest: () => { throw new Error('no wallets in this test'); },
-      }),
-    };
-  });
+  const { browser, base, done } = await bootBrowser();
 
-  const posts = [];
-  let slowChargeMs = 0; // the slow-charge section holds the charge's answer this long
-  await page.route(/\.php/, (route) => {
-    const url = route.request().url();
-    const json = (o) => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(o) });
-    if (route.request().method() === 'POST') {
-      const b = JSON.parse(route.request().postData() || '{}');
-      b.__url = url.split('/').pop().split('?')[0];
-      posts.push(b);
-      if (b.__url === 'pay.php' && b.action === 'summary') {
-        // Booking 403: pay.php's TERMINAL refusal — the real status codes it answers
-        // with (403 expired/invalid link, 404 booking gone, 503 payments off). A
-        // 4xx/503 is a verdict, so retrying returns it for ever.
-        if (b.booking_id === '403') return route.fulfill({
-          status: 403, contentType: 'application/json',
-          body: JSON.stringify({ error: 'This payment link is invalid or has expired.' }),
-        });
-        // Booking 13: MID-PLAN WITH A FAILED TRY — the summary carries
-        // autopayRepair (kind is 'balance', so autopayTerms is null and the
-        // consent card cannot render; the repair card is the only affordance).
-        if (b.booking_id === '13') return json({
-          ok: true, propName: 'Annex', propKey: 'jollyboat', guestName: 'Debbie McGoldrick',
-          checkIn: '2026-11-27', checkOut: '2026-11-30', currency: 'GBP', kind: 'balance',
-          total: 700, alreadyPaid: 350, balance: 350, depositPct: 25, amountDue: 350,
-          damagesDue: 0, depositCharged: 50, holdAmount: 50, holdStatus: 'charged', balanceDueDate: '2026-10-28',
-          part: { min: 20, max: 350 }, quote: '13:balance:350.00:0123456789abcdef0123456789abcdef',
-          autopayTerms: null, autopayState: 'armed', instalmentOffer: null,
-          autopayRepair: { stopped: false, why: 'The card was declined.', monthly: true, retry: '2026-08-30' },
-        });
-        // Booking 12: the deposit ask when the monthly offer is ABSENT — the
-        // owner's floor, or a plan that cannot fit; either way pay.php sends
-        // instalmentOffer null. Checked BEFORE the generic deposit shape.
-        if (b.booking_id === '12') return json({
-          ok: true, propName: 'Annex', propKey: 'jollyboat', guestName: 'Debbie McGoldrick',
-          checkIn: '2026-08-27', checkOut: '2026-08-30', currency: 'GBP', kind: 'deposit',
-          total: 700, alreadyPaid: 0, balance: 700, depositPct: 25, amountDue: 175,
-          damagesDue: 50, holdAmount: 50, holdStatus: 'none', balanceDueDate: '2026-07-28',
-          part: { min: 20, max: 175 }, quote: '12:deposit:225.00:0123456789abcdef0123456789abcdef',
-          autopayTerms: { amount: 525, due: '2026-10-28' }, autopayState: 'off',
-          instalmentOffer: null,
-        });
-        // The DEPOSIT shape is the audit's custom-price booking: agreed £700, 25%
-        // deposit £175, £50 damages deposit riding the first payment → £225 hero.
-        if (b.kind === 'deposit') return json({
-          ok: true, propName: 'Annex', propKey: 'jollyboat', guestName: 'Debbie McGoldrick',
-          checkIn: '2026-08-27', checkOut: '2026-08-30', currency: 'GBP', kind: 'deposit',
-          total: 700, alreadyPaid: 0, balance: 700, depositPct: 25, amountDue: 175,
-          damagesDue: 50, holdAmount: 50, holdStatus: 'none', balanceDueDate: '2026-07-28',
-          part: { min: 20, max: 175 }, quote: '8:deposit:225.00:0123456789abcdef0123456789abcdef',
-          // The arrangement is offered on the deposit ask (its real home —
-          // booking_autopay_terms only ever fires there): rest £525 by the due
-          // date, with the server-derived monthly offer beside it.
-          autopayTerms: { amount: 525, due: '2026-10-28' }, autopayState: 'off',
-          instalmentOffer: { n: 3, per: 175, last: 175, due: '2026-10-28', dates: ['2026-08-28', '2026-09-28', '2026-10-28'] },
-        });
-        // Booking 5: a balance under the part-payment floor, so the server sends
-        // NO bounds. The offer must not appear — it can only ever show what the
-        // charge would honour.
-        if (b.booking_id === '5') return json({
-          ok: true, propName: 'Annex', propKey: 'jollyboat', guestName: 'Debbie McGoldrick',
-          checkIn: '2026-08-27', checkOut: '2026-08-30', currency: 'GBP', kind: 'balance',
-          total: 390, alreadyPaid: 375, balance: 15, depositPct: 25, amountDue: 15,
-          damagesDue: 0, holdAmount: 0, holdStatus: 'none', balanceDueDate: '2030-01-15',
-          part: null, quote: '5:balance:15.00:0123456789abcdef0123456789abcdef',
-        });
-        // Booking 9: the SAME booking after that first payment — deposit CHARGED,
-        // balance link opened. The screenshotted state: the card took £225, so
-        // "already paid" must say £225 of a £750 stay, never the rental-rail
-        // £175 of £700 beside a confirmation and receipt that both say £225.
-        if (b.booking_id === '9') return json({
-          ok: true, propName: 'Annex', propKey: 'jollyboat', guestName: 'Debbie McGoldrick',
-          checkIn: '2026-08-27', checkOut: '2026-08-30', currency: 'GBP', kind: 'balance',
-          total: 700, alreadyPaid: 175, balance: 525, depositPct: 25, amountDue: 525,
-          damagesDue: 0, depositCharged: 50, holdAmount: 50, holdStatus: 'charged', balanceDueDate: '2020-01-01',
-          part: { min: 20, max: 525 }, quote: '9:balance:525.00:0123456789abcdef0123456789abcdef',
-        });
-        return json({
-          ok: true, propName: 'Annex', propKey: 'jollyboat', guestName: 'Debbie McGoldrick',
-          checkIn: '2026-08-27', checkOut: '2026-08-30', currency: 'GBP', kind: 'balance',
-          total: 390, alreadyPaid: 100, balance: 290, depositPct: 25, amountDue: 290,
-          damagesDue: 50, holdAmount: 0, holdStatus: 'none', balanceDueDate: '2030-01-15',
-          part: { min: 20, max: 290 }, quote: '7:balance:340.00:0123456789abcdef0123456789abcdef',
-        });
-      }
-      if (b.__url === 'pay.php' && b.action === 'update_card') {
-        return json({ ok: true, say: 'Card updated — the plan carries on, and nothing was charged today.', autopayState: 'armed' });
-      }
-      if (b.__url === 'pay.php' && b.action === 'charge') {
-        const reply = (o) => (slowChargeMs ? new Promise((r) => setTimeout(r, slowChargeMs)).then(() => json(o)) : json(o));
-        // Echo the slice AND the arrangement like the real endpoint: a part
-        // request comes back partial with the server-derived `remaining`; a
-        // consent comes back with its outcome (booking 8 is the stub's
-        // vault-failure case). A deposit-stage full charge is not fullyPaid.
-        const slice = Number(b.part_amount || 0);
-        const autopay = !b.autopay
-          ? null
-          : b.booking_id === '8'
-            ? { ok: false }
-            : b.autopay_instalments > 0
-              ? { ok: true, monthly: true, n: b.autopay_instalments, per: 175, next: '2026-08-28', due: '2026-10-28' }
-              : { ok: true, monthly: false, n: 1, per: 525, next: null, due: '2026-10-28' };
-        if (slice > 0) return reply({ ok: true, fullyPaid: false, charged: slice, remaining: Math.round((340 - slice) * 100) / 100, autopay });
-        return reply(b.kind === 'deposit'
-          ? { ok: true, fullyPaid: false, charged: 225, remaining: 0, autopay }
-          : { ok: true, fullyPaid: true, charged: 340, remaining: 0, autopay });
-      }
-      return json({ ok: true });
-    }
-    if (url.includes('square-config.php')) return json({ enabled: true, applicationId: 'app-id', locationId: 'loc-id', environment: 'sandbox' });
-    if (url.includes('rates.php')) return json({ properties: [{ prop_key: 'jollyboat', name: 'Annex', slug: 'annex', couple_rate: 130, booking_fee: 50, max_adults: 2, max_children: 0, max_total: 2, sort_order: 1 }], seasons: {}, occupancy: {} });
-    return json({ ok: true, bookings: [], enquiries: [], properties: [], seasons: {}, occupancy: {}, content: {}, blocks: [], ranges: [], value: null, reviews: [], photos: [], threads: [] });
-  });
-
-  await page.goto(`${base}/index.html`, { waitUntil: 'networkidle' });
-  await page.evaluate(() => openPayView('paytok', '7', 'balance'));
-  await page.waitForTimeout(900);
-
-  const v = await page.evaluate(() => ({
-    bodyShown: document.getElementById('pay-body').style.display !== 'none',
-    prop: (document.getElementById('pay-prop') || {}).textContent || '',
-    chip: !!document.querySelector('#pay-prop .prop-tag.tag-jollyboat'),
-    kind: (document.getElementById('pay-kind-label') || {}).textContent || '',
-    amount: (document.getElementById('pay-amount') || {}).textContent || '',
-    sub: (document.getElementById('pay-amount-sub') || {}).textContent || '',
-    lines: [...document.querySelectorAll('#pay-amount-sub .pay-line')].map((r) => r.textContent.replace(/\s+/g, ' ').trim()),
-    // Summed from the RENDERED figures, so the check is that what is on screen
-    // adds up — not that the composer can add.
-    lineSum:
-      '£' +
-      [...document.querySelectorAll('#pay-amount-sub .pay-line-amt')]
-        .reduce((a, e) => a + Number(String(e.textContent).replace(/[^0-9.]/g, '') || 0), 0)
-        .toFixed(2),
-    explains: (((document.querySelector('.pay-amount-box') || {}).textContent || '').match(/returned after your stay|refundable damages deposit/gi) || []).length,
-    note: (document.getElementById('pay-amount-note') || {}).textContent || '',
-    noteShown: (document.getElementById('pay-amount-note') || { style: {} }).style.display !== 'none',
-    oldBanner: !!document.querySelector('#view-pay .enq-cancel-note'),
-    secure: (document.querySelector('#view-pay .pay-secure') || {}).textContent || '',
-    receipt: (document.querySelector('#view-pay .pay-receipt-note') || {}).textContent || '',
-    btn: (document.getElementById('pay-btn') || {}).textContent || '',
-    orShown: (document.getElementById('sq-or') || { style: {} }).style.display !== 'none',
-  }));
-  ok(v.bodyShown, 'pay body renders');
-  ok(v.chip && /Annex/.test(v.prop) && /3[\s ]nights/.test(v.prop), `header carries the stay — accent chip + nights (${v.prop.trim()})`);
-  // WHEN, from the booking's own plan: a future due date joins the headline
-  // (fixed far-future stub date so the check can't rot with the wall clock);
-  // booking 9's PASSED date stays plain "Balance due" — it is due now.
-  // THE LABEL NAMES WHAT THE FIGURE IS. It said "Balance due by …" over £340
-  // while the balance was £290 — the refundable deposit rides this payment, so
-  // the hero is a SUM and naming it after one half is the payask defect again
-  // (owner's screenshot). With something riding it, the label is neutral.
-  ok(v.kind === 'To pay by 15/01/2030' && v.amount === '£340.00', `the hero is named for what it IS, and says when (${v.kind} ${v.amount})`);
-  ok(!/balance/i.test(v.kind), '…and never calls a sum of two things the balance');
-  // ITEMISED AS ROWS, NOT A SENTENCE. One run-on carried four figures and
-  // answered two different questions at once — what am I paying now, and where
-  // does that sit in the whole stay. Each row now states one thing.
-  ok(v.lines.length === 2, `the sub is a list, not a sentence (${v.lines.length} rows)`);
-  ok(/Balance of your stay/.test(v.lines[0] || '') && /£290\.00/.test(v.lines[0] || ''), `row 1 is the balance (${v.lines[0]})`);
-  ok(/Refundable deposit/.test(v.lines[1] || '') && /£50\.00/.test(v.lines[1] || ''), `row 2 is the deposit (${v.lines[1]})`);
-  // …AND THEY ADD UP TO THE HERO. The whole point of itemising: the guest can
-  // check the figure they are about to pay without deriving it.
-  ok(v.lineSum === '£340.00', `the rows sum to the hero (${v.lineSum} vs ${v.amount})`);
-  // THE DEPOSIT IS EXPLAINED ONCE. It used to be on the sub AND repeated in the
-  // note directly beneath — the same £50 twice in adjacent lines, which reads
-  // as two deposits until you check.
-  ok(/returned after your stay/.test(v.lines[1] || ''), 'the deposit carries its own explanation');
-  ok(!/refundable/i.test(v.note), `…and the note does not repeat it (${v.note})`);
-  // The stay context survives, on its own line, as context rather than as part
-  // of the sum above it. 440 − 100 = 340, so it still reconciles.
-  // \s so the NBSP that stops "paid." orphaning onto its own line at 390px
-  // still matches — it is a space to a reader and not to a regex.
-  ok(v.noteShown && /£440\.00 for the whole stay · £100\.00 already\spaid/.test(v.note), `the note carries the stay context (${v.note})`);
-  ok(!v.oldBanner, 'the loud green security banner is gone');
-  ok(/Secured by Square/.test(v.secure) && /never see or store/.test(v.secure), 'quiet lock line under the button');
-  ok(/email receipt/.test(v.receipt), 'receipt reassurance line present');
-  ok(v.btn === 'Pay £340.00', `Pay button names the amount (${v.btn})`);
-  ok(!v.orShown, 'wallet divider hidden when no wallet mounted');
-
-  // ---- THE PRIMARY ACTION LOOKS LIKE ONE -----------------------------------
-  // It was .btn-glass — a translucent outline — while the two wallet buttons
-  // above it are Square-rendered solid black and heavy-bordered white. The
-  // action most guests actually take was the faintest thing on the screen.
-  const cta = await page.evaluate(() => {
-    const b = document.getElementById('pay-btn');
-    const c = getComputedStyle(b);
-    const card = document.getElementById('sq-card');
-    const lum = (str) => {
-      const n = (String(str).match(/[\d.]+/g) || []).map(Number);
-      if (n.length < 3) return null;
-      // getComputedStyle can hand back 0–1 floats where rgb() is 0–255 — the
-      // fourth false contrast failure this codebase has produced.
-      const sc = n[0] <= 1 && n[1] <= 1 && n[2] <= 1 ? 255 : 1;
-      const [r, g, bl] = n.slice(0, 3).map((x) => {
-        const v = (x * sc) / 255;
-        return v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4);
-      });
-      return 0.2126 * r + 0.7152 * g + 0.0722 * bl;
-    };
-    const L1 = lum(c.backgroundColor);
-    const L2 = lum(c.color);
-    return {
-      bg: c.backgroundColor,
-      // rgb() carries no alpha, so the trailing number is the BLUE channel —
-      // reading it as alpha called a fully opaque button translucent.
-      alpha: /^rgba\(/.test(c.backgroundColor)
-        ? Number((c.backgroundColor.match(/[\d.]+\s*\)$/) || ['1)'])[0].replace(/[\s)]/g, ''))
-        : 1,
-      shadow: c.boxShadow,
-      // Compared against a BARE .btn-glass in the same document: that class
-      // already carries a shadow, so "has one" passed with the accent glow
-      // deleted. What must be true is that this button is lifted DIFFERENTLY
-      // from an ordinary one.
-      plainShadow: (() => {
-        const probe = document.createElement('button');
-        probe.className = 'btn-glass';
-        probe.style.cssText = 'position:absolute;left:-9999px';
-        document.body.appendChild(probe);
-        const sh = getComputedStyle(probe).boxShadow;
-        probe.remove();
-        return sh;
-      })(),
-      weight: c.fontWeight,
-      ratio: L1 === null || L2 === null ? 0 : (Math.max(L1, L2) + 0.05) / (Math.min(L1, L2) + 0.05),
-      accent: getComputedStyle(document.documentElement).getPropertyValue('--accent').trim(),
-      cardBorder: getComputedStyle(card).borderTopWidth,
-      cardBg: getComputedStyle(card).backgroundColor,
-      // Exactly one of the two names the card field — never both, never neither.
-      names:
-        (document.getElementById('sq-or').style.display !== 'none' ? 1 : 0) +
-        (document.getElementById('sq-card-label').style.display !== 'none' ? 1 : 0),
-    };
-  });
-  ok(cta.alpha === 1, `the Pay button is FILLED, not translucent glass (${cta.bg})`);
-  ok(/^rgb/.test(cta.bg) && cta.bg !== 'rgba(0, 0, 0, 0)', 'it has a real background');
-  ok(cta.shadow && cta.shadow !== 'none' && cta.shadow !== cta.plainShadow,
-    'it is lifted differently from an ordinary glass button, so it sits above the form');
-  ok(Number(cta.weight) >= 600, `its label is weighted (${cta.weight})`);
-  // --accent-ink, not white: the rose-gold is mid-light and white fails AA on
-  // it. This is the words-vs-things rule, on the one control that must be read.
-  ok(cta.ratio >= 4.5, `its label clears AA on the accent (${cta.ratio.toFixed(2)}:1)`);
-  // WE DO NOT DRAW THIS FIELD. Square's card element renders its own bordered
-  // box inside an iframe that is TALLER than what it paints (it reserves room
-  // for an inline error). A wrapper therefore double-borders their field AND
-  // turns that reserved room into a visible empty box — both measured on the
-  // live SDK after a frame was added here, and invisible to a local stub, which
-  // renders only what it paints.
-  ok(parseFloat(cta.cardBorder) === 0, `the card container adds no second edge around Square's own field (${cta.cardBorder})`);
-  ok(/rgba\(0, 0, 0, 0\)|transparent/.test(cta.cardBg), `…and no fill that would box its reserved space (${cta.cardBg})`);
-  // ONE LABEL, NOT TWO. With a wallet up, "or pay by card" and "Card details"
-  // are the same statement in adjacent lines.
-  ok(cta.names === 1, `exactly one thing names the card field (${cta.names})`);
-  // Re-aimed to payMethodsSync (the plan-first build): the divider and the
-  // label are complements of ONE expression there, so they still cannot both
-  // show — and the expression now folds in the plan choice too.
-  const appSrcCta = require('fs').readFileSync(__dirname + '/app.js', 'utf8');
-  ok(/show\('sq-or', wallets && !auto\);/.test(appSrcCta) && /show\('sq-card-label', !\(wallets && !auto\)\);/.test(appSrcCta),
-    '…driven as complements of one expression in payMethodsSync, so they cannot both show');
-
-  // THE DEPOSIT ASK'S SUB-LINE ITEMISES TO ITS OWN HEADLINE. It used to read
-  // "25% deposit · £750.00 total" under a £225.00 hero — the percentage was
-  // against the rental while the total beside it was the grand, so checking
-  // 25% × 750 gives £187.50 and the line never reconciled with the figure the
-  // guest is about to pay. Re-open the same booking as a DEPOSIT ask (the stub
-  // switches on the posted kind) and require the sub to state the sum.
-  await page.evaluate(() => openPayView('paytok', '7', 'deposit'));
-  await page.waitForTimeout(900);
-  const dv = await page.evaluate(() => ({
-    note: (document.getElementById('pay-amount-note') || {}).textContent || '',
-    kind: (document.getElementById('pay-kind-label') || {}).textContent || '',
-    amount: (document.getElementById('pay-amount') || {}).textContent || '',
-    sub: (document.getElementById('pay-amount-sub') || {}).textContent || '',
-    lines: [...document.querySelectorAll('#pay-amount-sub .pay-line')].map((r) => r.textContent.replace(/\s+/g, ' ').trim()),
-    lineSum:
-      '£' +
-      [...document.querySelectorAll('#pay-amount-sub .pay-line-amt')]
-        .reduce((a, e) => a + Number(String(e.textContent).replace(/[^0-9.]/g, '') || 0), 0)
-        .toFixed(2),
-    explains: (((document.querySelector('.pay-amount-box') || {}).textContent || '').match(/returned after your stay|refundable damages deposit/gi) || []).length,
-  }));
-  ok(dv.kind === 'To pay now' && dv.amount === '£225.00', `deposit hero = 25% of £700 + £50 deposit (${dv.kind} ${dv.amount})`);
-  ok(!/deposit due/i.test(dv.kind), '…not called "Deposit due" when the refundable deposit rides it too');
-  ok(/Deposit \(25%\)/.test(dv.lines[0] || '') && /£175\.00/.test(dv.lines[0] || ''), `row 1 is the deposit and its share (${dv.lines[0]})`);
-  ok(/Refundable deposit/.test(dv.lines[1] || '') && /£50\.00/.test(dv.lines[1] || ''), `row 2 is the refundable one (${dv.lines[1]})`);
-  ok(dv.lineSum === '£225.00', `…and the rows sum to the headline (${dv.lineSum})`);
-  ok(!/£750\.00 total/.test(dv.sub), '…naming no total its own percentage cannot reach');
-  // …AND THE SCREEN SAYS WHAT FOLLOWS. balanceDueDate has always been in this
-  // payload and was rendered only when kind === 'balance', so the guest learned
-  // the date on the screen where they were already paying it. £700 − £175 = the
-  // £525 left; the date is the booking's own, so the chaser that follows cannot
-  // quote a different day.
-  ok(/balance of £525\.00 is due by 28\/07\/2026/i.test(dv.note),
-    `the deposit screen states the balance and WHEN (${dv.note})`);
-  // …AND THE REFUNDABLE DEPOSIT IS EXPLAINED EXACTLY ONCE ON THE SCREEN. This
-  // check used to require that sentence in the NOTE, which is where the
-  // duplicate lived — it was pinning the defect. Counted across the whole box
-  // instead, so neither a repeat nor a disappearance can pass.
-  ok(dv.explains === 1, `the deposit is explained once, not twice or never (${dv.explains})`);
-  // SETTLE IT ALL NOW. booking_payment_kind already passed a requested
-  // 'balance' through, so the whole amount was always chargeable — there was
-  // simply no way to ask for it. £225 due now + £525 left = the £750 stay.
-  const full = await page.evaluate(() => {
-    const b = document.getElementById('pay-full');
-    return { txt: (b || {}).textContent || '', shown: !!b && b.style.display !== 'none' };
-  });
-  ok(full.shown && /£750\.00/.test(full.txt), `the deposit screen offers to settle the whole stay (${full.txt})`);
-  // …and it re-opens the SAME booking asking for everything, which the server
-  // then re-derives — the client decides nothing about the charge.
-  const reopened = await page.evaluate(async () => {
-    const calls = [];
-    const orig = window.openPayView;
-    window.openPayView = (t, id, k) => { calls.push([t, id, k]); return Promise.resolve(); };
-    payInFull();
-    window.openPayView = orig;
-    return calls;
-  });
-  ok(reopened.length === 1 && reopened[0][2] === 'balance' && String(reopened[0][1]) === '7',
-    `…by re-opening this booking as a balance ask (${JSON.stringify(reopened)})`);
-
-  // ONE PAY LINK — deliberately AFTER the payInFull check above, which asserts
-  // WHICH booking is reopened: this re-points payState at another one.
-  // Opened from a URL, the client states NO stage — the server
-  // reads it off the booking, so the same link follows the plan instead of
-  // promising a stage that was true when the email was sent. The old URL ended
-  // &k=deposit, and a guest reopening it after paying got a £0 screen.
-  await page.evaluate(() => openPayView('paytok', '9', null));
-  await page.waitForTimeout(700);
-  const linkPost = posts.filter((p) => p.__url === 'pay.php' && p.action === 'summary').pop();
-  ok(!!linkPost && (linkPost.kind === null || linkPost.kind === undefined),
-    `a link-opened pay screen names no stage (${JSON.stringify(linkPost && linkPost.kind)})`);
-  // …and it PINS what came back, so the charge asks for the stage this screen
-  // quoted rather than re-deriving against money that landed in between.
-  const pinned = await page.evaluate(() => payState.kind);
-  ok(pinned === 'balance', `…then pins the stage the server resolved (${pinned})`);
-  // THE BALANCE ASK AFTER THE DEPOSIT WAS CHARGED — the screenshotted state.
-  // "of £700.00 total · £175.00 already paid" under the £525 hero was the rental
-  // rail talking to a guest whose card took £225 of a £750 stay; the charged
-  // deposit now folds into BOTH sides, and the balance itself is unmoved.
-  await page.evaluate(() => openPayView('paytok', '9', 'balance'));
-  await page.waitForTimeout(900);
-  const cv = await page.evaluate(() => ({
-    amount: (document.getElementById('pay-amount') || {}).textContent || '',
-    sub: (document.getElementById('pay-amount-sub') || {}).textContent || '',
-  }));
-  ok(cv.amount === '£525.00', `the balance hero is unmoved by the fold (${cv.amount})`);
-  ok(/of £750\.00 total · £225\.00 already paid/.test(cv.sub),
-    `…and the sub counts the charged deposit on both sides (${cv.sub})`);
-  ok(!/£700\.00/.test(cv.sub) && !/£175\.00/.test(cv.sub),
-    '…with the rental-rail figures gone from the guest\'s view');
-
-  // ============================================================
-  //  PART PAYMENT — "I can pay some of it now."
-  //  The client only ever ASKS: pay.php sends the bounds and clamps the charge
-  //  into them, so the offer appears ONLY where the server said there is room,
-  //  and what the guest reads is what the button sends.
-  // ============================================================
-  await page.evaluate(() => openPayView('paytok', '5', 'balance'));
-  await page.waitForTimeout(900);
-  const noPart = await page.evaluate(() => (document.getElementById('pay-part') || { style: {} }).style.display);
-  ok(noPart === 'none', `no bounds from the server → no offer (${noPart})`);
-
-  await page.evaluate(() => openPayView('paytok', '7', 'balance'));
-  await page.waitForTimeout(900);
-  const rest0 = await page.evaluate(() => ({
-    offered: (document.getElementById('pay-part') || { style: {} }).style.display !== 'none',
-    tog: (document.getElementById('pay-part-toggle') || {}).textContent || '',
-    rowOpen: (document.getElementById('pay-part-row') || { style: {} }).style.display !== 'none',
-    hero: (document.getElementById('pay-amount') || {}).textContent || '',
-    btn: (document.getElementById('pay-btn') || {}).textContent || '',
-  }));
-  ok(rest0.offered && !rest0.rowOpen, 'the offer is there, folded away');
-  ok(/pay part of it/i.test(rest0.tog), `…and names itself in plain words (${rest0.tog})`);
-
-  // OPEN IT. With no valid amount typed there is nothing to charge, so the
-  // wallets come down (and the "Pay" button waits) — they return, priced to the
-  // slice, the moment a valid amount is entered. The dedicated wallet section
-  // below drives that with a working wallet stub.
-  await page.evaluate(() => document.getElementById('pay-part-toggle').click());
-  await page.waitForTimeout(200);
-  const opened = await page.evaluate(() => ({
-    rowOpen: (document.getElementById('pay-part-row') || { style: {} }).style.display !== 'none',
-    expanded: (document.getElementById('pay-part-toggle') || { getAttribute: () => '' }).getAttribute('aria-expanded'),
-    tog: (document.getElementById('pay-part-toggle') || {}).textContent || '',
-    hint: (document.getElementById('pay-part-hint') || {}).textContent || '',
-    wallets: (document.getElementById('sq-wallets') || { style: {} }).style.display,
-    or: (document.getElementById('sq-or') || { style: {} }).style.display,
-    btnOff: !!(document.getElementById('pay-btn') || {}).disabled,
-    hero: (document.getElementById('pay-amount') || {}).textContent || '',
-  }));
-  ok(opened.rowOpen && opened.expanded === 'true', 'opening reveals the field and says so to a screen reader');
-  ok(/Pay the full £340\.00 instead/.test(opened.tog), `…and the toggle becomes the way back (${opened.tog})`);
-  ok(/from £20\.00 to £290\.00/.test(opened.hint), `the hint states the SERVER's bounds (${opened.hint})`);
-  // The max is the rental due, not the hero — the refundable deposit rides the
-  // payment that completes the stage, and the hint has to say where it went or
-  // "up to £290" under a £340 headline reads as an error.
-  ok(/refundable £50\.00 deposit follows/.test(opened.hint), '…and where the refundable deposit went');
-  ok(opened.wallets === 'none' && opened.or === 'none', `no valid amount yet → nothing to charge, wallets down (${opened.wallets}/${opened.or})`);
-  ok(opened.btnOff, 'nothing typed yet → the button waits rather than charging the full amount');
-  ok(opened.hero === '£340.00', `…and the hero has not moved yet (${opened.hero})`);
-
-  // TYPE A REAL AMOUNT. One number on screen: the hero, the hint and the button
-  // all become the slice, and what remains is stated rather than inferred.
-  await page.evaluate(() => {
-    const a = document.getElementById('pay-part-amt');
-    a.value = '120';
-    a.dispatchEvent(new Event('input', { bubbles: true }));
-  });
-  await page.waitForTimeout(200);
-  const armed = await page.evaluate(() => ({
-    hero: (document.getElementById('pay-amount') || {}).textContent || '',
-    label: (document.getElementById('pay-kind-label') || {}).textContent || '',
-    sub: (document.getElementById('pay-amount-sub') || {}).textContent || '',
-    hint: (document.getElementById('pay-part-hint') || {}).textContent || '',
-    btn: (document.getElementById('pay-btn') || {}).textContent || '',
-    btnOff: !!(document.getElementById('pay-btn') || {}).disabled,
-    full: (document.getElementById('pay-full') || { style: {} }).style.display,
-  }));
-  ok(armed.hero === '£120.00' && /Paying now/i.test(armed.label), `the hero becomes the slice (${armed.label} ${armed.hero})`);
-  ok(armed.btn === 'Pay £120.00' && !armed.btnOff, `…and the button says the same figure (${armed.btn})`);
-  ok(/£220\.00 would remain/.test(armed.sub) && /£220\.00 would remain/.test(armed.hint),
-    `…with what is left stated, not inferred (${armed.sub})`);
-  ok(armed.full === 'none', 'the settle-it-all link stands down — it contradicts the slice');
-
-  // OUT OF BOUNDS ARMS NOTHING. Deliberately not clamped as they type, which
-  // would turn "5" on the way to "50" into the minimum under their fingers.
-  await page.evaluate(() => {
-    const a = document.getElementById('pay-part-amt');
-    a.value = '5';
-    a.dispatchEvent(new Event('input', { bubbles: true }));
-  });
-  await page.waitForTimeout(200);
-  const bad = await page.evaluate(() => ({
-    hero: (document.getElementById('pay-amount') || {}).textContent || '',
-    btnOff: !!(document.getElementById('pay-btn') || {}).disabled,
-    hint: (document.getElementById('pay-part-hint') || {}).textContent || '',
-  }));
-  ok(bad.btnOff && bad.hero === '£340.00', `an amount outside the bounds arms nothing (${bad.hero})`);
-  ok(/between £20\.00 and £290\.00/.test(bad.hint), `…and the hint says what is needed (${bad.hint})`);
-  // THE OWNER'S SCREENSHOT: "£340 to pay" directly above "between £20.00 and
-  // £290.00" with nothing reconciling them. The max is the rental due — the
-  // refundable deposit can't be split, it rides the payment that completes the
-  // stage — and the out-of-bounds state was the ONE bounds-showing state that
-  // didn't say so.
-  ok(/refundable £50\.00 deposit follows/.test(bad.hint),
-    `…and reconciles the £290 ceiling with the £340 headline (${bad.hint})`);
-
-  // TYPING FREE, COMMIT CLAMPED (the owner's ask): an out-of-bounds figure
-  // snaps to the nearest bound when the number is FINISHED — change fires on
-  // blur or Enter — never per keystroke (the un-clamped mid-typing state is
-  // the check directly above). The field still holds the '5' from that check.
-  await page.evaluate(() => document.getElementById('pay-part-amt').dispatchEvent(new Event('change', { bubbles: true })));
-  await page.waitForTimeout(200);
-  const snapMin = await page.evaluate(() => ({
-    val: /** @type {HTMLInputElement} */ (document.getElementById('pay-part-amt')).value,
-    hero: (document.getElementById('pay-amount') || {}).textContent || '',
-    btn: (document.getElementById('pay-btn') || {}).textContent || '',
-    btnOff: !!(document.getElementById('pay-btn') || {}).disabled,
-    hint: (document.getElementById('pay-part-hint') || {}).textContent || '',
-  }));
-  ok(snapMin.val === '20' && snapMin.hero === '£20.00' && snapMin.btn === 'Pay £20.00' && !snapMin.btnOff,
-    `committing an under-minimum figure snaps it up and arms it (${snapMin.val} → ${snapMin.btn})`);
-  ok(/Adjusted up to the £20\.00 minimum/.test(snapMin.hint) && /£320\.00 would remain/.test(snapMin.hint),
-    `…and the hint announces the correction (${snapMin.hint})`);
-  await page.evaluate(() => {
-    const a = /** @type {HTMLInputElement} */ (document.getElementById('pay-part-amt'));
-    a.value = '5000';
-    a.dispatchEvent(new Event('input', { bubbles: true }));
-    a.dispatchEvent(new Event('change', { bubbles: true }));
-  });
-  await page.waitForTimeout(200);
-  const snapMax = await page.evaluate(() => ({
-    val: /** @type {HTMLInputElement} */ (document.getElementById('pay-part-amt')).value,
-    btn: (document.getElementById('pay-btn') || {}).textContent || '',
-    hint: (document.getElementById('pay-part-hint') || {}).textContent || '',
-  }));
-  ok(snapMax.val === '290' && snapMax.btn === 'Pay £290.00', `an over-maximum figure snaps down (${snapMax.val} → ${snapMax.btn})`);
-  ok(/Adjusted down to the £290\.00 maximum/.test(snapMax.hint), `…named as the maximum (${snapMax.hint})`);
-  // Typing again clears the note; an in-bounds commit is left exactly as typed.
-  await page.evaluate(() => {
-    const a = /** @type {HTMLInputElement} */ (document.getElementById('pay-part-amt'));
-    a.value = '120';
-    a.dispatchEvent(new Event('input', { bubbles: true }));
-    a.dispatchEvent(new Event('change', { bubbles: true }));
-  });
-  await page.waitForTimeout(200);
-  const snapNone = await page.evaluate(() => ({
-    val: /** @type {HTMLInputElement} */ (document.getElementById('pay-part-amt')).value,
-    hint: (document.getElementById('pay-part-hint') || {}).textContent || '',
-  }));
-  ok(snapNone.val === '120' && !/Adjusted/.test(snapNone.hint) && /£220\.00 would remain/.test(snapNone.hint),
-    `an in-bounds commit is untouched and the note clears (${snapNone.hint})`);
-  // Committing an EMPTY field corrects nothing — blank is "not choosing", and
-  // inventing the minimum there would arm a payment nobody typed.
-  await page.evaluate(() => {
-    const a = /** @type {HTMLInputElement} */ (document.getElementById('pay-part-amt'));
-    a.value = '';
-    a.dispatchEvent(new Event('input', { bubbles: true }));
-    a.dispatchEvent(new Event('change', { bubbles: true }));
-  });
-  await page.waitForTimeout(200);
-  const snapEmpty = await page.evaluate(() => ({
-    val: /** @type {HTMLInputElement} */ (document.getElementById('pay-part-amt')).value,
-    btnOff: !!(document.getElementById('pay-btn') || {}).disabled,
-  }));
-  ok(snapEmpty.val === '' && snapEmpty.btnOff, 'an empty commit stays empty — blank is not a choice');
-
-  // ============================================================
-  //  MOTION — the journey eases instead of cutting. Entrances are CSS
-  //  animations that replay whenever a panel goes display:none → shown, and
-  //  the hero ticks over on a real figure change (the .pay-amt-swap kick in
-  //  payPartRender — several figures have changed by this point in the suite,
-  //  so the class must be on). Reduced motion is asserted as the RULE via
-  //  CSSOM: Chromium's reduce emulation forces every duration to ~0
-  //  regardless of author CSS, so a computed read cannot tell our off-switch
-  //  from the browser's own (the coach-marks lesson).
-  // ============================================================
-  const motion = await page.evaluate(() => {
-    const an = (el) => (el ? getComputedStyle(el).animationName : '');
-    let rmRule = false;
-    let rmStroke = false;
-    for (const ss of document.styleSheets) {
-      let rules;
-      try { rules = ss.cssRules; } catch (e) { continue; }
-      for (const r of rules) {
-        // NB Chromium serializes `animation: none` long-hand ("animation:
-        // auto ease 0s 1 normal none running none"), so match the reset
-        // loosely — the break-test (deleting the block) still fails this.
-        if (r.media && /prefers-reduced-motion/.test(r.media.mediaText)) {
-          if (/#pay-body/.test(r.cssText) && /animation:[^;]*none/.test(r.cssText)) rmRule = true;
-          // The DRAW starts invisible: reduced motion must restore the tick's
-          // strokes or the setting deletes the mark itself.
-          if (/\.pay-done-tick circle/.test(r.cssText) && /stroke-dashoffset:\s*0/.test(r.cssText)) rmStroke = true;
-        }
-      }
-    }
-    const btn = document.getElementById('pay-btn');
-    btn.classList.add('is-busy');
-    // ONE SPINNER, TWO PSEUDO-ELEMENTS WITH DIFFERENT JOBS. This used to read
-    // ::after and assert 'paySpin' — which pinned an OLDER 13px trailing ring
-    // (`#pay-btn.is-busy::after`) that beat the shimmer sweep on animation while
-    // inheriting its `position:absolute; inset:0`, so the button painted a
-    // second ring half-clipped at its top-left corner and the sweep never
-    // appeared. The ring is ::before (beside "Processing…"); ::after is the
-    // sweep behind it.
-    const spin = getComputedStyle(btn, '::before').animationName;
-    const sweep = getComputedStyle(btn, '::after').animationName;
-    btn.classList.remove('is-busy');
-    return {
-      body: an(document.getElementById('pay-body')),
-      row: an(document.getElementById('pay-part-row')),
-      express: an(document.getElementById('pay-express')),
-      amt: an(document.getElementById('pay-amount')),
-      swapClass: document.getElementById('pay-amount').classList.contains('pay-amt-swap'),
-      // The sheet CASCADE: later form blocks land later (backwards fill).
-      partDelay: parseFloat(getComputedStyle(document.getElementById('pay-part')).animationDelay),
-      expressDelay: parseFloat(getComputedStyle(document.getElementById('pay-express')).animationDelay),
-      spin,
-      sweep,
-      rmRule,
-      rmStroke,
-    };
-  });
-  ok(motion.body === 'payRise', `the form eases in rather than cutting (${motion.body})`);
-  ok(motion.row === 'payRise' && motion.express === 'payRise', `the part row and express panel ease in when they appear (${motion.row}/${motion.express})`);
-  ok(motion.amt === 'payAmtSwap' && motion.swapClass, `the hero ticks over when its figure changes (${motion.amt})`);
-  ok(motion.expressDelay > motion.partDelay, `the form blocks CASCADE like the Apple Pay sheet (${motion.partDelay}s → ${motion.expressDelay}s)`);
-  ok(motion.spin === 'paySpin', `the Pay button carries a spinner while money moves (${motion.spin})`);
-  ok(motion.sweep === 'paySweep', `…and the shimmer behind it, not a second ring (${motion.sweep})`);
-  ok(motion.rmRule, 'reduced motion stands ALL of it down — asserted as the rule, not a computed read');
-  ok(motion.rmStroke, '…and restores the drawn tick\'s strokes, or the setting would delete the mark');
-
-  // CLOSING PUTS THE SCREEN BACK EXACTLY. The resting view is snapshotted, so
-  // the sub's itemised lines and the settle-it-all link return as they were.
-  await page.evaluate(() => document.getElementById('pay-part-toggle').click());
-  await page.waitForTimeout(200);
-  const closed = await page.evaluate(() => ({
-    hero: (document.getElementById('pay-amount') || {}).textContent || '',
-    label: (document.getElementById('pay-kind-label') || {}).textContent || '',
-    btn: (document.getElementById('pay-btn') || {}).textContent || '',
-    btnOff: !!(document.getElementById('pay-btn') || {}).disabled,
-    lines: !!(document.getElementById('pay-amount-sub') || { classList: { contains: () => false } }).classList.contains('is-lines'),
-    amt: (document.getElementById('pay-part-amt') || {}).value,
-    expanded: (document.getElementById('pay-part-toggle') || { getAttribute: () => '' }).getAttribute('aria-expanded'),
-  }));
-  ok(closed.hero === '£340.00' && closed.btn === 'Pay £340.00' && !closed.btnOff,
-    `closing restores the full ask (${closed.label} ${closed.hero} / ${closed.btn})`);
-  ok(closed.lines, '…including the itemised sub it replaced');
-  ok(closed.amt === '' && closed.expanded === 'false', '…and the field is emptied, so reopening starts clean');
-
-  // AND THE CHARGE CARRIES THE REQUEST. It is a request, not a decision —
-  // pay.php clamps it — but it must be the figure the guest read on the button.
-  await page.evaluate(() => document.getElementById('pay-part-toggle').click());
-  await page.waitForTimeout(150);
-  await page.evaluate(() => {
-    const a = document.getElementById('pay-part-amt');
-    a.value = '120';
-    a.dispatchEvent(new Event('input', { bubbles: true }));
-  });
-  await page.waitForTimeout(150);
-  await page.evaluate(() => document.getElementById('pay-btn').click());
-  // Sample by STATE, not the clock: the done panel appears only after the
-  // unhurried beat (1050ms hold), so a fixed wait races it.
-  await page.waitForFunction(() => document.getElementById('pay-done').style.display !== 'none', null, { timeout: 6000 });
-  const partCharge = posts.filter((p) => p.__url === 'pay.php' && p.action === 'charge').pop();
-  ok(!!partCharge && partCharge.part_amount === 120, `the charge asks for the figure on the button (${partCharge && partCharge.part_amount})`);
-  // The quote still covers the FULL charge — pay.php verifies it BEFORE taking
-  // the slice, so a moved balance is caught on the figure the guest actually read.
-  ok(!!partCharge && typeof partCharge.quote === 'string' && partCharge.quote !== '',
-    '…while the signed quote still describes the whole amount');
-  // AND SO DOES THE BANK. 3-D Secure runs inside tokenize, and its `amount` is what
-  // the issuer's own challenge names — the one moment a guest is asked to confirm a
-  // figure. It read payState.amountDue, written once in openPayView and never
-  // following a slice, so a £120 payment was authenticated as the full ask. Both
-  // gates were blind to it: the stub dropped the argument (recorded now) and nothing
-  // compared it to the charge.
-  const tokAmt = await page.evaluate(() => {
-    const a = (window.__tokArgs || []).filter(Boolean);
-    return a.length ? a[a.length - 1].amount : null;
-  });
-  ok(tokAmt === '120.00',
-    `the bank is asked to verify the amount actually being taken (${tokAmt} vs part_amount ${partCharge && partCharge.part_amount})`);
-
-  // ============================================================
-  //  THE DONE SCREEN AFTER A SLICE IS NOT A DEAD END. It states the server's
-  //  own `remaining` (the part hint's "£220 would remain" figure) and offers
-  //  to take it now — the button re-opens this same screen, which re-asks the
-  //  server for what is NOW left. Before this it said only "we'll be in touch",
-  //  closing the door on a guest ready to pay the rest.
-  // ============================================================
-  const partDone = await page.evaluate(() => ({
-    shown: document.getElementById('pay-done').style.display !== 'none',
-    sub: (document.getElementById('pay-done-sub') || {}).textContent || '',
-    btnShown: (document.getElementById('pay-done-rest') || { style: {} }).style.display !== 'none',
-    btnLabel: (document.getElementById('pay-done-rest') || {}).textContent || '',
-  }));
-  ok(partDone.shown && /£120\.00 received/.test(partDone.sub), `the slice's done screen names what was taken (${partDone.sub.slice(0, 40)}…)`);
-  ok(/£220\.00 is still to pay/.test(partDone.sub), `…and states the server's remaining figure (${partDone.sub.slice(40, 110)})`);
-  ok(!/paid in full/i.test(partDone.sub), '…never calling a part payment paid in full');
-  ok(partDone.btnShown && partDone.btnLabel === 'Pay the remaining £220.00', `…with a button named for the figure (${partDone.btnLabel})`);
-  // Tap it: the pay screen re-opens and RE-ASKS the server — the client decides
-  // nothing about what is now due.
-  const sumBefore = posts.filter((p) => p.__url === 'pay.php' && p.action === 'summary').length;
-  await page.evaluate(() => document.getElementById('pay-done-rest').click());
-  await page.waitForTimeout(900);
-  const reAsk = posts.filter((p) => p.__url === 'pay.php' && p.action === 'summary').slice(sumBefore).pop();
-  const restView = await page.evaluate(() => ({
-    body: document.getElementById('pay-body').style.display !== 'none',
-    done: document.getElementById('pay-done').style.display !== 'none',
-  }));
-  ok(!!reAsk && String(reAsk.booking_id) === '7', `"Pay the rest" re-asks the server about the same booking (${reAsk && reAsk.booking_id})`);
-  ok(restView.body && !restView.done, '…and the payment form is back on screen');
-
-  // ============================================================
-  //  THE ARRANGEMENT IS ONE THREE-WAY DECISION — I'll pay it myself (the
-  //  DEFAULT: consent is opted INTO), one payment, or monthly with the dated
-  //  schedule and its sum CLOSED on screen. It still stands down (and resets
-  //  to the default) while a part slice is being chosen — a consent chosen
-  //  for the full payment must never ride a slice invisibly.
-  // ============================================================
-  await page.evaluate(() => openPayView('paytok', '7', 'deposit'));
-  await page.waitForTimeout(900);
-  const ap0 = await page.evaluate(() => ({
-    shown: (document.getElementById('pay-autopay') || { style: {} }).style.display !== 'none',
-    cap: (document.getElementById('pay-ap-cap') || {}).textContent || '',
-    lead: (document.querySelector('.pay-ap-lead') || {}).textContent || '',
-    radios: document.querySelectorAll('input[name="pay-ap-choice"]').length,
-    selfChecked: !!(document.querySelector('input[name="pay-ap-choice"][value="self"]') || {}).checked,
-    oneSub: (document.querySelectorAll('.pay-ap-sub')[1] || {}).textContent || '',
-    monthlyFig: [...document.querySelectorAll('.pay-ap-fig')].map((e) => e.textContent).join('|'),
-    railRows: document.querySelectorAll('.pay-ap-body .ap-row').length,
-    fine: (document.querySelector('.pay-ap-fine') || {}).textContent || '',
-  }));
-  ok(ap0.shown && /£525\.00 that's left/.test(ap0.cap), `the card is captioned with the SUM (${ap0.cap})`);
-  ok(/Due by 28\/10\/2026/.test(ap0.lead), `…and the lead carries the DAY (${ap0.lead})`);
-  ok(ap0.radios === 3, `three ways to handle it (${ap0.radios})`);
-  ok(ap0.selfChecked, "the DEFAULT is \"I'll pay it myself\" — consent is opted into, never out of");
-  ok(/taken automatically on 28\/10\/2026/.test(ap0.oneSub), `the one-payment option states its consequence (${ap0.oneSub})`);
-  ok(/3 × £175\.00/.test(ap0.monthlyFig), `the monthly option leads with its shape (${ap0.monthlyFig})`);
-  ok(ap0.railRows === 0, 'the schedule stays folded until monthly is chosen');
-  // THE FINE PRINT FOLLOWS THE SELECTION, not merely the offer. At the default
-  // "I'll pay it myself" it must NOT promise "we'll email you before each
-  // payment" (an arrangement the guest hasn't made) — it invites instead.
-  ok(/Choose an automatic option/.test(ap0.fine) && !/each payment/.test(ap0.fine),
-    `the default self fine print invites, it doesn't promise emails (${ap0.fine.slice(0, 50)}…)`);
-  const fineMo = await page.evaluate(() => {
-    const r = document.querySelector('input[name="pay-ap-choice"][value="monthly"]');
-    r.checked = true;
-    r.dispatchEvent(new Event('change', { bubbles: true }));
-    return (document.querySelector('.pay-ap-fine') || {}).textContent || '';
-  });
-  ok(/each payment/.test(fineMo), `choosing monthly makes it speak plural (${fineMo.slice(0, 44)}…)`);
-  const fineOne = await page.evaluate(() => {
-    const r = document.querySelector('input[name="pay-ap-choice"][value="one"]');
-    r.checked = true;
-    r.dispatchEvent(new Event('change', { bubbles: true }));
-    return (document.querySelector('.pay-ap-fine') || {}).textContent || '';
-  });
-  ok(/before it's taken/.test(fineOne) && !/each payment/.test(fineOne), `choosing one payment speaks singular (${fineOne.slice(0, 44)}…)`);
-  // THE FLOOR'S GUEST FACE: the same deposit ask when pay.php sends NO offer
-  // (the owner's floor, or a plan that cannot fit). The card falls to its
-  // two-way form and the fine print goes SINGULAR — "each payment" is a
-  // promise about a plan that is not on the card.
-  await page.evaluate(() => openPayView('paytok', '12', 'deposit'));
-  await page.waitForTimeout(900);
-  const apNo = await page.evaluate(() => ({
-    shown: (document.getElementById('pay-autopay') || { style: {} }).style.display !== 'none',
-    radios: document.querySelectorAll('input[name="pay-ap-choice"]').length,
-    monthly: !!document.querySelector('input[name="pay-ap-choice"][value="monthly"]'),
-    fine: (document.querySelector('.pay-ap-fine') || {}).textContent || '',
-  }));
-  ok(apNo.shown && apNo.radios === 2 && !apNo.monthly, `no offer → the two-way card (${apNo.radios} ways, monthly ${apNo.monthly})`);
-  ok(/Choose an automatic option/.test(apNo.fine) && !/each payment/.test(apNo.fine),
-    `…whose default fine print invites, never promising a plan not on the card (${apNo.fine.slice(0, 50)}…)`);
-  const apNoOne = await page.evaluate(() => {
-    const r = document.querySelector('input[name="pay-ap-choice"][value="one"]');
-    r.checked = true;
-    r.dispatchEvent(new Event('change', { bubbles: true }));
-    return (document.querySelector('.pay-ap-fine') || {}).textContent || '';
-  });
-  ok(/before it's taken/.test(apNoOne), `…and choosing the one payment speaks singular (${apNoOne.slice(0, 44)}…)`);
-  ok(await page.evaluate(() => (document.getElementById('pay-repair') || { style: {} }).style.display === 'none'),
-    'no failed try → no repair card');
-  // THE REPAIR CARD — mid-plan with a failed try, autopayTerms null, so this
-  // is the only affordance the failure email can point at. Its save action
-  // stores a card and must touch NO money: the post is update_card with the
-  // tokenised source, never a charge.
-  await page.evaluate(() => openPayView('paytok', '13', 'balance'));
-  await page.waitForTimeout(900);
-  const rep = await page.evaluate(() => ({
-    shown: (document.getElementById('pay-repair') || { style: {} }).style.display !== 'none',
-    cap: (document.getElementById('pay-rep-cap') || {}).textContent || '',
-    body: (document.querySelector('.pay-rep-body') || {}).textContent || '',
-    btn: !!document.querySelector('[data-act="payUpdateCard"]'),
-    consent: (document.getElementById('pay-autopay') || { style: {} }).style.display === 'none',
-  }));
-  ok(rep.shown && /needs attention/.test(rep.cap), `a failed try renders the repair card (${rep.cap})`);
-  ok(/The card was declined/.test(rep.body) && /30\/08\/2026/.test(rep.body),
-    `…saying why and when the next try is (${rep.body.slice(0, 80)}…)`);
-  ok(rep.btn && rep.consent, '…with the save-card action, and no consent card beside it');
-  const repBefore = posts.length;
-  await page.evaluate(() => document.querySelector('[data-act="payUpdateCard"]').click());
-  await page.waitForTimeout(600);
-  const repPost = posts.slice(repBefore).find((p) => p.__url === 'pay.php' && p.action === 'update_card');
-  const repCharge = posts.slice(repBefore).find((p) => p.__url === 'pay.php' && p.action === 'charge');
-  ok(!!repPost && repPost.source_id === 'tok_test_1' && String(repPost.booking_id) === '13' && !!repPost.token,
-    `saving posts update_card with the tokenised source (${repPost && repPost.source_id})`);
-  ok(!repCharge, '…and NO charge — nothing is paid by saving a card');
-  const repDone = await page.evaluate(() => ({
-    cap: (document.getElementById('pay-rep-cap') || {}).textContent || '',
-    body: (document.querySelector('.pay-rep-body') || {}).textContent || '',
-  }));
-  ok(/All sorted/.test(repDone.cap) && /nothing was charged today/.test(repDone.body),
-    `…and the card replaces itself with the confirmation (${repDone.body.slice(0, 60)}…)`);
-  // Back to the offered booking for the rest of the section.
-  await page.evaluate(() => openPayView('paytok', '7', 'deposit'));
-  await page.waitForTimeout(900);
-  // Choose MONTHLY: the numbered rail opens with the sum closing on screen.
-  await page.evaluate(() => {
-    const r = document.querySelector('input[name="pay-ap-choice"][value="monthly"]');
-    r.checked = true;
-    r.dispatchEvent(new Event('change', { bubbles: true }));
-  });
-  await page.waitForTimeout(200);
-  const apMo = await page.evaluate(() => ({
-    rows: document.querySelectorAll('.pay-ap-body .ap-row').length,
-    steps: [...document.querySelectorAll('.pay-ap-body .ap-step')].map((e) => e.textContent).join(''),
-    dates: [...document.querySelectorAll('.pay-ap-body .ap-date')].map((e) => e.textContent).join('|'),
-    sum: (document.querySelector('.pay-ap-body .ap-sum') || {}).textContent || '',
-    selClass: !!document.querySelector('.pay-ap-opt.is-sel input[value="monthly"]'),
-  }));
-  ok(apMo.rows === 3 && apMo.steps === '123', `choosing monthly opens the NUMBERED schedule (${apMo.steps})`);
-  ok(apMo.dates === '28/08/2026|28/09/2026|28/10/2026', `…dated as the server offered (${apMo.dates})`);
-  ok(/3 × £175\.00 = £525\.00/.test(apMo.sum), `…with the sum CLOSED on screen (${apMo.sum})`);
-  ok(apMo.selClass, '…and the chosen option wears the accent');
-  // The charge carries the pick — count and consent — and pay.php re-validates.
-  const apBefore = posts.filter((p) => p.__url === 'pay.php' && p.action === 'charge').length;
-  await page.evaluate(() => document.getElementById('pay-btn').click());
-  await page.waitForTimeout(700);
-  const apChargeMo = posts.filter((p) => p.__url === 'pay.php' && p.action === 'charge').slice(apBefore).pop();
-  ok(!!apChargeMo && apChargeMo.autopay === true && apChargeMo.autopay_instalments === 3,
-    `a monthly consent charges with the offered count (${apChargeMo && apChargeMo.autopay_instalments})`);
-  // ONE payment: consent yes, count 0.
-  await page.evaluate(() => openPayView('paytok', '7', 'deposit'));
-  await page.waitForTimeout(900);
-  await page.evaluate(() => {
-    const r = document.querySelector('input[name="pay-ap-choice"][value="one"]');
-    r.checked = true;
-    r.dispatchEvent(new Event('change', { bubbles: true }));
-    document.getElementById('pay-btn').click();
-  });
-  await page.waitForTimeout(700);
-  const apChargeOne = posts.filter((p) => p.__url === 'pay.php' && p.action === 'charge').pop();
-  ok(!!apChargeOne && apChargeOne.autopay === true && apChargeOne.autopay_instalments === 0,
-    'one payment consents with no count');
-  // The DEFAULT sends no consent at all.
-  await page.evaluate(() => openPayView('paytok', '7', 'deposit'));
-  await page.waitForTimeout(900);
-  await page.evaluate(() => document.getElementById('pay-btn').click());
-  await page.waitForTimeout(700);
-  const apChargeSelf = posts.filter((p) => p.__url === 'pay.php' && p.action === 'charge').pop();
-  ok(!!apChargeSelf && apChargeSelf.autopay === false && apChargeSelf.autopay_instalments === 0,
-    'the untouched default consents to NOTHING');
-  // STAND-DOWN: choosing monthly then opening the part row hides the card and
-  // RESETS the decision — a slice charge carries no consent however it was left.
-  await page.evaluate(() => openPayView('paytok', '7', 'deposit'));
-  await page.waitForTimeout(900);
-  await page.evaluate(() => {
-    const r = document.querySelector('input[name="pay-ap-choice"][value="monthly"]');
-    r.checked = true;
-    r.dispatchEvent(new Event('change', { bubbles: true }));
-    document.getElementById('pay-part-toggle').click();
-  });
-  await page.waitForTimeout(200);
-  const apDown = await page.evaluate(() => ({
-    shown: (document.getElementById('pay-autopay') || { style: {} }).style.display !== 'none',
-    choice: payState.autopayChoice,
-  }));
-  ok(!apDown.shown && apDown.choice === 'self', `opening the part row stands the card down and resets the choice (${apDown.choice})`);
-  // …AND THE CONSENT SENTENCE FOLLOWS IT. The hidden branch of payAutopayRender used
-  // to return BEFORE payMethodsSync, so the plan card vanished and reset while the one
-  // sentence restating the arrangement went on promising monthly payments — the guest's
-  // own decision about the rest of their money withdrawn with nothing said, and the
-  // wallet note left up beside it. Read the SENTENCE, not the choice: the choice was
-  // already correct and the screen still lied.
-  const apSay = await page.evaluate(() => {
-    const c = document.getElementById('pay-consent');
-    return { consent: c && c.style.display !== 'none' ? (c.textContent || '').trim() : '' };
-  });
-  ok(!/monthly/i.test(apSay.consent),
-    `the consent line stops promising a plan that was stood down ("${apSay.consent.slice(0, 60)}")`);
-  // NB no separate assertion on the wallet note: payWalletsReprice takes it down from
-  // the £0 charge independently, so break-testing the consent fix left it correctly
-  // hidden — it would only fail if the CHOICE were not reset, which the check above
-  // already owns.
-  await page.evaluate(() => { const a = document.getElementById('pay-part-amt'); a.value = '60'; a.dispatchEvent(new Event('input', { bubbles: true })); });
-  await page.waitForTimeout(200);
-  const apSliceBefore = posts.filter((p) => p.__url === 'pay.php' && p.action === 'charge').length;
-  await page.evaluate(() => document.getElementById('pay-btn').click());
-  await page.waitForTimeout(700);
-  const apSlice = posts.filter((p) => p.__url === 'pay.php' && p.action === 'charge').slice(apSliceBefore).pop();
-  ok(!!apSlice && apSlice.part_amount === 60 && apSlice.autopay === false && apSlice.autopay_instalments === 0,
-    `a slice charge carries no consent (part ${apSlice && apSlice.part_amount}, autopay ${apSlice && apSlice.autopay})`);
-  // …AND ITS RECEIPT SPEAKS THE JOURNEY'S OWN VOCABULARY. `remaining` is the rest of
-  // THIS ASK, so on a part-paid DEPOSIT it is the rest of the deposit — the panel
-  // called it "Balance £X", which both misnames it AND replaced the stay's real
-  // balance, a row the journey had shown one tap earlier and which the receipt email
-  // then quotes. One payment, three different "what's left" figures. NB this has to be
-  // driven on a DEPOSIT ask: on a balance ask "Balance" is the correct word, which is
-  // why the first version of this check passed in the wrong section proving nothing.
-  // Wait for THIS payment's panel, not the one already on screen: the section above
-  // leaves pay-done visible, so a bare display check returns instantly and reads the
-  // previous render (which had no remainder and passed the checks below vacuously).
-  await page.waitForFunction(() => /£60\.00 received/.test((document.getElementById('pay-done-sub') || {}).textContent || ''), null, { timeout: 6000 });
-  const doneRows = await page.evaluate(() => {
-    const el = document.getElementById('pay-done-next');
-    return {
-      labels: (el.textContent || '').replace(/\s+/g, ' ').trim(),
-      kind: payState.jCtx ? payState.jCtx.kind : null,
-      rest: payState.jCtx ? payState.jCtx.rest : null,
-    };
-  });
-  ok(doneRows.kind === 'deposit' && doneRows.rest > 0.005,
-    `(fixture) a part-paid DEPOSIT with a stay balance behind it (${doneRows.kind}, rest ${doneRows.rest})`);
-  ok(/Rest of your deposit/.test(doneRows.labels),
-    `the remainder of a deposit is named as such, not as the balance (${doneRows.labels.slice(0, 110)})`);
-  ok(doneRows.labels.indexOf(gbpJS(doneRows.rest)) !== -1,
-    `…and the stay's own balance is still on the screen (${gbpJS(doneRows.rest)})`);
-  // Closing the row brings the card back, at the default.
-  await page.evaluate(() => openPayView('paytok', '7', 'deposit'));
-  await page.waitForTimeout(900);
-  await page.evaluate(() => document.getElementById('pay-part-toggle').click());
-  await page.waitForTimeout(150);
-  await page.evaluate(() => document.getElementById('pay-part-toggle').click());
-  await page.waitForTimeout(150);
-  const ap2 = await page.evaluate(() => ({
-    shown: (document.getElementById('pay-autopay') || { style: {} }).style.display !== 'none',
-    selfChecked: !!(document.querySelector('input[name="pay-ap-choice"][value="self"]') || {}).checked,
-  }));
-  ok(ap2.shown && ap2.selfChecked, 'closing the row brings the card back, at the default');
-
-  // ============================================================
-  //  THE DONE SCREEN SPEAKS THE ARRANGEMENT, both ways round. A guest who
-  //  just agreed to automatic payments used to get the generic "we'll be in
-  //  touch" — and a FAILED card-save was logged for the owner while the guest
-  //  left believing something was arranged that was not.
-  // ============================================================
-  await page.evaluate(() => openPayView('paytok', '7', 'deposit'));
-  await page.waitForTimeout(900);
-  await page.evaluate(() => {
-    const r = document.querySelector('input[name="pay-ap-choice"][value="monthly"]');
-    r.checked = true;
-    r.dispatchEvent(new Event('change', { bubbles: true }));
-    document.getElementById('pay-btn').click();
-  });
-  // State-wait (the unhurried-beat rule): openPayView hid the done panel, so
-  // its visibility means THIS payment finished — a fixed 700ms reads the
-  // PREVIOUS case's sentence mid-beat.
-  await page.waitForFunction(() => document.getElementById('pay-done').style.display !== 'none', null, { timeout: 6000 });
-  const doneMo = await page.evaluate(() => (document.getElementById('pay-done-sub') || {}).textContent || '');
-  ok(/monthly payments are set up/.test(doneMo) && /£175\.00 on 28\/08\/2026/.test(doneMo),
-    `a monthly consent's done screen confirms the schedule (${doneMo.slice(0, 90)})`);
-  ok(/email you before each one/.test(doneMo), '…and repeats the notice promise');
-  await page.evaluate(() => openPayView('paytok', '7', 'deposit'));
-  await page.waitForTimeout(900);
-  await page.evaluate(() => {
-    const r = document.querySelector('input[name="pay-ap-choice"][value="one"]');
-    r.checked = true;
-    r.dispatchEvent(new Event('change', { bubbles: true }));
-    document.getElementById('pay-btn').click();
-  });
-  await page.waitForFunction(() => document.getElementById('pay-done').style.display !== 'none', null, { timeout: 6000 });
-  const doneOne = await page.evaluate(() => (document.getElementById('pay-done-sub') || {}).textContent || '');
-  ok(/collect the remaining £525\.00 automatically on 28\/10\/2026/.test(doneOne),
-    `a one-payment consent confirms the collection (${doneOne.slice(0, 90)})`);
-  // The FAILED vault is told to the guest, honestly — booking 8 is the stub's
-  // failure case (same summary shape as the deposit ask).
-  await page.evaluate(() => openPayView('paytok', '8', 'deposit'));
-  await page.waitForTimeout(900);
-  await page.evaluate(() => {
-    const r = document.querySelector('input[name="pay-ap-choice"][value="one"]');
-    r.checked = true;
-    r.dispatchEvent(new Event('change', { bubbles: true }));
-    document.getElementById('pay-btn').click();
-  });
-  await page.waitForFunction(() => document.getElementById('pay-done').style.display !== 'none', null, { timeout: 6000 });
-  const doneFail = await page.evaluate(() => (document.getElementById('pay-done-sub') || {}).textContent || '');
-  ok(/couldn't set up automatic payments/.test(doneFail) && /nothing else was charged/.test(doneFail),
-    `a failed card-save is told to the guest, not just the log (${doneFail.slice(0, 90)})`);
-  // No consent → the original sentence, untouched.
-  await page.evaluate(() => openPayView('paytok', '7', 'deposit'));
-  await page.waitForTimeout(900);
-  await page.evaluate(() => document.getElementById('pay-btn').click());
-  await page.waitForFunction(() => document.getElementById('pay-done').style.display !== 'none', null, { timeout: 6000 });
-  const doneNone = await page.evaluate(() => (document.getElementById('pay-done-sub') || {}).textContent || '');
-  ok(/We'll be in touch about the remaining balance/.test(doneNone),
-    `no consent keeps the original sentence (${doneNone.slice(0, 80)})`);
-  // The schedule REVEAL eases like everything else on this screen.
-  await page.evaluate(() => openPayView('paytok', '7', 'deposit'));
-  await page.waitForTimeout(900);
-  await page.evaluate(() => {
-    const r = document.querySelector('input[name="pay-ap-choice"][value="monthly"]');
-    r.checked = true;
-    r.dispatchEvent(new Event('change', { bubbles: true }));
-  });
-  await page.waitForTimeout(150);
-  const revealAnim = await page.evaluate(() => getComputedStyle(document.querySelector('.pay-ap-body')).animationName);
-  ok(revealAnim === 'payRise', `the schedule reveal eases in (${revealAnim})`);
-
-  // Back to the balance ask for the happy-path charge below.
-  await page.evaluate(() => openPayView('paytok', '7', 'balance'));
-  await page.waitForTimeout(900);
-  const reset = await page.evaluate(() => ({
-    open: (document.getElementById('pay-part-row') || { style: {} }).style.display !== 'none',
-    btn: (document.getElementById('pay-btn') || {}).textContent || '',
-  }));
-  ok(!reset.open && reset.btn === 'Pay £340.00', `re-opening the screen resets the offer (${reset.btn})`);
-
-  // ============================================================
-  //  WALLETS FOLLOW THE SLICE (owner's report: part-paying must still show
-  //  Apple / Google Pay). The wallet is priced at MOUNT time, so the fix is to
-  //  re-mount it to the slice as the guest types — never hide it — and to pin a
-  //  wallet tap to the figure its sheet actually showed, not the live field.
-  // ============================================================
-  await page.evaluate(() => {
-    // A wallet-capable stub: paymentRequest records the total it was priced to,
-    // and each wallet tokenizes to a distinct token so the charge can be traced.
-    window.__wreq = null;
-    window.Square = {
-      payments: () => ({
-        card: async () => ({ attach: async () => {}, tokenize: async () => ({ status: 'OK', token: 'tok_test_1' }) }),
-        paymentRequest: (o) => { window.__wreq = o && o.total && o.total.amount; return {}; },
-        googlePay: async () => ({ attach: async () => {}, tokenize: async () => ({ status: 'OK', token: 'tok_gpay' }) }),
-        applePay: async () => ({ tokenize: async () => ({ status: 'OK', token: 'tok_apay' }) }),
-      }),
-    };
-  });
-  await page.evaluate(() => openPayView('paytok', '7', 'balance'));
-  await page.waitForTimeout(900);
-  const wFull = await page.evaluate(() => ({
-    req: window.__wreq,
-    shown: (document.getElementById('sq-wallets') || { style: {} }).style.display !== 'none',
-    apay: !!document.getElementById('sq-apay'),
-    panel: (document.getElementById('pay-express') || { style: {} }).style.display !== 'none',
-    cap: (document.getElementById('pay-express-cap') || {}).textContent || '',
-    // THE ORDER IS THE FIX (owner's screenshot): the amount choice must come
-    // BEFORE the express panel, so a re-priced wallet lands directly beneath
-    // the field the guest is typing in — not two sections above it.
-    partFirst: !!(document.getElementById('pay-part') && document.getElementById('pay-express') &&
-      (document.getElementById('pay-part').compareDocumentPosition(document.getElementById('pay-express')) & Node.DOCUMENT_POSITION_FOLLOWING)),
-  }));
-  ok(wFull.req === '340.00' && wFull.shown && wFull.apay, `the balance ask mounts wallets for the FULL amount (${wFull.req})`);
-  ok(wFull.panel && /Express checkout/.test(wFull.cap) && /£340\.00/.test(wFull.cap),
-    `the express panel captions the FULL figure in words (${wFull.cap.trim()})`);
-  ok(wFull.partFirst, 'the amount choice sits ABOVE the express panel — decide the amount, then how to pay it');
-
-  // Open the part row with nothing typed → wallets come down (nothing to charge).
-  await page.evaluate(() => document.getElementById('pay-part-toggle').click());
-  await page.waitForTimeout(150);
-  const wOpen = await page.evaluate(() => ({
-    w: (document.getElementById('sq-wallets') || { style: {} }).style.display,
-    panel: (document.getElementById('pay-express') || { style: {} }).style.display,
-  }));
-  ok(wOpen.w === 'none', `opening with no amount takes the wallets down (${wOpen.w})`);
-  ok(wOpen.panel === 'none', '…and the captioned panel goes with them — no empty box claiming a checkout');
-
-  // Type a slice → after the debounce the wallets RE-MOUNT, priced to the slice.
-  await page.evaluate(() => { const a = document.getElementById('pay-part-amt'); a.value = '120'; a.dispatchEvent(new Event('input', { bubbles: true })); });
-  await page.waitForTimeout(600);
-  const wSlice = await page.evaluate(() => ({
-    req: window.__wreq,
-    shown: (document.getElementById('sq-wallets') || { style: {} }).style.display !== 'none',
-    apay: !!document.getElementById('sq-apay'),
-    cap: (document.getElementById('pay-express-cap') || {}).textContent || '',
-  }));
-  ok(wSlice.req === '120.00' && wSlice.shown && wSlice.apay, `a valid slice re-prices Apple/Google Pay to the slice (${wSlice.req})`);
-  ok(/£120\.00/.test(wSlice.cap) && !/£340\.00/.test(wSlice.cap),
-    `…and the caption states the slice in words above the buttons (${wSlice.cap.trim()})`);
-
-  // TAP the wallet: it must charge the £120 its sheet showed, as a part_amount —
-  // never the full amount, and never a value the field moved to after the mount.
-  const before = posts.filter((p) => p.__url === 'pay.php' && p.action === 'charge').length;
-  await page.evaluate(() => document.getElementById('sq-apay').click());
-  await page.waitForTimeout(700);
-  const wCharge = posts.filter((p) => p.__url === 'pay.php' && p.action === 'charge').slice(before).pop();
-  ok(!!wCharge && wCharge.source_id === 'tok_apay', `the wallet tap tokenises through the wallet (${wCharge && wCharge.source_id})`);
-  ok(!!wCharge && wCharge.part_amount === 120, `…and charges the slice the sheet showed, not the full ask (${wCharge && wCharge.part_amount})`);
-
-  // THE PIN IS LOAD-BEARING: type a NEW figure and tap the wallet BEFORE the
-  // 350ms re-mount fires. The sheet still shows the old £120, so the charge must
-  // be £120 — the mounted amount — not the £150 now in the field. Without the
-  // pin the wallet would take a number its own sheet never displayed.
-  await page.evaluate(() => openPayView('paytok', '7', 'balance'));
-  await page.waitForTimeout(900);
-  await page.evaluate(() => document.getElementById('pay-part-toggle').click());
-  await page.waitForTimeout(120);
-  await page.evaluate(() => { const a = document.getElementById('pay-part-amt'); a.value = '120'; a.dispatchEvent(new Event('input', { bubbles: true })); });
-  await page.waitForTimeout(600); // let the wallet mount at £120
-  const pinBefore = posts.filter((p) => p.__url === 'pay.php' && p.action === 'charge').length;
-  await page.evaluate(() => {
-    const a = document.getElementById('pay-part-amt'); a.value = '150'; a.dispatchEvent(new Event('input', { bubbles: true }));
-    document.getElementById('sq-apay').click(); // tap NOW, before the 350ms re-mount
-  });
-  await page.waitForTimeout(700);
-  const pinCharge = posts.filter((p) => p.__url === 'pay.php' && p.action === 'charge').slice(pinBefore).pop();
-  ok(!!pinCharge && pinCharge.part_amount === 120,
-    `a wallet tap charges the mounted figure, not an un-settled field value (${pinCharge && pinCharge.part_amount})`);
-
-  // A WALLET TAP WHILE CLOSED IS A FULL PAYMENT — part_amount 0, never the
-  // mounted figure. On the deposit stage the full charge is rental + refundable
-  // deposit; sending the mounted £225 would clamp the deposit off (booking_part
-  // _amount caps at the rental). So closed must send 0.
-  await page.evaluate(() => openPayView('paytok', '3', 'deposit'));
-  await page.waitForTimeout(900);
-  const depBefore = posts.filter((p) => p.__url === 'pay.php' && p.action === 'charge').length;
-  await page.evaluate(() => document.getElementById('sq-apay').click());
-  await page.waitForTimeout(700);
-  const depCharge = posts.filter((p) => p.__url === 'pay.php' && p.action === 'charge').slice(depBefore).pop();
-  ok(!!depCharge && depCharge.part_amount === 0,
-    `a wallet tap on the full deposit stage sends no slice, so the deposit is not clamped off (${depCharge && depCharge.part_amount})`);
-
-  // Closing re-prices the wallets back to the full ask.
-  await page.evaluate(() => openPayView('paytok', '7', 'balance'));
-  await page.waitForTimeout(900);
-  await page.evaluate(() => document.getElementById('pay-part-toggle').click());
-  await page.waitForTimeout(150); // open (wallets down)
-  await page.evaluate(() => document.getElementById('pay-part-toggle').click());
-  await page.waitForTimeout(150); // close → immediate reprice to full
-  const wClose = await page.evaluate(() => ({ req: window.__wreq, shown: (document.getElementById('sq-wallets') || { style: {} }).style.display !== 'none' }));
-  ok(wClose.req === '340.00' && wClose.shown, `closing the row re-prices the wallets to the full ask (${wClose.req})`);
-
-  // Restore the wallet-less stub so the card-path sections below are unchanged.
-  await page.evaluate(() => {
-    window.Square = {
-      payments: () => ({
-        card: async () => ({ attach: async () => {}, tokenize: async () => ({ status: 'OK', token: 'tok_test_1' }) }),
-        paymentRequest: () => { throw new Error('no wallets in this test'); },
-      }),
-    };
-  });
-  await page.evaluate(() => openPayView('paytok', '7', 'balance'));
-  await page.waitForTimeout(900);
-
-  // A DECLINED CARD KEEPS THE RETRY ALIVE. The decline must land as an inline
-  // message with the form still on screen and the button re-enabled — routed
-  // through showPayError it would hide the form behind a terminal panel whose
-  // only button is "Back to the site", leaving the guest unable to try another
-  // card without re-opening the email link. Nothing gated the distinction.
-  await page.route(/pay\.php/, (route) => {
-    const b = JSON.parse(route.request().postData() || '{}');
-    if (b.action === 'charge') return route.fulfill({ status: 402, contentType: 'application/json', body: JSON.stringify({ error: "Your card couldn't be authorised. Please try another card." }) });
-    return route.fallback();
-  });
-  await page.evaluate(() => document.getElementById('pay-btn').click());
-  await page.waitForTimeout(700);
-  const declined = await page.evaluate(() => ({
-    msg: (document.getElementById('pay-msg') || {}).textContent || '',
-    formShown: document.getElementById('pay-body').style.display !== 'none',
-    errPanel: (document.getElementById('pay-error') || { style: {} }).style.display !== 'none',
-    btnOn: !(document.getElementById('pay-btn') || {}).disabled,
-    btnLabel: (document.getElementById('pay-btn') || {}).textContent || '',
-  }));
-  ok(/try another card/i.test(declined.msg), `a decline says the server's own sentence, inline (${declined.msg.slice(0, 60)})`);
-  ok(declined.formShown && !declined.errPanel, 'the card form STAYS — no terminal panel over a retryable failure');
-  ok(declined.btnOn && /^Pay £/.test(declined.btnLabel), `the button re-enables with its label back (${declined.btnLabel})`);
-  await page.unroute(/pay\.php/);
-
-  // Happy path: tokenize (stub) → charge → receipt state.
-  await page.evaluate(() => document.getElementById('pay-btn').click());
-  // State-wait (the unhurried-beat rule above): done shows after the 1050ms hold.
-  await page.waitForFunction(() => document.getElementById('pay-done').style.display !== 'none', null, { timeout: 6000 });
-  const done = await page.evaluate(() => ({
-    done: document.getElementById('pay-done').style.display !== 'none',
-    sub: (document.getElementById('pay-done-sub') || {}).textContent || '',
-    restShown: (document.getElementById('pay-done-rest') || { style: {} }).style.display !== 'none',
-    panelAnim: getComputedStyle(document.getElementById('pay-done')).animationName,
-    tickAnim: getComputedStyle(document.querySelector('.pay-done-tick .ic')).animationName,
-    circleAnim: getComputedStyle(document.querySelector('.pay-done-tick circle')).animationName,
-    checkAnim: getComputedStyle(document.querySelector('.pay-done-tick path')).animationName,
-  }));
-  const charge = posts.find((p) => p.__url === 'pay.php' && p.action === 'charge');
-  ok(!!charge && charge.source_id === 'tok_test_1' && charge.kind === 'balance', `charge posted with the tokenized card (${charge && charge.source_id})`);
-  ok(done.done && /paid in full/i.test(done.sub), `receipt state shows (${done.sub.slice(0, 50)}…)`);
-  // The pay-the-rest button belongs to a slice's done screen alone — a full
-  // payment must not carry a stale one over from the earlier part charge.
-  ok(!done.restShown, 'a full payment offers no "pay the rest"');
-  ok(done.panelAnim === 'payRise' && done.tickAnim === 'payPop',
-    `the done panel eases in and the tick pops on the spring (${done.panelAnim}/${done.tickAnim})`);
-  // The Apple Pay confirm: the ring DRAWS and the check strokes in — not a
-  // static mark that appears.
-  ok(done.circleAnim === 'payDraw' && done.checkAnim === 'payDraw',
-    `the tick draws itself, ring then check (${done.circleAnim}/${done.checkAnim})`);
-
-  // A DROPPED CONNECTION IS NOT THE END OF THE PAYMENT. This screen is the guest's
-  // only way to pay, reached from an emailed link, and its failure panel's one
-  // control was "Back to the site" — so a Square SDK that failed to load ended the
-  // journey. Try again is OPTIONAL and must stay so: the same panel serves genuinely
-  // TERMINAL states ("already settled — nothing left to pay"), where a retry invites
-  // tapping at something that cannot change. Both halves are asserted.
-  const errStates = await page.evaluate(() => {
-    const read = () => {
-      const b = document.getElementById('pay-error-retry');
-      return {
-        shown: !!b && getComputedStyle(b).display !== 'none',
-        msg: (document.getElementById('pay-error-msg') || {}).textContent || '',
+  // One page per scene. `o.charge` decides what pay.php's charge answers; the
+  // rest of the knobs hold an answer back or change one fixture.
+  const scene = async (id, kind, o) => {
+    o = o || {};
+    const page = await browser.newPage({ viewport: o.viewport || { width: 390, height: 844 } });
+    page.on('pageerror', (e) => { console.log('  PAGEERR:', e.message); fails++; });
+    await page.addInitScript((w) => {
+      if (navigator.serviceWorker) navigator.serviceWorker.register = () => new Promise(() => {});
+      window.__tok = [];
+      window.__wtok = 0;
+      window.Square = {
+        payments: () => ({
+          card: async () => ({
+            attach: async (sel) => { const el = document.querySelector(sel); if (el) el.innerHTML = '<div class="sq-stub" style="height:48px">Card number</div>'; },
+            tokenize: async (v) => { window.__tok.push(v || null); return window.__tokResult || { status: 'OK', token: 'tok_card' }; },
+            destroy: async () => {},
+            addEventListener: () => {},
+          }),
+          paymentRequest: () => { if (!w) throw new Error('no wallets here'); return {}; },
+          googlePay: async () => ({
+            attach: async (sel) => { const el = document.querySelector(sel); if (el) el.innerHTML = '<div style="height:48px;background:#000;color:#fff">G Pay</div>'; },
+            tokenize: async () => { window.__wtok++; return { status: 'OK', token: 'tok_wallet' }; },
+          }),
+          applePay: async () => { throw new Error('not Safari'); },
+        }),
       };
-    };
-    showPayError('Could not load the payment form.', () => { window.__payRetried = 1; });
-    const transient = read();
-    showPayError("This booking is already settled — there's nothing left to pay.");
-    const terminal = read();
-    // …and the one that IS offered really runs.
-    showPayError('Could not load the payment form.', () => { window.__payRetried = 1; });
-    window.__payRetried = 0;
-    document.getElementById('pay-error-retry').click();
-    return { transient: transient, terminal: terminal, ran: window.__payRetried };
-  });
-  ok(errStates.transient.shown, 'PAY-ERR: a failure that might pass offers Try again');
-  ok(errStates.ran === 1, 'PAY-ERR: …and the button really runs the remedy it was given');
-  ok(!errStates.terminal.shown,
-    `PAY-ERR: a TERMINAL state does not (${errStates.terminal.msg.slice(0, 50)})`);
-  // …AND openPayView DECIDES WHICH IT IS. The two checks above drive showPayError
-  // directly with a remedy handed in, so they prove the HELPER — while the catch that
-  // calls it passed a retry UNCONDITIONALLY, so pay.php's terminal refusals (403 an
-  // expired link, 404 a booking gone, 503 payments off) offered a Try again that
-  // reproduced the identical panel for ever. Driven through the real opener against a
-  // real 403.
-  await page.evaluate(() => openPayView('badtok', '403', 'balance'));
-  await page.waitForTimeout(900);
-  const deadLink = await page.evaluate(() => {
-    const b = document.getElementById('pay-error-retry');
-    return {
-      panel: (document.getElementById('pay-error') || { style: {} }).style.display !== 'none',
-      retry: !!b && getComputedStyle(b).display !== 'none',
-      msg: (document.getElementById('pay-error-msg') || {}).textContent || '',
-    };
-  });
-  ok(deadLink.panel && /invalid or has expired/.test(deadLink.msg), `PAY-ERR: a dead link says so (${deadLink.msg.slice(0, 44)})`);
-  ok(!deadLink.retry, 'PAY-ERR: …offers no Try again, because retrying returns the same answer');
-  // The guest still WANTS to pay, so the panel has to name the thing that would work.
-  ok(/fresh link/i.test(deadLink.msg) && /(message us|confirmation email)/i.test(deadLink.msg),
-    `PAY-ERR: …and names the way to get a working one (${deadLink.msg.slice(-70)})`);
-  // A TRANSPORT failure carries no status and must keep its retry — the case the
-  // button was added for. Booking 7 answers normally, so break the SDK instead.
-  const okSquare = await page.evaluate(() => { const s = window.Square; window.Square = { payments: () => { throw new Error('SDK unavailable'); } }; return !!s; });
-  await page.evaluate(() => openPayView('paytok', '7', 'balance'));
-  await page.waitForTimeout(900);
-  const dropped = await page.evaluate(() => {
-    const b = document.getElementById('pay-error-retry');
-    return { retry: !!b && getComputedStyle(b).display !== 'none', msg: (document.getElementById('pay-error-msg') || {}).textContent || '' };
-  });
-  ok(okSquare && dropped.retry, `PAY-ERR: a failure with no verdict still offers Try again (${dropped.msg.slice(0, 40)})`);
-  ok(!/fresh link/i.test(dropped.msg), '…and does NOT send them off to ask for a new link — this one works');
-  await page.evaluate(() => { window.Square = { payments: () => ({ card: async () => ({ attach: async () => {}, tokenize: async (v) => { window.__tokArgs.push(v); return { status: 'OK', token: 'tok_test_1' }; } }), paymentRequest: () => { throw new Error('no wallets in this test'); } }) }; });
+    }, !!o.wallets);
+    const posts = [];
+    let summaryCalls = 0;
+    await page.route(/\.php/, async (route) => {
+      const url = route.request().url();
+      const json = (b, s) => route.fulfill({ status: s || 200, contentType: 'application/json', body: JSON.stringify(b) });
+      if (route.request().method() === 'POST') {
+        const b = JSON.parse(route.request().postData() || '{}');
+        const file = url.split('/').pop().split('?')[0];
+        if (file === 'pay.php') posts.push(b);
+        if (file === 'pay.php' && b.action === 'summary') {
+          summaryCalls++;
+          if (o.summary) return o.summary(b, json, summaryCalls, route);
+          if (b.booking_id === '403') return json({ error: 'This payment link is invalid or has expired.' }, 403);
+          if (b.booking_id === '503') return json({ error: 'Card payments are switched off.' }, 503);
+          const s = SUM[b.booking_id + ':' + (b.kind || 'balance')] || SUM[b.booking_id + ':balance'] || SUM[b.booking_id + ':deposit'];
+          if (o.slowAll && b.kind === 'balance' && b.booking_id === '8') await new Promise((r) => setTimeout(r, o.slowAll));
+          return json(s);
+        }
+        if (file === 'pay.php' && b.action === 'charge') {
+          if (o.charge === 'hang') return;
+          if (o.charge === 'drop') return route.abort('connectionreset');
+          if (o.charge === 'decline') return json({ error: 'The card was declined.', code: 'declined' }, 402);
+          if (o.charge === 'changed') return json({ error: 'The amount changed while you were paying. Nothing has been charged.', code: 'amount_changed' }, 409);
+          if (o.chargeDelay) await new Promise((r) => setTimeout(r, o.chargeDelay));
+          if (b.kind === 'balance') return json({ ok: true, fullyPaid: true, charged: b.booking_id === '8' ? 750 : 525, remaining: 0, card: { brand: 'Visa', last4: '4242' } });
+          return json({ ok: true, fullyPaid: false, charged: 225, remaining: 0, card: { brand: 'Visa', last4: '4242' },
+            autopay: b.autopay ? (b.autopay_instalments > 1 ? { ok: true, monthly: true, n: 3, per: 175, next: d(40), due } : { ok: true, monthly: false, n: 1, per: 525, next: null, due }) : null });
+        }
+        if (file === 'pay.php' && b.action === 'authorize') return json({ ok: true });
+        if (file === 'pay.php' && b.action === 'update_card') return json({ ok: true, say: 'The plan carries on, and nothing was charged today.', autopayState: 'armed' });
+        if (file === 'pay.php' && b.action === 'autopay_off') return json({ ok: true });
+        return json({ ok: true });
+      }
+      if (url.includes('square-config.php')) return json({ enabled: true, applicationId: 'app', locationId: 'loc', environment: o.sandbox ? 'sandbox' : 'production' });
+      if (url.includes('rates.php')) return json({ properties: [{ prop_key: 'jollyboat', name: 'Jollyboat', slug: 'jollyboat', couple_rate: 233.33, booking_fee: 50, max_adults: 4, max_children: 2, max_total: 6, sort_order: 1 }], seasons: {}, occupancy: {} });
+      return json({ ok: true, bookings: [], enquiries: [], properties: [], seasons: {}, occupancy: {}, content: {}, blocks: [], ranges: [], value: null, reviews: [], photos: [], threads: [] });
+    });
+    await page.goto(`${base}/index.html`, { waitUntil: 'networkidle' });
+    if (o.light) await page.evaluate(() => { if (!document.body.classList.contains('light-mode')) toggleTheme(); });
+    page.evaluate(([i, k]) => openPayView('paytok', i, k), [id, kind]).catch(() => {});
+    // Settled = a panel is up and, on a paying screen, the card box has attached
+    // (submitPayment does nothing until it has, exactly as for a guest).
+    if (!o.noWait) {
+      await page.waitForFunction(
+        () =>
+          ['pay-body', 'pay-error', 'pay-done'].some((id) => !document.getElementById(id).hidden) &&
+          (document.getElementById('pay-body').hidden || payState.view !== 'pay' || !!squareCard),
+        null,
+        { timeout: 8000 },
+      ).catch(() => {});
+    }
+    return { page, posts, summaries: () => summaryCalls };
+  };
+  const charges = (posts) => posts.filter((p) => p.action === 'charge');
+  const settle = (page) => page.waitForTimeout(250);
 
-  // ============================================================
-  // PLAN-FIRST (the approved demo): the plan is decided BEFORE the payment
-  // methods, and the methods honestly follow the choice — Square cannot keep a
-  // WALLET card on file, so an automatic plan stands the wallets down with the
-  // reason on screen; "I'll pay it myself" brings them back. One consent
-  // sentence above the button restates the arrangement whichever rail; a
-  // field-validation tokenize failure keeps ONE voice (Square's inline).
-  // ============================================================
-  console.log('PLAN-FIRST: the decision precedes the methods');
-  await page.evaluate(() => openPayView('paytok', '7', 'deposit'));
-  await page.waitForTimeout(900);
-  // (a) DOM ORDER — the whole point: a wallet guest must pass the plan.
-  const pfOrder = await page.evaluate(() => {
-    const ap = document.getElementById('pay-autopay');
-    const ex = document.getElementById('pay-express');
-    return !!(ap && ex && ap.compareDocumentPosition(ex) & Node.DOCUMENT_POSITION_FOLLOWING);
-  });
-  ok(pfOrder, 'PLAN-FIRST: the plan card precedes the express checkout in the DOM');
-  // (b) The two step chips + step-2 caption while an offer is on screen.
-  const pfCaps = await page.evaluate(() => ({
-    n1: (document.querySelector('#pay-ap-cap .pay-step-n') || {}).textContent || '',
-    todayShown: (document.getElementById('pay-today-cap') || { style: {} }).style.display !== 'none',
-    n2: (document.querySelector('#pay-today-cap .pay-step-n') || {}).textContent || '',
-    amt: (document.getElementById('pay-today-amt') || {}).textContent || '',
-  }));
-  ok(pfCaps.n1 === '1' && pfCaps.todayShown && pfCaps.n2 === '2', `PLAN-FIRST: steps 1 and 2 are numbered (${pfCaps.n1}/${pfCaps.n2})`);
-  ok(/£\d/.test(pfCaps.amt), `PLAN-FIRST: step 2 names today's figure from the button's own ask (${pfCaps.amt})`);
-  // (c) THE STAND-DOWN, both ways. The harness mounts no real wallets, so the
-  // wallet flag is stubbed the way mountWallets would set it.
-  const pfAuto = await page.evaluate(() => {
-    payState.walletsAny = true;
-    payMethodsSync();
-    const vis = (id) => (document.getElementById(id) || { style: {} }).style.display !== 'none';
-    const before = { express: vis('pay-express'), note: vis('pay-walnote') };
-    const r = document.querySelector('input[name="pay-ap-choice"][value="monthly"]');
-    r.checked = true;
-    r.dispatchEvent(new Event('change', { bubbles: true }));
-    const during = { express: vis('pay-express'), note: vis('pay-walnote'), noteTxt: (document.getElementById('pay-walnote') || {}).textContent || '' };
-    const s = document.querySelector('input[name="pay-ap-choice"][value="self"]');
-    s.checked = true;
-    s.dispatchEvent(new Event('change', { bubbles: true }));
-    const after = { express: vis('pay-express'), note: vis('pay-walnote') };
-    return { before, during, after };
-  });
-  ok(pfAuto.before.express && !pfAuto.before.note, 'PLAN-FIRST: with wallets up and self chosen, express shows and no note');
-  ok(!pfAuto.during.express && pfAuto.during.note, 'PLAN-FIRST: choosing an automatic plan stands the wallets down WITH the note');
-  ok(/can't be stored for later payments/.test(pfAuto.during.noteTxt) && /I'll pay it myself/.test(pfAuto.during.noteTxt),
-    'PLAN-FIRST: …the note states the reason and names the way back');
-  ok(pfAuto.after.express && !pfAuto.after.note, 'PLAN-FIRST: choosing self brings the wallets straight back');
-  // (d) ONE CONSENT SENTENCE per choice, above the button.
-  const pfConsent = await page.evaluate(() => {
-    const read = () => (document.getElementById('pay-consent') || {}).textContent || '';
-    const pick = (v) => {
-      const r = document.querySelector(`input[name="pay-ap-choice"][value="${v}"]`);
-      r.checked = true;
-      r.dispatchEvent(new Event('change', { bubbles: true }));
-      return read();
-    };
-    return { self: pick('self'), one: pick('one'), monthly: pick('monthly') };
-  });
-  ok(/nothing is stored/i.test(pfConsent.self), `PLAN-FIRST: self consent promises nothing is stored (${pfConsent.self.slice(0, 48)}…)`);
-  ok(/kept securely on file for one payment of £525\.00 on 28\/10\/2026/.test(pfConsent.one),
-    `PLAN-FIRST: one-payment consent restates sum + day (${pfConsent.one.slice(20, 90)}…)`);
-  ok(/3 monthly payments of £175\.00/.test(pfConsent.monthly) && /before each one/.test(pfConsent.monthly),
-    `PLAN-FIRST: monthly consent restates the schedule (${pfConsent.monthly.slice(20, 90)}…)`);
-  // (e) THE BELT: consent must never ride a wallet token — a stale wallet tap
-  // with a plan chosen is refused in words, and nothing is charged.
-  const pfBelt = await page.evaluate(async () => {
-    window.__pfCharged = 0;
-    const origPost = window.apiPost;
-    // monthly is still chosen from (d)
-    // Drive the wallet handler the way a stale button would: mountWallets'
-    // walletPay closure is not reachable directly, so assert at its own gate —
-    // the source carries the refusal before any tokenize.
-    return {
-      choice: payState.autopayChoice,
-      src: true,
-    };
-  });
-  const appSrcPf = require('fs').readFileSync(__dirname + '/app.js', 'utf8');
-  ok(/autopayChoice === 'one' \|\| payState\.autopayChoice === 'monthly'\) \{\s*\n\s*setPayMsg\("Automatic payments need the card form below/.test(appSrcPf)
-    && appSrcPf.indexOf('Automatic payments need the card form below') < appSrcPf.indexOf('await wallet.tokenize()'),
-    'PLAN-FIRST: walletPay refuses a chosen plan BEFORE any tokenize — consent never rides a wallet token');
-  ok(pfBelt.choice === 'monthly', '(fixture) the plan really was still chosen when the belt was read');
-  // (f) THE ERROR IS SAID ONCE: a field-validation tokenize failure never
-  // reaches the banner — Square's inline message is the one voice.
-  const pfErr = await page.evaluate(async () => {
-    const saved = squareCard;
-    squareCard = { tokenize: async () => ({ status: 'Invalid', errors: [{ type: 'VALIDATION_ERROR', field: 'cardNumber', message: 'Credit card number is not valid' }] }) };
-    await submitPayment();
-    const banner = (document.getElementById('pay-msg') || {}).textContent || '';
-    squareCard = { tokenize: async () => ({ status: 'Invalid', errors: [{ type: 'SDK_ERROR', message: 'Something broke in the SDK' }] }) };
-    await submitPayment();
-    const banner2 = (document.getElementById('pay-msg') || {}).textContent || '';
-    squareCard = saved;
-    return { fieldBanner: banner, sdkBanner: banner2 };
-  });
-  ok(pfErr.fieldBanner === '', `PLAN-FIRST: a field-validation failure prints NO second banner (got "${pfErr.fieldBanner}")`);
-  ok(/Something broke in the SDK/.test(pfErr.sdkBanner), 'PLAN-FIRST: …while a non-field failure still reaches the banner');
+  // ---------------------------------------------------------------
+  console.log('\n§1 a deposit ask: one figure, the breakdown a tap away');
+  {
+    const { page } = await scene('8', 'deposit');
+    await page.waitForFunction(() => payState.sAll && document.querySelector('.pp-seg'), null, { timeout: 8000 }).catch(() => {});
+    const v = await page.evaluate(() => ({
+      stay: (document.getElementById('pay-stay') || {}).textContent || '',
+      cap: (document.querySelector('#pay-stay .pp-cap') || {}).className || '',
+      heroCap: ((document.querySelector('.pp-hero-cap') || {}).textContent || '').trim(),
+      fig: (document.getElementById('pay-amount') || {}).textContent || '',
+      what: ((document.getElementById('pay-what') || {}).textContent || '').trim(),
+      expanded: (document.getElementById('pay-what') || { getAttribute: () => '' }).getAttribute('aria-expanded'),
+      foldOpen: !!document.querySelector('#pay-break.is-open'),
+      seg: [...document.querySelectorAll('.pp-seg-opt')].map((x) => x.textContent.replace(/\s+/g, ' ').trim()),
+      segChecked: (document.querySelector('input[name="pay-mode"]:checked') || {}).value,
+      stops: [...document.querySelectorAll('#pay-story .pp-stop')].map((x) => ({ amt: (x.querySelector('.pp-stop-amt') || {}).textContent, cls: x.className })),
+      inAll: ((document.querySelector('#pay-story .pp-sec') || {}).textContent || '').replace(/\s+/g, ' '),
+      opts: [...document.querySelectorAll('#pay-plan .pp-opt')].length,
+      planChecked: (document.querySelector('input[name="pay-ap-choice"]:checked') || {}).value,
+      btn: ((document.getElementById('pay-btn') || {}).textContent || '').trim(),
+      consent: (document.getElementById('pay-consent') || {}).textContent || '',
+      express: !document.getElementById('pay-express').hidden,
+      or: !document.getElementById('sq-or').hidden,
+      title: (document.getElementById('pay-title') || {}).textContent || '',
+    }));
+    ok(/Jollyboat/.test(v.stay) && /3 nights · 2 adults/.test(v.stay), `the stay: cottage, nights and party (${v.stay.replace(/\s+/g, ' ').trim().slice(0, 90)})`);
+    ok(/is-warn/.test(v.cap) && /Dates held for you/.test(v.stay), 'nothing paid yet: "Dates held for you", in the warn tint');
+    ok(v.heroCap === 'Due today' && v.fig === '£225.00', `one figure leads: ${v.heroCap} ${v.fig}`);
+    ok(v.what === '£175.00 deposit, plus £50.00 you get back', `…and says what it is made of in one line (${v.what})`);
+    ok(v.expanded === 'false' && !v.foldOpen, 'the breakdown starts folded');
+    await page.click('#pay-what');
+    await settle(page);
+    const fold = await page.evaluate(() => {
+      const rows = [...document.querySelectorAll('#pay-break .pp-row')];
+      const val = (r) => Number(((r.querySelector('.pp-row-v') || {}).textContent || '').replace(/[^0-9.]/g, '')) * (r.classList.contains('is-credit') ? -1 : 1);
+      const body = rows.filter((r) => !r.classList.contains('is-total'));
+      const total = rows.find((r) => r.classList.contains('is-total'));
+      return { open: !!document.querySelector('#pay-break.is-open'), exp: document.getElementById('pay-what').getAttribute('aria-expanded'), n: rows.length, sum: body.reduce((a, r) => a + val(r), 0), total: total ? val(total) : -1, labels: rows.map((r) => (r.querySelector('.pp-row-l') || {}).childNodes[0].textContent) };
+    });
+    ok(fold.open && fold.exp === 'true', 'one tap opens it');
+    ok(fold.n >= 3 && Math.abs(fold.sum - fold.total) < 0.005 && fold.total === 225, `the rows add up to their own total, and the total IS the figure (${fold.labels.join(' + ')} = ${fold.total})`);
+    ok(v.seg.length === 2 && /Deposit £225\.00/.test(v.seg[0]) && /Whole stay £750\.00/.test(v.seg[1]) && v.segChecked === 'due', `the one choice: ${v.seg.join(' | ')}`);
+    ok(v.stops.length === 3 && money(v.stops[0].amt) === 225 && money(v.stops[1].amt) === 525 && money(v.stops[2].amt) === 50, `the story: today, the balance, what comes back (${v.stops.map((s) => s.amt).join(', ')})`);
+    ok(/is-now/.test(v.stops[0].cls) && money(v.stops[0].amt) === money(v.fig), "the story's Today IS the hero's figure — one figure, said once");
+    ok(/£750\.00 in all/.test(v.inAll), `…and the whole is stated (${v.inAll.trim()})`);
+    ok(v.opts === 3 && v.planChecked === 'self', 'the balance plan is a decision of three, "I\'ll pay it myself" chosen until the guest says otherwise');
+    ok(v.btn === 'Pay £225.00', `the button names the exact amount (${v.btn})`);
+    ok(/Today's payment only/.test(v.consent) && /nothing is stored/.test(v.consent), 'one consent sentence: today only, nothing stored');
+    ok(!v.express && !v.or, 'no wallet mounted: no wallet row and no divider');
+    ok(/Jollyboat/.test(v.title), 'the screen has a heading for a screen reader');
+    // NO OTHER AMOUNT: the part-payment control is gone from the guest's screen.
+    const part = await page.evaluate(() => !!document.querySelector('#pay-part-toggle, #pay-part-amt, [data-act="payPartToggle"]') || /another amount|pay part of it/i.test(document.getElementById('view-pay').textContent));
+    ok(!part, 'there is no "pay another amount" control');
+    await page.close();
+  }
 
-  // THE CHARGE OUTWAITS THE SERVER. pay.php may hold a charge up to 30s for the booking
-  // lock and 20s for Square; the page gave up at 15s and told the guest the full amount
-  // was still due over a payment recorded two seconds later. Answered at 17s, a charge
-  // must land as a payment.
-  await page.evaluate(() => openPayView('paytok', '7', 'balance'));
-  await page.waitForTimeout(900);
-  slowChargeMs = 17000;
-  const slowT0 = Date.now();
-  await page.evaluate(() => submitPayment());
-  slowChargeMs = 0;
-  const slowPay = await page.evaluate(() => ({
-    done: document.getElementById('pay-done').style.display !== 'none',
-    err: (document.getElementById('pay-msg') || {}).textContent || '',
-  }));
-  ok(slowPay.done && !/couldn.t confirm/i.test(slowPay.err),
-    `a charge the server answers after 17s lands as a payment, not "couldn't confirm" (${Math.round((Date.now() - slowT0) / 1000)}s${slowPay.err ? ', ' + slowPay.err.slice(0, 50) : ''})`);
+  // ---------------------------------------------------------------
+  console.log('\n§2 the whole stay: its own summary, quote and figure');
+  {
+    const { page, posts } = await scene('8', 'deposit');
+    await page.waitForFunction(() => !!payState.sAll, null, { timeout: 8000 }).catch(() => {});
+    await page.click('.pp-seg-opt:last-child');
+    await settle(page);
+    const v = await page.evaluate(() => ({
+      cap: ((document.querySelector('.pp-hero-cap') || {}).textContent || '').trim(),
+      fig: (document.getElementById('pay-amount') || {}).textContent,
+      stops: document.querySelectorAll('#pay-story .pp-stop').length,
+      plan: !!document.querySelector('#pay-plan .pp-plan'),
+      btn: (document.getElementById('pay-btn') || {}).textContent.trim(),
+      consent: (document.getElementById('pay-consent') || {}).textContent,
+      pill: (document.querySelector('.pp-seg') || { style: {} }).style.getPropertyValue('--i'),
+    }));
+    ok(v.cap === 'Your whole stay' && v.fig === '£750.00', `the switch changes the figure (${v.cap} ${v.fig})`);
+    ok(v.stops === 2 && !v.plan, 'the story shrinks to two stops and there is no balance left to plan');
+    ok(v.btn === 'Pay £750.00' && /Your whole stay, today/.test(v.consent), `the button and the consent follow (${v.btn})`);
+    ok(v.pill === '1', 'the pill travelled to the chosen side');
+    await page.click('#pay-btn');
+    await page.waitForFunction(() => !document.getElementById('pay-done').hidden, null, { timeout: 8000 }).catch(() => {});
+    const c = charges(posts)[0] || {};
+    ok(c.kind === 'balance' && c.quote === '8:balance:750.00:q' && !c.autopay, `the charge asks for the whole stay with the whole stay's own quote (${c.kind} ${c.quote})`);
+    await page.close();
+  }
+  {
+    // The whole stay's figure still on its way: the button waits, it never charges blind.
+    const { page, posts } = await scene('8', 'deposit', { slowAll: 2500 });
+    await page.waitForFunction(() => document.querySelector('.pp-seg'), null, { timeout: 8000 }).catch(() => {});
+    await page.click('.pp-seg-opt:last-child');
+    const w = await page.evaluate(() => ({ dis: document.getElementById('pay-btn').disabled, txt: document.getElementById('pay-btn').textContent }));
+    ok(w.dis && /Getting the figure/.test(w.txt), `while its figure loads the button waits (${w.txt.trim()})`);
+    await page.click('#pay-btn', { force: true }).catch(() => {});
+    ok(charges(posts).length === 0, '…and a tap on it charges nothing');
+    await page.waitForFunction(() => !document.getElementById('pay-btn').disabled, null, { timeout: 8000 }).catch(() => {});
+    ok(/Pay £750\.00/.test(await page.evaluate(() => document.getElementById('pay-btn').textContent)), 'the figure lands and the button names it');
+    await page.close();
+  }
 
-  console.log(fails ? `\n  ${fails} PAY-PAGE CHECK(S) FAILED ❌` : '\n  PAY-PAGE SUITE PASSED ✅');
-  await harnessDone(fails);
+  // ---------------------------------------------------------------
+  console.log('\n§3 the plan: one decision, consent per choice, wallets follow');
+  {
+    const { page, posts } = await scene('8', 'deposit', { wallets: true });
+    await page.waitForFunction(() => !document.getElementById('pay-express').hidden, null, { timeout: 8000 }).catch(() => {});
+    ok(await page.evaluate(() => !document.getElementById('pay-express').hidden && !document.getElementById('sq-or').hidden), '(fixture) a wallet mounted, with the divider');
+    // The plan comes FIRST: a wallet guest passes it before the buttons.
+    const order = await page.evaluate(() => !!(document.getElementById('pay-plan').compareDocumentPosition(document.getElementById('pay-express')) & Node.DOCUMENT_POSITION_FOLLOWING));
+    ok(order, 'the plan sits above the wallets, so a wallet guest meets it');
+    await page.click('#pay-plan .pp-opt:nth-of-type(2)');
+    await settle(page);
+    const one = await page.evaluate(() => ({
+      consent: document.getElementById('pay-consent').textContent,
+      off: document.getElementById('pay-express').classList.contains('is-off'),
+      note: !document.getElementById('pay-walnote').hidden,
+      mid: (document.querySelector('#pay-story .pp-stop:nth-child(2) .pp-stop-sub') || {}).textContent,
+      focus: document.activeElement && document.activeElement.name,
+    }));
+    ok(/one payment of £525\.00/.test(one.consent) && /email you 3 days before/.test(one.consent), 'one payment: the consent names the sum, the day and the email');
+    ok(one.off && one.note, 'an automatic plan stands the wallets down and says why');
+    ok(one.mid === 'Taken automatically', `the story follows the choice (${one.mid})`);
+    ok(one.focus === 'pay-ap-choice', 'the radio under the finger keeps the focus (it is updated, not rebuilt)');
+    // The belt: a wallet reached anyway refuses BEFORE tokenize.
+    await page.evaluate(() => document.querySelector('#sq-gpay').click());
+    await settle(page);
+    const belt = await page.evaluate(() => ({ tok: window.__wtok, msg: document.getElementById('pay-msg').textContent }));
+    ok(belt.tok === 0 && /card form/.test(belt.msg), 'a wallet tap with a plan chosen refuses in words, before tokenize');
+    await page.click('#pay-plan .pp-opt:nth-of-type(3)');
+    await settle(page);
+    const mo = await page.evaluate(() => ({ consent: document.getElementById('pay-consent').textContent, chips: document.querySelectorAll('.pp-sched span').length, mid: (document.querySelector('#pay-story .pp-stop:nth-child(2) .pp-stop-amt') || {}).textContent }));
+    ok(/3 monthly payments of £175\.00/.test(mo.consent) && mo.chips === 3, `monthly: the consent and the three dates (${mo.chips} dates)`);
+    ok(mo.mid === '3 × £175.00', `…and the story's middle stop (${mo.mid})`);
+    await page.click('#pay-btn');
+    await page.waitForFunction(() => !document.getElementById('pay-done').hidden, null, { timeout: 8000 }).catch(() => {});
+    const c = charges(posts)[0] || {};
+    ok(c.autopay === true && c.autopay_instalments === 3 && c.kind === 'deposit', `the charge carries the consent and the offered count (${c.autopay}/${c.autopay_instalments})`);
+    const lead = await page.evaluate(() => (document.querySelector('.pp-rc-lead') || {}).textContent || '');
+    ok(/monthly payments are set up/.test(lead), `the receipt says the plan is set up (${lead})`);
+    await page.close();
+  }
+  {
+    const { page } = await scene('8', 'deposit', { wallets: true });
+    await page.waitForFunction(() => !document.getElementById('pay-express').hidden, null, { timeout: 8000 }).catch(() => {});
+    await page.click('#pay-plan .pp-opt:nth-of-type(2)');
+    await page.click('#pay-plan .pp-opt:nth-of-type(1)');
+    await settle(page);
+    const back = await page.evaluate(() => ({ off: document.getElementById('pay-express').classList.contains('is-off'), note: !document.getElementById('pay-walnote').hidden }));
+    ok(!back.off && !back.note, '"I\'ll pay it myself" brings the wallets straight back');
+    await page.close();
+  }
+
+  // ---------------------------------------------------------------
+  console.log('\n§4 paying by card');
+  {
+    const { page, posts } = await scene('8', 'deposit', { chargeDelay: 1600 });
+    await page.click('#pay-btn');
+    await page.waitForTimeout(200);
+    const busy = await page.evaluate(() => ({ txt: document.getElementById('pay-btn').textContent, aria: document.getElementById('pay-btn').getAttribute('aria-busy'), spin: document.querySelectorAll('#pay-btn .pp-spin').length, op: getComputedStyle(document.getElementById('pay-btn')).opacity }));
+    ok(/Paying £225\.00/.test(busy.txt) && busy.aria === 'true' && busy.spin === 1, `busy says what it is doing, with one spinner (${busy.txt.trim()})`);
+    ok(Number(busy.op) === 1, 'busy is a spinner, not a dimmed button');
+    await page.waitForFunction(() => !document.getElementById('pay-steps').hidden, null, { timeout: 3000 }).catch(() => {});
+    const steps = await page.evaluate(() => [...document.querySelectorAll('#pay-steps .pay-step')].map((s) => s.className));
+    ok(steps.length === 3 && steps.some((c) => /is-run/.test(c)), `a wait that lasts is narrated, step by step (${steps.length} steps)`);
+    const tok = await page.evaluate(() => window.__tok[0]);
+    ok(tok && tok.amount === '225.00' && tok.intent === 'CHARGE', `3-D Secure verifies the figure being charged (${tok && tok.amount})`);
+    await page.waitForFunction(() => !document.getElementById('pay-done').hidden, null, { timeout: 8000 }).catch(() => {});
+    const r = await page.evaluate(() => ({
+      h: (document.querySelector('.pp-rc-h') || {}).textContent,
+      fig: (document.querySelector('.pp-rc-fig') || {}).textContent,
+      cap: ((document.querySelector('.pp-rc .pp-cap') || {}).textContent || '').trim(),
+      kv: [...document.querySelectorAll('.pp-kv')].map((x) => x.textContent.replace(/\s+/g, ' ').trim()),
+      next: [...document.querySelectorAll('.pp-rc .pp-vstop .pp-vstop-t')].map((x) => x.textContent),
+      mail: (document.querySelector('.pp-mail') || {}).textContent,
+      focus: document.activeElement && document.activeElement.className,
+      once: (document.getElementById('pay-done').textContent.match(/Payment received/g) || []).length,
+    }));
+    ok(r.h === 'Payment received' && r.fig === '£225.00' && r.once === 1, `the receipt: what was paid, said once (${r.h} ${r.fig})`);
+    ok(r.cap === 'Your dates are confirmed', `…and what it did (${r.cap})`);
+    ok(r.kv.some((x) => /Paid with\s*Visa •• 4242/.test(x)) && r.kv.some((x) => /Reference\s*CHB-000008/.test(x)) && r.kv.some((x) => /Includes\s*£50\.00 refundable deposit/.test(x)), `the ticket: the card, the reference, the deposit inside it`);
+    ok(r.next[0] === 'Deposit paid' && r.next.includes('Balance') && r.next.includes('Arrival details') && r.next.includes('Refundable deposit back'), `what happens next, in order (${r.next.join(' → ')})`);
+    ok(/Receipt sent to d•••@example\.com/.test(r.mail), 'the receipt says where the email went, the address masked');
+    ok(/pp-rc-h/.test(r.focus || ''), 'focus lands on the receipt heading');
+    ok(charges(posts).length === 1 && charges(posts)[0].source_id === 'tok_card', 'one charge, carrying the card token');
+    // THE CHARGE WAITS LONGER THAN THE SERVER CAN TAKE (75s): read from the code.
+    ok(await page.evaluate(() => PAY_CHARGE_WAIT_MS >= 60000 && /timeoutMs: PAY_CHARGE_WAIT_MS/.test(payWithToken.toString())), 'the charge waits as long as the server may take');
+    await page.close();
+  }
+  {
+    const { page } = await scene('9', 'balance', { charge: 'okfull' });
+    const v = await page.evaluate(() => ({ cap: (document.querySelector('.pp-hero-cap') || {}).textContent.trim(), fig: document.getElementById('pay-amount').textContent, stay: (document.querySelector('#pay-stay .pp-cap') || {}).textContent }));
+    ok(/^Balance due by /.test(v.cap) && v.fig === '£525.00', `a balance names its day (${v.cap} ${v.fig})`);
+    ok(/Confirmed/.test(v.stay), 'money in hand: the stay reads Confirmed');
+    await page.click('#pay-btn');
+    await page.waitForFunction(() => !document.getElementById('pay-done').hidden, null, { timeout: 8000 }).catch(() => {});
+    ok(await page.evaluate(() => document.querySelector('.pp-rc-h').textContent === 'Your stay is paid in full'), 'paying the balance: "Your stay is paid in full"');
+    await page.close();
+  }
+
+  // ---------------------------------------------------------------
+  console.log('\n§5 a refusal sits on the card');
+  {
+    const { page } = await scene('8', 'deposit', { charge: 'decline' });
+    await page.click('#pay-btn');
+    await page.waitForFunction(() => document.querySelector('#pay-alert .pp-alert'), null, { timeout: 8000 }).catch(() => {});
+    const v = await page.evaluate(() => ({ alert: (document.querySelector('#pay-alert .pp-alert') || {}).textContent || '', bad: document.getElementById('sq-card').classList.contains('is-bad'), btn: document.getElementById('pay-btn').textContent.trim(), busy: document.getElementById('pay-btn').getAttribute('aria-busy') }));
+    ok(/Your bank declined this card/.test(v.alert) && /Nothing was taken/.test(v.alert), 'a decline says what happened and that nothing was taken');
+    ok(v.bad, '…on the card it is about');
+    ok(v.btn === 'Pay £225.00' && v.busy !== 'true', 'the button is back, naming the amount');
+    await page.evaluate(() => payClearDecline());
+    ok(await page.evaluate(() => !document.querySelector('#pay-alert .pp-alert') && !document.getElementById('sq-card').classList.contains('is-bad')), 'typing a new card clears it');
+    await page.close();
+  }
+  {
+    // A field mistake: Square's own iframe says it, so no banner of ours.
+    const { page, posts } = await scene('8', 'deposit');
+    await page.evaluate(() => { window.__tokResult = { status: 'Invalid', errors: [{ type: 'VALIDATION_ERROR', field: 'cardNumber', message: 'Card number is not valid' }] }; });
+    await page.click('#pay-btn');
+    await settle(page);
+    const v = await page.evaluate(() => ({ msg: document.getElementById('pay-msg').textContent, alert: !!document.querySelector('#pay-alert .pp-alert') }));
+    ok(!v.msg && !v.alert && charges(posts).length === 0, 'a field mistake is said once, by the card box itself, and nothing is charged');
+    await page.evaluate(() => { window.__tokResult = { status: 'Error', errors: [{ type: 'UNKNOWN', message: 'The card could not be read.' }] }; });
+    await page.click('#pay-btn');
+    await settle(page);
+    ok(/could not be read/.test(await page.evaluate(() => document.getElementById('pay-msg').textContent)), 'any other refusal is said under the box');
+    await page.close();
+  }
+  {
+    // The amount moved while they read it: redrawn, and said.
+    const { page, posts } = await scene('8', 'deposit', { charge: 'changed' });
+    await page.click('#pay-btn');
+    await page.waitForFunction(() => document.querySelector('#pay-alert .pp-alert.is-warn'), null, { timeout: 8000 }).catch(() => {});
+    const t = await page.evaluate(() => (document.querySelector('#pay-alert .pp-alert') || {}).textContent || '');
+    ok(/The amount changed/.test(t), 'an amount that moved redraws the screen and says so');
+    ok(posts.filter((p) => p.action === 'summary').length >= 3, '…from a fresh summary');
+    await page.close();
+  }
+
+  // ---------------------------------------------------------------
+  console.log('\n§6 the connection dropped');
+  {
+    let paidNow = false;
+    const { page } = await scene('8', 'deposit', {
+      charge: 'drop',
+      summary: (b, json, n) => json(paidNow && b.kind === 'deposit' ? { ...SUM['8:deposit'], alreadyPaid: 175, balance: 525, amountDue: 0, damagesDue: 0, depositCharged: 50 } : SUM['8:' + (b.kind || 'deposit')]),
+    });
+    await page.click('#pay-btn');
+    await page.waitForFunction(() => !document.getElementById('pay-error').hidden, null, { timeout: 8000 }).catch(() => {});
+    const v = await page.evaluate(() => ({ h: (document.querySelector('#pay-error .pp-calm-h') || {}).textContent, payBtn: !document.getElementById('pay-body').hidden, btns: [...document.querySelectorAll('#pay-error button')].map((b) => b.textContent.trim()) }));
+    ok(v.h === "We couldn't confirm your payment", `the screen says what is known (${v.h})`);
+    ok(!v.payBtn && !v.btns.some((t) => /^Pay\b/.test(t)), 'there is NO Pay button — a second tap is how a guest pays twice');
+    ok(v.btns.some((t) => /Check whether it went through/.test(t)), 'only a way to find out');
+    paidNow = true;
+    await page.click('#pay-error [data-act="payCheckAgain"]');
+    await page.waitForFunction(() => !document.getElementById('pay-done').hidden, null, { timeout: 8000 }).catch(() => {});
+    ok(await page.evaluate(() => document.querySelector('.pp-rc-h').textContent === 'Payment received'), 'it went through: the receipt — for the deposit, not "paid in full"');
+    await page.close();
+  }
+  {
+    const { page } = await scene('8', 'deposit', { charge: 'drop' });
+    await page.click('#pay-btn');
+    await page.waitForFunction(() => !document.getElementById('pay-error').hidden, null, { timeout: 8000 }).catch(() => {});
+    await page.click('#pay-error [data-act="payCheckAgain"]');
+    await page.waitForFunction(() => document.querySelector('#pay-alert .pp-alert.is-info'), null, { timeout: 8000 }).catch(() => {});
+    const t = await page.evaluate(() => ({ alert: (document.querySelector('#pay-alert .pp-alert') || {}).textContent || '', body: !document.getElementById('pay-body').hidden }));
+    ok(t.body && /didn't go through/.test(t.alert) && /Nothing was taken/.test(t.alert), 'it did not: back to the screen, and the fact said');
+    await page.close();
+  }
+
+  // ---------------------------------------------------------------
+  console.log('\n§7 an arranged plan, the card form, a plan in trouble');
+  {
+    const { page, posts } = await scene('14', 'balance');
+    const v = await page.evaluate(() => ({
+      cap: (document.querySelector('.pp-hero-cap') || {}).textContent.replace(/\s+/g, ' ').trim(),
+      fig: document.getElementById('pay-amount').textContent,
+      line: (document.querySelector('.pp-hero-line') || {}).textContent || '',
+      vstops: [...document.querySelectorAll('#pay-story .pp-vstop')].map((x) => x.className),
+      method: !document.getElementById('pay-method').hidden,
+      bar: !document.getElementById('pay-bar').hidden,
+      side: (document.getElementById('pay-armed') || {}).textContent.replace(/\s+/g, ' '),
+    }));
+    ok(/Arranged/.test(v.cap) && /Nothing to pay today/.test(v.cap) && v.fig === '£350.00', `an arranged plan: nothing to pay today (${v.cap})`);
+    ok(/£175\.00 monthly, next on /.test(v.line), `…and when the next payment is taken (${v.line})`);
+    ok(v.vstops.length === 4 && v.vstops.filter((c) => /is-auto/.test(c)).length === 2, 'the plan told down the page: paid so far, two automatic payments, the deposit back');
+    ok(!v.method && !v.bar, 'no card box and no Pay bar — there is nothing to pay');
+    ok(/The card you saved/.test(v.side) && /Pay £350\.00 now instead/.test(v.side) && /Turn off automatic payment/.test(v.side), 'change the card, pay early or turn it off, each one tap away');
+    await page.click('[data-act="payChangeCard"]');
+    await settle(page);
+    const c = await page.evaluate(() => ({ method: !document.getElementById('pay-method').hidden, cap: document.getElementById('pay-method-cap').textContent, lead: document.getElementById('pay-method-lead').textContent, btn: document.getElementById('pay-btn').textContent.trim(), cancel: !document.getElementById('pay-cancel').hidden }));
+    ok(c.method && c.cap === 'Your new card' && /Nothing is charged when you save/.test(c.lead), 'Change opens the card form on its own, saying nothing is charged');
+    ok(c.btn === 'Save card' && c.cancel, `…with Save card and a way back (${c.btn})`);
+    await page.click('#pay-btn');
+    await page.waitForFunction(() => document.querySelector('#pay-alert-top .pp-alert.is-ok'), null, { timeout: 8000 }).catch(() => {});
+    const up = posts.find((p) => p.action === 'update_card');
+    ok(!!up && up.source_id === 'tok_card' && charges(posts).length === 0, 'saving posts the card and charges nothing');
+    ok(await page.evaluate(() => payState.view === 'armed'), '…and the arranged screen returns with "Card updated"');
+    await page.click('[data-act="payNowInstead"]');
+    await settle(page);
+    ok(await page.evaluate(() => document.getElementById('pay-btn').textContent.trim() === 'Pay £350.00' && !document.getElementById('pay-method').hidden), '"Pay now instead" opens the pay screen for the figure');
+    await page.close();
+  }
+  {
+    const { page, posts } = await scene('14', 'balance');
+    await page.click('[data-act="payTurnOff"]');
+    await page.waitForSelector('#glass-dialog.open, .glass-dialog.open', { timeout: 4000 }).catch(() => {});
+    await page.evaluate(() => { const b = document.getElementById('glass-dialog-ok'); if (b) b.click(); });
+    await page.waitForFunction(() => window.__posted || true, null, { timeout: 500 }).catch(() => {});
+    await page.waitForTimeout(600);
+    ok(posts.some((p) => p.action === 'autopay_off'), 'turning it off asks first, then posts autopay_off');
+    await page.close();
+  }
+  {
+    const { page } = await scene('13', 'balance');
+    const v = await page.evaluate(() => ({ alert: (document.querySelector('#pay-alert-top .pp-alert') || {}).textContent || '', cls: (document.querySelector('#pay-alert-top .pp-alert') || {}).className || '', cap: (document.querySelector('.pp-hero-cap') || {}).textContent, warn: document.querySelectorAll('#pay-body .pp-vstop.is-warn').length, side: (document.getElementById('pay-armed') || {}).textContent }));
+    ok(/is-warn/.test(v.cls) && /A payment didn't go through/.test(v.alert) && /try again on /.test(v.alert), 'a plan in trouble: what happened and when we try again — warn, never danger');
+    ok(/Update card/.test(v.alert) && v.cap === 'Left to pay' && v.warn === 1, 'the fix is one button, and the declined payment is marked in the plan');
+    ok(/Pay the £350\.00 now instead/.test(v.side), '…and paying it all now is still offered');
+    await page.close();
+  }
+
+  // ---------------------------------------------------------------
+  console.log('\n§8 the calm screens');
+  {
+    const { page, posts } = await scene('16', 'hold');
+    const v = await page.evaluate(() => ({ cap: (document.querySelector('.pp-hero-cap') || {}).textContent, btn: document.getElementById('pay-btn').textContent.trim(), seg: !!document.querySelector('.pp-seg'), stay: (document.querySelector('#pay-stay .pp-cap') || {}).textContent }));
+    ok(/Refundable hold/.test(v.cap) && /Held, not charged/.test(v.cap), 'the legacy hold says it is a hold, not a payment');
+    ok(v.btn === 'Place £50.00 hold' && !v.seg, `…its button says so (${v.btn})`);
+    await page.click('#pay-btn');
+    await page.waitForFunction(() => !document.getElementById('pay-done').hidden, null, { timeout: 8000 }).catch(() => {});
+    ok(posts.some((p) => p.action === 'authorize' && p.kind === 'hold') && charges(posts).length === 0, 'a hold authorises, it never charges');
+    await page.close();
+  }
+  {
+    const { page } = await scene('17', 'balance');
+    const v = await page.evaluate(() => ({ h: (document.querySelector('#pay-error .pp-calm-h') || {}).textContent, pay: !document.getElementById('pay-body').hidden, story: document.querySelectorAll('#pay-error .pp-stop').length, p: (document.querySelector('#pay-error .pp-calm > p, #pay-error > p') || {}).textContent || '' }));
+    ok(v.h === 'Nothing left to pay' && !v.pay, 'nothing to pay: a calm screen, no button to pay');
+    ok(v.story === 2 && /arrival details around/.test(v.p), 'what was paid, what comes back, and when the arrival details come');
+    await page.close();
+  }
+  {
+    const { page } = await scene('403', 'balance');
+    const v = await page.evaluate(() => ({ h: (document.querySelector('#pay-error .pp-calm-h') || {}).textContent, retry: !!document.querySelector('#pay-error [data-act="payErrorRetry"]') }));
+    ok(v.h === 'This payment link has expired' && !v.retry, 'an expired link is a calm screen with no retry that would answer the same');
+    await page.close();
+  }
+  {
+    const { page } = await scene('503', 'balance');
+    ok(await page.evaluate(() => /aren't available right now/.test((document.querySelector('#pay-error .pp-calm-h') || {}).textContent)), 'card payments off: said plainly');
+    await page.close();
+  }
+  {
+    const { page, summaries } = await scene('9', 'balance', { summary: (b, json, n) => (n === 1 ? json({ error: 'Something went wrong on our side.' }, 500) : json(SUM['9:balance'])) });
+    ok(await page.evaluate(() => !!document.querySelector('#pay-error [data-act="payErrorRetry"]')), 'a server error offers Try again');
+    await page.click('#pay-error [data-act="payErrorRetry"]');
+    await page.waitForFunction(() => !document.getElementById('pay-body').hidden, null, { timeout: 8000 }).catch(() => {});
+    ok(summaries() >= 2 && (await page.evaluate(() => document.getElementById('pay-btn').textContent.trim())) === 'Pay £525.00', '…and the retry opens the screen');
+    await page.close();
+  }
+
+  // ---------------------------------------------------------------
+  console.log('\n§9 a deposit-only payment is called that');
+  {
+    const { page } = await scene('18', 'balance');
+    const v = await page.evaluate(() => ({ cap: (document.querySelector('.pp-hero-cap') || {}).textContent, fig: document.getElementById('pay-amount').textContent, consent: document.getElementById('pay-consent').textContent }));
+    ok(v.cap === 'Your refundable deposit' && v.fig === '£75.00', `nothing of the stay left: "${v.cap}" ${v.fig}`);
+    ok(/is your refundable deposit/.test(v.consent) && !/balance/i.test(v.cap + v.consent), 'never called a balance');
+    await page.close();
+  }
+
+  // ---------------------------------------------------------------
+  console.log('\n§10 a slow, older open never paints over a newer one');
+  {
+    const { page } = await scene('9', 'balance', { noWait: true, summary: async (b, json) => { if (b.booking_id === '9') await new Promise((r) => setTimeout(r, 1500)); return json(SUM[b.booking_id + ':' + (b.kind || 'balance')] || SUM[b.booking_id + ':balance']); } });
+    await page.waitForTimeout(200);
+    page.evaluate(() => openPayView('paytok', '14', 'balance')).catch(() => {});
+    await page.waitForTimeout(2200);
+    const v = await page.evaluate(() => ({ id: payState.bookingId, view: payState.view, fig: (document.getElementById('pay-amount') || {}).textContent }));
+    ok(v.id === '14' && v.view === 'armed' && v.fig === '£350.00', `the newer booking stays on screen (${v.id} ${v.view} ${v.fig})`);
+    await page.close();
+  }
+
+  // ---------------------------------------------------------------
+  console.log('\n§11 the paint');
+  for (const light of [false, true]) {
+    const { page } = await scene('8', 'deposit', { light });
+    const v = await page.evaluate(() => {
+      const btn = document.getElementById('pay-btn');
+      const cs = getComputedStyle(btn);
+      const acc = getComputedStyle(document.body).getPropertyValue('--accent').trim();
+      const probe = document.createElement('i');
+      probe.style.color = acc;
+      document.body.appendChild(probe);
+      const accRgb = getComputedStyle(probe).color;
+      probe.remove();
+      const bar = getComputedStyle(document.getElementById('pay-bar'));
+      return { bg: cs.backgroundColor, acc: accRgb, h: btn.getBoundingClientRect().height, pos: bar.position, bottom: bar.bottom, sw: document.documentElement.scrollWidth, cw: document.documentElement.clientWidth };
+    });
+    ok(v.bg === v.acc, `${light ? 'light' : 'dark'}: the one primary paints the accent (${v.bg})`);
+    ok(v.h >= 48, `…at a thumb's height (${Math.round(v.h)}px)`);
+    ok(v.pos === 'sticky' && v.bottom === '0px', '…and on a phone the Pay bar stays in reach');
+    ok(v.sw <= v.cw, `nothing wider than the screen (${v.sw}/${v.cw})`);
+    await page.close();
+  }
+  {
+    const { page } = await scene('14', 'balance');
+    const v = await page.evaluate(() => {
+      const b = document.querySelector('[data-act="payNowInstead"]');
+      const cs = getComputedStyle(b);
+      return { bg: cs.backgroundColor, shadow: cs.boxShadow };
+    });
+    const clear = /rgba\(0, 0, 0, 0\)|transparent/.test(v.bg);
+    ok(clear && /inset/.test(v.shadow), `the second choice is outlined and quiet, never a second primary (${v.bg})`);
+    await page.close();
+  }
+  {
+    const { page } = await scene('8', 'deposit', { viewport: { width: 1280, height: 900 } });
+    const v = await page.evaluate(() => {
+      const main = document.querySelector('#pay-body .pp-main');
+      const side = document.querySelector('#pay-body .pp-side');
+      const mr = main.getBoundingClientRect();
+      const sr = side.getBoundingClientRect();
+      return { two: sr.left > mr.right - 1, sticky: getComputedStyle(main).position, barPos: getComputedStyle(document.getElementById('pay-bar')).position, plan: side.contains(document.getElementById('pay-plan')), method: side.contains(document.getElementById('pay-method')) };
+    });
+    ok(v.two && v.plan && v.method, 'on a computer: the summary beside the plan and the card');
+    ok(v.sticky === 'sticky' && v.barPos === 'static', '…the summary holds its place, and the bar sits in the column');
+    await page.close();
+  }
+
+  console.log(fails ? `\n✗ ${fails} pay-screen check(s) failed` : '\nAll pay-screen checks passed ✅');
+  await done(fails);
 })();
