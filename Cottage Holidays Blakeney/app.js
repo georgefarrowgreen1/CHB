@@ -8169,7 +8169,10 @@ async function mountWallets(amountDue) {
         wrap.appendChild(el);
         // Beside Apple Pay, so the SHORT button; black on the light ground, white on
         // the dark one (Google's own rule — the colour is fixed when it attaches).
-        await gp.attach('#sq-gpay', { buttonColor: document.body.classList.contains('light-mode') ? 'black' : 'white', buttonType: 'short', buttonSizeMode: 'fill' });
+        // Apple's twin: its corner (the cell radius, read off the token), and none
+        // of the grey outline Google draws round its own button.
+        const radius = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--r-sm')) || 12;
+        await gp.attach('#sq-gpay', { buttonColor: document.body.classList.contains('light-mode') ? 'black' : 'white', buttonType: 'short', buttonSizeMode: 'fill', buttonRadius: radius, buttonBorderType: 'no_border' });
         el.addEventListener('click', async (e) => {
             e.preventDefault();
             await walletPay(gp, 'Google Pay');
@@ -21718,7 +21721,7 @@ const CHB_SK_CARD = '<div class="card glass-panel sk-card"><div class="skeleton 
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'paycard1011';
+    const BUILD = 'walletpair1011';
     /** @type {any} */ (window).__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;
