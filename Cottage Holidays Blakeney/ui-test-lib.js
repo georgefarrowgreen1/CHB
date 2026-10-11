@@ -35,7 +35,10 @@ const path = require('path');
 // elapsed-time arithmetic are untouched, so every Date.now() difference is the
 // same) and d() reads the same clock, so fixture and page agree for the life of
 // any suite. At any other hour the offset is 0 and nothing is installed.
+// CHB_LATE_SHIFT=1 forces the shift at any hour, to check every suite still passes
+// on the shifted clock without waiting for 10pm.
 const LATE_SHIFT_MS = (() => {
+    if (process.env.CHB_LATE_SHIFT === '1') return -3 * 3600e3;
     const h = Number(new Intl.DateTimeFormat('en-GB', { timeZone: 'Europe/London', hour: '2-digit', hourCycle: 'h23' }).format(new Date()));
     return h >= 22 ? -3 * 3600e3 : 0;
 })();

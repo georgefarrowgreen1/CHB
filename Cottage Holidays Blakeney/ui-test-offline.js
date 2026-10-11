@@ -105,6 +105,13 @@ const d = require('./ui-test-lib').d; // the harness's day (keeps the page's clo
   });
 
   const settle = async (ms) => { await page.waitForTimeout(ms || 2800); };
+  // WAIT FOR STATE, not only a clock: on a loaded runner signing in, rebuilding the
+  // snapshot or putting the day sheet up took longer than these sleeps.
+  let t0 = 0;
+  const freshSnap = (since) => page.waitForFunction((t) => {
+    try { const s = typeof chbSnapRead === 'function' ? chbSnapRead(true) : null; return !!s && Number(s.at) >= t; } catch (e) { return false; }
+  }, since, { timeout: 15000 }).catch(() => {});
+  const sheetUp = () => page.waitForFunction(() => !!document.getElementById('offline-daysheet'), null, { timeout: 15000 }).catch(() => {});
   // the store is ENCRYPTED at rest — read through the decrypted mirror
   const snap = () => page.evaluate(() => chbSnapRead(true));
 
@@ -140,6 +147,7 @@ const d = require('./ui-test-lib').d; // the harness's day (keeps the page's clo
   apiDead = true;
   await page.reload({ waitUntil: 'domcontentloaded' });
   await settle(3500);
+  await sheetUp();
   ok(await page.evaluate(() => document.body.classList.contains('offline-snap')), 'the offline-snap state is on');
   ok(await page.evaluate(() => !!document.getElementById('offline-daysheet')), 'the day sheet rendered from the snapshot');
   const sheet = await page.evaluate(() => (document.getElementById('offline-daysheet') || {}).textContent || '');
@@ -207,11 +215,14 @@ const d = require('./ui-test-lib').d; // the harness's day (keeps the page's clo
   //     `onLine === false` gate could never see (the write was thrown away).
   console.log('§7 the day-sheet captures, offline');
   apiDead = false;
+  t0 = await page.evaluate(() => Date.now());
   await page.reload({ waitUntil: 'domcontentloaded' });
   await settle();                       // sign in fresh, snapshot rebuilt
+  await freshSnap(t0);
   apiDead = true;
   await page.reload({ waitUntil: 'domcontentloaded' });
   await settle(3500);
+  await sheetUp();
   ok(await page.evaluate(() => !!document.getElementById('offline-daysheet')), 'the day sheet is up again');
   const gdSet = (id, v) => page.evaluate(([i2, v2]) => { const el = document.getElementById('gdf-' + i2); if (el) { el.value = v2; el.dispatchEvent(new Event('input')); } }, [id, v]);
 
@@ -349,6 +360,7 @@ const d = require('./ui-test-lib').d; // the harness's day (keeps the page's clo
   apiDead = true;
   await page.reload({ waitUntil: 'domcontentloaded' });
   await settle(3500);
+  await sheetUp();
   ok(await page.evaluate(() => !!document.getElementById('offline-daysheet')), '(fixture) offline boot lands on the day sheet');
   await page.evaluate(() => { window.__noReloadMarker = 43; });
   apiDead = false;
@@ -364,6 +376,7 @@ const d = require('./ui-test-lib').d; // the harness's day (keeps the page's clo
   apiDead = true;
   await page.reload({ waitUntil: 'domcontentloaded' });
   await settle(3500);
+  await sheetUp();
   ok(await page.evaluate(() => !!document.getElementById('offline-daysheet')), 'the day sheet is up for the capture');
   await page.locator('#offline-daysheet button', { hasText: 'Record an expense' }).click();
   await page.waitForTimeout(400);
@@ -480,11 +493,14 @@ const d = require('./ui-test-lib').d; // the harness's day (keeps the page's clo
   // both see the genuine article
   const JPG = Buffer.from('/9j/4AAQSkZJRgABAQEAYABgAAD/2wBDAAgGBgcGBQgHBwcJCQgKDBQNDAsLDBkSEw8UHRofHh0aHBwgJC4nICIsIxwcKDcpLDAxNDQ0Hyc5PTgyPC4zNDL/wAALCAABAAEBAREA/8QAFAABAAAAAAAAAAAAAAAAAAAACf/EABQQAQAAAAAAAAAAAAAAAAAAAAD/2gAIAQEAAD8AVN//2Q==', 'base64');
   apiDead = false;
+  t0 = await page.evaluate(() => Date.now());
   await page.reload({ waitUntil: 'domcontentloaded' });
   await settle();                       // fresh snapshot (Hannah's deposit is back in the fixture)
+  await freshSnap(t0);
   apiDead = true;
   await page.reload({ waitUntil: 'domcontentloaded' });
   await settle(3500);
+  await sheetUp();
   await page.locator('#offline-daysheet button', { hasText: 'Decide the deposit' }).click();
   await page.waitForTimeout(400);
   await page.evaluate(() => { const el = document.getElementById('gdf-choice'); el.value = 'keep'; el.dispatchEvent(new Event('input')); });
@@ -581,6 +597,7 @@ const d = require('./ui-test-lib').d; // the harness's day (keeps the page's clo
   apiDead = true;
   await page.reload({ waitUntil: 'domcontentloaded' });
   await settle(3500);
+  await sheetUp();
   const encSheet = await page.evaluate(() => (document.getElementById('offline-daysheet') || {}).textContent || '');
   ok(/Marcus Ellery/.test(encSheet), 'the offline boot DECRYPTS and renders the same sheet — the round trip is real');
   // legacy plaintext (a phone that saved before this shipped) is ADOPTED
@@ -615,6 +632,7 @@ const d = require('./ui-test-lib').d; // the harness's day (keeps the page's clo
   apiDead = true;
   await page.reload({ waitUntil: 'domcontentloaded' });
   await settle(3500);
+  await sheetUp();
   const coastSheet = await page.evaluate(() => (document.getElementById('offline-daysheet') || {}).textContent || '');
   ok(/High water 06:41 and 19:08/.test(coastSheet) && /low 12:55/.test(coastSheet),
     'the sheet states the day\'s tides with no data at all');
@@ -652,11 +670,14 @@ const d = require('./ui-test-lib').d; // the harness's day (keeps the page's clo
   //     front rather than spending timeouts per keystroke.
   console.log('§17 the assistant answers offline');
   apiDead = false;
+  t0 = await page.evaluate(() => Date.now());
   await page.reload({ waitUntil: 'domcontentloaded' });
   await settle();                       // fresh sign-in + snapshot
+  await freshSnap(t0);
   apiDead = true;
   await page.reload({ waitUntil: 'domcontentloaded' });
   await settle(3500);
+  await sheetUp();
   ok(await page.evaluate(() => !!document.getElementById('offline-daysheet') && document.body.classList.contains('net-off')),
     '(fixture) offline boot, day sheet up, verdict off');
   const askOff = async (q) => {
@@ -790,11 +811,14 @@ const d = require('./ui-test-lib').d; // the harness's day (keeps the page's clo
   //     assistant's offline landing, the A2HS nudge and the guest note.
   console.log('§20 the offline experience');
   apiDead = false;
+  t0 = await page.evaluate(() => Date.now());
   await page.reload({ waitUntil: 'domcontentloaded' });
   await settle(); // fresh hint + snapshot
+  await freshSnap(t0);
   apiDead = true;
   await page.reload({ waitUntil: 'domcontentloaded' });
   await settle(3500);
+  await sheetUp();
   // (a) the banner's living parts + the entrance + an empty queue section
   ok(await page.evaluate(() => /just now|min ago/.test((document.getElementById('ods-fresh') || {}).textContent || '')),
     'the banner carries a LIVE freshness readout, not just a timestamp');
@@ -919,6 +943,7 @@ const d = require('./ui-test-lib').d; // the harness's day (keeps the page's clo
   apiDead = true;
   await page.reload({ waitUntil: 'domcontentloaded' });
   await settle(3500);
+  await sheetUp();
   // (a) the ops line — same grammar as the online header, source stated
   const sheetLine = await page.evaluate(() => (document.querySelector('.ods-opsline') || {}).textContent || '');
   ok(/1 departure/.test(sheetLine) && /to collect/.test(sheetLine) && /from the saved sheet/.test(sheetLine),
@@ -1000,6 +1025,7 @@ const d = require('./ui-test-lib').d; // the harness's day (keeps the page's clo
   apiDead = true;
   await page.reload({ waitUntil: 'domcontentloaded' });
   await settle(3500);
+  await sheetUp();
   ok(await page.evaluate(() => !!document.getElementById('offline-daysheet')), '(fixture) the sheet is up');
   await page.evaluate(() => { document.querySelectorAll('.toast').forEach((t) => t.remove()); });
   const bootBase = bootHits;
@@ -1033,11 +1059,14 @@ const d = require('./ui-test-lib').d; // the harness's day (keeps the page's clo
   //     toggled while the app is backgrounded.
   console.log('§23 the sheet mirrors online + the missed-event takeover');
   apiDead = false;
+  t0 = await page.evaluate(() => Date.now());
   await page.reload({ waitUntil: 'domcontentloaded' });
   await settle();
+  await freshSnap(t0);
   apiDead = true;
   await page.reload({ waitUntil: 'domcontentloaded' });
   await settle(3500);
+  await sheetUp();
   // (a) OTA stays PAINT — the timeline and the groups show them like online
   ok(await page.evaluate(() => /Airbnb/.test((document.querySelector('.ods-tl') || {}).textContent || '')),
     'the OTA stay paints its timeline bar, exactly as the online calendar does');
