@@ -120,9 +120,6 @@ const VERBS = /^(add|approve|block|cancel|capture|change|check|clear|continue|de
     // b2 has taken NO money — deleteBooking refuses (with an alert, correctly)
     // on one that has, and 'Cancel & refund' is the route there.
     ['delete a booking',        "window.deleteBooking('b2')", 0, true],
-    // __msgThreadId is module-scoped (the currentGuest rule), so the thread is
-    // opened through its own opener rather than poked into place.
-    ['delete a conversation',   "window.openMessageThread(9); window.deleteCurrentThread()", 0, true],
     ['refund to the card',      "window.refundPayment('b1', 'sq_1', 100, 0)", 1, true],
     ['return a deposit',        "window.returnDeposit('b1')", 1, false],
     ['keep a deposit',          "window.keepDeposit('b1')", 0, false],

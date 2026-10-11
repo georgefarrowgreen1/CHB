@@ -26727,7 +26727,7 @@ function renderMessagesList() {
                   const nm = t.name || t.email || 'Visitor';
                   const unread = (t.unread || 0) > 0;
                   return `
-                <button class="msg-thread-row${unread ? ' unread' : ''}" data-s="${escapeHtml(hay)}" data-search="${escapeHtml(hay)}" data-needs="${needs ? 1 : 0}" ${chbAttrs('openMessageThread', t.thread_id)}>
+                <button class="msg-thread-row${unread ? ' unread' : ''}" data-s="${escapeHtml(hay)}" data-search="${escapeHtml(hay)}" data-needs="${needs ? 1 : 0}" data-thread="${escapeHtml(String(t.thread_id))}">
                     <span class="mtr-ava" style="--ava-h:${strHue(nm)};" aria-hidden="true">${escapeHtml(avatarInitial(nm))}</span>
                     <span class="mtr-main">
                         <span class="mtr-top"><span class="mtr-name">${escapeHtml(nm)}${t.is_guest ? '' : ' <span class="mtr-tag">visitor</span>'}</span><span class="mtr-time">${escapeHtml(relTime(t.last_at))}</span></span>

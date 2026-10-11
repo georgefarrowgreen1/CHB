@@ -369,6 +369,13 @@ const sophiaWith = (patch) => meOf(Object.assign({}, SOPHIA_ROW, { own: Object.a
         ok(/co@example\.com/.test(em.also) && /Add an address/.test(em.also), 'and the extra addresses sit at the foot, with a way to add one');
         let before = posts.length;
         await clearToasts(page);
+        // A forced tap skips Playwright's wait for the element to stop moving, and the page
+        // may still be sliding in: under load a tap measured mid-slide landed beside the
+        // photo it aimed at. Wait for the slide to finish first.
+        await page.waitForFunction(() => {
+            const p = document.querySelector('#emails-body > .ga-page');
+            return !!p && !p.getAnimations().some((a) => a.playState === 'running');
+        }, null, { timeout: 5000 }).catch(() => {});
         await page.click('#emails-body .em-row[data-mail="ideas"] .em-tog:nth-child(2)', { force: true }); // aria-disabled: a tap explains, it never sends
         const why = await toastSays(page, /Sophia can’t get this yet\. Switch on Home page and things to do in What Sophia can do first\./);
         ok(why && posts.length === before, 'a locked photo names the permission it needs, in the server’s words, and sends nothing');

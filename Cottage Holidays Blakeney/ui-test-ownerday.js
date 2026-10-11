@@ -575,10 +575,9 @@ const mkE = (id, prop, name, inD, outD, hours, seen) => ({
     ok(tall.length === 0, `and no label is squeezed into a column (${tall.length ? '“' + tall[0].t + '” ' + tall[0].lines + ' lines' : 'all ≤2 lines'})`);
 
     // (L + M) The conversation takes the whole phone, and its composer meets the
-    // thumb. The chat SHEET this measured (#messages-modal, openMessageThread) is no
-    // longer reachable — its only opener was the old Messages folder list — and a
-    // guest's chat now opens in the one list's conversation, so that is the subject.
-    // (Its quick-replies select went with the sheet.)
+    // thumb. The chat SHEET this once measured (#messages-modal) is gone — its only
+    // opener was the old Messages folder list — and a guest's chat opens in the one
+    // list's conversation, so that is the subject.
     await page.evaluate(async () => { await openInbox(); });
     await page.waitForFunction(() => !!document.querySelector('#ib-rows .ib-rowwrap[data-key="e:ali@example.com"] .ib-row'), null, { timeout: 8000 }).catch(() => {});
     await page.evaluate(() => { const r = document.querySelector('#ib-rows .ib-rowwrap[data-key="e:ali@example.com"] .ib-row'); if (r) r.click(); });

@@ -391,15 +391,6 @@ async function open(browser, base, width) {
   ok(ib.searchFull && ib.searchH === 48, `the search is the one field, on its own line across the list (${ib.searchH}px)`);
   ok(ib.doneEmpty, 'an empty Done says what fills it, and the switch stays as the way back');
   ok(ib.mailFailed && /mailbox didn.t answer/i.test(ib.mail) && /Try again/.test(ib.mail), `a mailbox that did not answer says so, never a quiet "nothing new" ("${ib.mail}")`);
-  const focus = await page.evaluate(async () => {
-    openMessageThread('a1');
-    await new Promise((r) => setTimeout(r, 500));
-    const a = document.activeElement;
-    const r = { id: a && a.id, box: !!(a && a.matches('#messages-modal .modal-box')) };
-    try { closeMessagesModal(); } catch (e) {}
-    return r;
-  });
-  ok(focus.box && focus.id !== 'msg-canned', `the thread sheet takes focus itself, not the quick-replies picker (${focus.id || (focus.box ? 'the sheet' : '?')})`);
 
   console.log('§10 the booking and enquiry pages wear the same parts');
   const hub = await page.evaluate(async () => {
@@ -595,12 +586,6 @@ async function open(browser, base, width) {
     out.enqMenu = shape(e.querySelector('.bhub-menu-btn'));
     const pb = e.querySelector("[data-grp='equote'] .price-box");
     out.quote = pb ? getComputedStyle(pb).borderTopLeftRadius + ' ' + getComputedStyle(pb).borderTopWidth : '';
-    // The conversation sheet takes the window's title and the one field.
-    try { openMessageThread('a1'); } catch (er) {}
-    await wait(500);
-    const mt = document.getElementById('messages-modal-title'), mc = document.getElementById('msg-canned'), mi = document.getElementById('messages-modal-input');
-    out.sheet = [mt && getComputedStyle(mt).fontSize, mt && getComputedStyle(mt).fontWeight, mc && getComputedStyle(mc).minHeight, mi && getComputedStyle(mi).minHeight, mi && getComputedStyle(mi).borderTopLeftRadius].join(' ');
-    try { closeMessagesModal(); } catch (er) {}
     return out;
   });
   ok(last.rowArrow, 'a booking row ends in the drawn chevron, not a "›" glyph');
@@ -614,7 +599,6 @@ async function open(browser, base, width) {
   ok(last.more && last.more.exp === 'false' && last.more.drawn && !last.more.glyph,
     `the guest book's detail toggle says whether it is open and ends in the drawn chevron (${JSON.stringify(last.more)})`);
   ok(last.quote === '12px 0px', `the enquiry's quote sits in the inset panel on the cell's corner (${last.quote})`);
-  ok(last.sheet === '17px 600 48px 48px 12px', `the conversation's title is the window's, its picker and reply box the one field (${last.sheet})`);
 
   console.log('§14 the two long windows: the booking form and the email composer');
   const longWin = async (w) => {
