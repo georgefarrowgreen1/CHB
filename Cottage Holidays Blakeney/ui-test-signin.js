@@ -55,8 +55,11 @@ const ok = (c, m) => { console.log((c ? '  ✓ ' : '  ✗ ') + m); if (!c) fails
     // The close (×) button's hit region reaches 3px out; flush to the box's edge it
     // made the sheet 2px wider than itself, so it scrolled sideways and cut off the
     // first letter of every line.
-    const sideways = await page.evaluate(() => { const b = document.querySelector('#guest-auth-modal .modal-box'); return b.scrollWidth - b.clientWidth; });
-    ok(sideways === 0, `the sheet is exactly as wide as itself — nothing to scroll sideways (${sideways}px over)`);
+    // Measured once the sheet has come to rest: its step slides in from 16px right, and
+    // mid-slide it is wider than itself by design (a loaded runner read 1-2px).
+    await page.waitForFunction(() => { const m = document.getElementById('guest-auth-modal'); return !!m && m.getAnimations({ subtree: true }).length === 0; }, null, { timeout: 4000 }).catch(() => {});
+    const sideways = await page.evaluate(() => { const b = document.querySelector('#guest-auth-modal .modal-box'); return { over: b.scrollWidth - b.clientWidth, left: b.scrollLeft }; });
+    ok(sideways.over === 0 && sideways.left === 0, `the sheet is exactly as wide as itself — nothing to scroll sideways (${sideways.over}px over, scrolled ${sideways.left})`);
     await page.fill('#login-email', 'gwen@gmial.com');
     await page.click('#ga-auth [data-act="authContinue"]');
     await page.waitForTimeout(200);
