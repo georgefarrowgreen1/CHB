@@ -9297,25 +9297,37 @@ deleting — both now FIXED, and they are worth keeping here as the pattern to e
   wires pageerror logging; `await done(fails)` tears everything down. New suites use
   it; never re-inline the boot block or hardcode a port. The lib matches the runner's
   suite glob, so ui-tests.js explicitly skips it.
+  **A suite that lays its own person or owner-mode waits for the boot's session check
+  first** (the lib's `bootVerdict(page)`: `window.__me` is undefined until admin_status has
+  answered). The composer, analytics and guestchat suites used a fixed sleep; at 10x CPU the
+  check landed after the suite set `__me`, and a stub answering it as nobody wiped the person
+  (the composer's signer read as the business). Break-tested by holding admin_status back
+  1.4–1.8s: the old wait fails, the new one passes.
   For a time-of-DAY assertion in a browser suite, pin the page's clock —
   **`page.clock.setFixedTime(date)`**, NOT `clock.install()`: setFixedTime fixes
   `Date.now()`/`new Date()` and leaves the timers running, so the app's own
   `setTimeout`s still fire (install fakes them too and the suite would hang waiting
   for ticks). Keep the pinned instant on the SAME calendar day so the node-side
   `d(n)` helper still agrees, and fix only the hour.
-  **A SUITE CAN KEEP ITS DAY ACROSS MIDNIGHT** (round 8; CI ran 22:51–23:07 UTC on a BST
-  night and the day-sheet suites failed). A suite that calls the lib's **`keepDay()`**
-  (ui-test-offline and ui-test-simpletoday) runs, from 22:00 UK time, with every page's
-  `Date` set back three hours by an init script (`shiftPageClock`, on `browser.newPage`
-  and `browser.newContext`; timers, `performance.now` and elapsed time untouched), and
-  the lib's `d()` reads the same clock, so fixtures built at the start and the page asked
-  later agree. **OPT-IN, and that was learned the hard way**: shipped for every suite, a
-  run with the shift forced failed thirteen, because it moves only the PAGE's clock — the
-  devices' "Active now" compares the page's time with the server's, and yourstay's
-  `page.clock` pin of 23:59 was shifted to 20:59. Suites use the lib's `d` (38 private
-  copies were converted; without keepDay it is plain today); a helper that runs IN THE
-  PAGE (inside `page.evaluate`) must stay a plain `new Date()` one. `CHB_LATE_SHIFT=1`
-  forces the shift at any hour for the suites that asked. ui-test-yourstay is the
+  **EVERY SUITE KEEPS ITS DAY ACROSS MIDNIGHT** (round 8; CI ran 22:51–23:07 UTC on a BST
+  night and the day-sheet suites failed). A suite that STARTS from 22:00 UK time runs on a
+  clock set back three hours: its pages' `Date` (an init script, `shiftPageClock`, on
+  `browser.newPage` and `browser.newContext`; timers, `performance.now` and elapsed time
+  untouched), its own fixture times (the lib's `d()`, `now()`, `todayAt()`) and a real
+  server's `srv` stamp in any response (nudged by the same amount, or `chbClockSync` pulls the
+  page back to the real day). Decided ONCE when the lib loads, so a run that crosses real
+  midnight cannot drop the shift halfway. **It was opt-in for a while, and why it no longer
+  needs to be is the lesson**: shipped for every suite the first time, a forced run failed
+  thirteen, because the page's clock moved while the suites' own `new Date()` fixtures and the
+  server's stamps did not, and Playwright's `page.clock` copies the ENUMERABLE statics of the
+  Date it wraps, so an enumerable `now` beat a `setFixedTime` pin. Now: build any fixture time
+  from the lib's `now()` / `d()` / `todayAt()` (never a bare `Date.now()` or `new Date()` on the
+  node side), the shifted `Date`'s statics are non-enumerable, and `realClock()` opts a suite
+  out. A helper that runs IN THE PAGE (inside `page.evaluate`) stays a plain `new Date()`.
+  `CHB_LATE_SHIFT=1` forces the shift at any hour (`=0` forbids it). The lib also keeps the
+  calendar's own auto-sync quiet (`nn-ical-last-sync` seeded a year ahead when absent): a
+  catch-all stub's `{ok:true}` read as news and reloaded the bookings over a suite's fixture.
+  ui-test-yourstay is the
   exemplar: its checkout-time cases were asserted against the real clock, so
   "checkout still to come (23:59)" was false during the 23:59 minute — pinned, it
   now checks both ends of the day on purpose (case 10 is the far end, and removing

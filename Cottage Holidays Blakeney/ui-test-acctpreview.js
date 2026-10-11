@@ -96,10 +96,18 @@ const acctPayload = {
   // so the EMBEDDED frame must NOT render its own inner banner (that was the
   // duplicate "read-only preview box"). And repeated blocked writes must not
   // stack a column of identical toasts.
-  await page.waitForTimeout(800);
-  const frame = page.frames().find((f) => /acctpreview=77/.test(f.url()));
+  // Wait for the frame's app to have RUN, not a fixed 800ms: under load the banner
+  // check passed in a frame whose app.js had not yet executed, and the toast check
+  // then met an undefined function.
+  let frame = null;
+  for (let i = 0; i < 60 && !frame; i++) {
+    frame = page.frames().find((f) => /acctpreview=77/.test(f.url())) || null;
+    if (!frame) await page.waitForTimeout(250);
+  }
   ok(!!frame, 'the sandboxed preview frame loaded');
-  if (frame) {
+  const ran = !!frame && (await frame.waitForFunction(() => typeof window.__BUILD === 'string' && typeof previewBlockedToast === 'function', null, { timeout: 20000 }).then(() => true, () => false));
+  ok(ran, "…and its app has run (the frame's own checks below mean something)");
+  if (frame && ran) {
     const inner = await frame.evaluate(() => ({ embedded: window.parent !== window, banner: !!document.getElementById('preview-banner') }));
     ok(inner.embedded, 'the preview frame is embedded (parent !== self)');
     ok(!inner.banner, 'the embedded frame suppresses its own inner banner (one read-only box, not two)');

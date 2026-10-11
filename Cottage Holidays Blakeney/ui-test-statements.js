@@ -24,12 +24,12 @@
 // down and Monzo's balance leading, syncing, disconnecting behind a confirm, and
 // a person without full access offered no setup.
 const APP = __dirname;
-const { boot } = require('./ui-test-lib');
+const { boot, now } = require('./ui-test-lib');
 const { execFileSync } = require('child_process');
 const fs = require('fs');
 const os = require('os');
 const pad = (n) => String(n).padStart(2, '0');
-const dt = (n) => { const t = new Date(); return new Date(t.getFullYear(), t.getMonth(), t.getDate() + n); };
+const dt = (n) => { const t = new Date(now()); return new Date(t.getFullYear(), t.getMonth(), t.getDate() + n); };
 const d = (n) => { const x = dt(n); return `${x.getFullYear()}-${pad(x.getMonth() + 1)}-${pad(x.getDate())}`; };
 const dmy = (n) => { const x = dt(n); return `${pad(x.getDate())}/${pad(x.getMonth() + 1)}/${x.getFullYear()}`; };
 let fails = 0;
@@ -121,7 +121,7 @@ const wait = (ms) => new Promise((r) => setTimeout(r, ms));
                 if (b.action === 'remove') { S.on = false; return json({ ok: true }); }
             }
             if (b.__url === 'monzo.php') {
-                const now = Math.floor(Date.now() / 1000);
+                const nowS = Math.floor(now() / 1000);
                 if (b.action === 'save_client') {
                     if (/^mnzpub/.test(b.client_secret || '')) return json({ error: 'That client isn’t confidential, so Monzo won’t keep it connected. Make it again as Confidential.' }, 400);
                     Object.assign(LIVE, { client: true, state: 'ready', say: 'Not connected yet.' });
@@ -131,7 +131,7 @@ const wait = (ms) => new Promise((r) => setTimeout(r, ms));
                 if (b.action === 'check') {
                     checks++;
                     if (checks < 2) return json({ ok: true, sync: null, live: LIVE });
-                    Object.assign(LIVE, { state: 'live', say: '', account: 'Business account ending 4471', last_ok: now, balance: 1880.25, total: 2511.69, balance_at: now });
+                    Object.assign(LIVE, { state: 'live', say: '', account: 'Business account ending 4471', last_ok: nowS, balance: 1880.25, total: 2511.69, balance_at: nowS });
                     return json({ ok: true, sync: { ok: true, added: 3, auto: 1 }, live: LIVE });
                 }
                 if (b.action === 'sync') return json({ ok: true, sync: { ok: true, added: 0, auto: 0 }, live: LIVE });
@@ -384,7 +384,7 @@ const wait = (ms) => new Promise((r) => setTimeout(r, ms));
     await page.waitForURL(/auth\.monzo\.test/, { timeout: 6000 }).catch(() => {});
     ok(/auth\.monzo\.test\/\?client_id=oauth2client_0000Abc/.test(page.url()), 'Connect sends the owner to Monzo');
     // Back from Monzo (the callback page links to Payments): waiting for approval in the app.
-    Object.assign(LIVE, { state: 'approve', say: 'Approve access in the Monzo app.', connected_at: Math.floor(Date.now() / 1000) });
+    Object.assign(LIVE, { state: 'approve', say: 'Approve access in the Monzo app.', connected_at: Math.floor(now() / 1000) });
     await page.goto(`${base}/index.html`, { waitUntil: 'domcontentloaded' });
     await enterApp();
     await page.waitForFunction(() => /Approve in your banking app/.test((document.getElementById('pm-list') || {}).textContent || ''), null, { timeout: 6000 }).catch(() => {});

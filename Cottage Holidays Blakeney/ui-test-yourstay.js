@@ -9,7 +9,7 @@
 //  7. DEPARTURE edge (time-aware): a stay whose checkout time has passed on the
 //     checkout day drops to "Past stays" the same day — not at the next midnight;
 //     one whose checkout time is still to come stays in-residence
-const { d, bootBrowser } = require('./ui-test-lib'); // pins TZ=Europe/London at require time
+const { d, bootBrowser, now } = require('./ui-test-lib'); // pins TZ=Europe/London at require time
 let fails = 0;
 const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails++; };
 
@@ -27,7 +27,7 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
   // mins`, so a 23:59 checkout HAS passed during the 23:59 minute and "still to
   // come" is false exactly then. Pinning keeps the same calendar day (so the d(n)
   // helper, which runs in node, still agrees) and fixes only the hour.
-  const todayAt = (hh, mm, ss) => { const t = new Date(); return new Date(t.getFullYear(), t.getMonth(), t.getDate(), hh, mm, ss || 0); };
+  const todayAt = (hh, mm, ss) => { const t = new Date(now()); return new Date(t.getFullYear(), t.getMonth(), t.getDate(), hh, mm, ss || 0); };
 
   const openPage = async (guest, bookings, opts) => {
     const page = await browser.newPage({ viewport: { width: 900, height: 900 } });
@@ -1006,7 +1006,7 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
   // renders after the confirmed tap; and a mid-stay card renders EXACTLY as
   // today — no block at all, because nothing depends on this feature.
   console.log('\n34. The check-out tap');
-  const coAt = new Date(); coAt.setHours(8, 30, 0, 0);
+  const coAt = new Date(now()); coAt.setHours(8, 30, 0, 0);
   let coPage = await openPage({ name: 'Tap Guest', email: 'tap@x.co' },
     [mk('jollyboat', d(-2), d(0), Object.assign({ payment: 'paid', deposit_paid: 400 }, priced))],
     { at: coAt });

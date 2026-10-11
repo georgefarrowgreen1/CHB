@@ -27,28 +27,34 @@ const { spawn } = require('child_process');
 const net = require('net');
 const path = require('path');
 
-// THE SUITE KEEPS ITS DAY — for a suite that ASKS (keepDay()). A suite that starts
-// shortly before midnight builds its fixtures for one day and is then asked about
-// them by a page whose clock has rolled over to the next: CI ran 22:51–23:07 UTC on
-// a BST night and the day-sheet checks failed on exactly that. Started from 22:00
-// UK time, a suite that called keepDay() runs its pages on a clock set back three
-// hours (DATE only: timers, performance.now and elapsed-time arithmetic are
-// untouched) and d() reads the same clock, so fixture and page agree.
-// OPT-IN, because the shift moves only the PAGE's clock: a suite that compares the
-// page's time with the server's (the devices' "Active now") or pins its own with
-// page.clock (yourstay's 23:59) reads three hours wrong under it — measured, with the
-// shift on for every suite, thirteen failed. CHB_LATE_SHIFT=1 forces it at any hour
-// for the suites that asked, to check them on the shifted clock without waiting.
-let keepDayAsked = false;
-function keepDay() {
-    keepDayAsked = true;
+// EVERY SUITE KEEPS ITS DAY. A suite that starts shortly before midnight builds its
+// fixtures for one day and is then asked about them by a page whose clock has rolled
+// over to the next: CI ran 22:51–23:07 UTC on a BST night and failed on exactly that.
+// So a suite that STARTS from 22:00 UK time runs on a clock set back three hours —
+// its pages (an init script), its own fixture dates (d(), now(), todayAt()) and the
+// server's time stamp (srv, nudged by the same amount) — and so cannot cross
+// midnight. DATE only: timers, performance.now and elapsed time are untouched.
+// Decided ONCE, when the lib loads: re-reading the hour on every call made a run that
+// crossed real midnight drop the shift halfway, so pages opened before 00:00 and
+// fixtures built after it disagreed by a day. CHB_LATE_SHIFT=1 forces the shift at
+// any hour (to check a suite on the shifted clock without waiting), =0 forbids it.
+// realClock() opts a suite out (a suite that must read the real time).
+const LATE_AT_LOAD = (() => {
+    if (process.env.CHB_LATE_SHIFT === '1') return true;
+    if (process.env.CHB_LATE_SHIFT === '0') return false;
+    const h = Number(new Intl.DateTimeFormat('en-GB', { timeZone: 'Europe/London', hour: '2-digit', hourCycle: 'h23' }).format(new Date()));
+    return h >= 22;
+})();
+let realClockAsked = false;
+function realClock() {
+    realClockAsked = true;
 }
 function lateShiftMs() {
-    if (!keepDayAsked) return 0;
-    if (process.env.CHB_LATE_SHIFT === '1') return -3 * 3600e3;
-    const h = Number(new Intl.DateTimeFormat('en-GB', { timeZone: 'Europe/London', hour: '2-digit', hourCycle: 'h23' }).format(new Date()));
-    return h >= 22 ? -3 * 3600e3 : 0;
+    return !realClockAsked && LATE_AT_LOAD ? -3 * 3600e3 : 0;
 }
+// The suite's own "now", on the same clock as its pages: build any fixture time from
+// this (or d() / todayAt()), never from a bare Date.now() or new Date().
+const now = () => Date.now() + lateShiftMs();
 // Runs IN THE PAGE (an init script, so before app.js reads the clock).
 function shiftPageClock(off) {
     if (!off || window.__chbClockShift) return;
@@ -60,18 +66,58 @@ function shiftPageClock(off) {
         return args.length ? new RealDate(...args) : new RealDate(RealDate.now() + off);
     };
     Shifted.prototype = RealDate.prototype;
-    Shifted.now = () => RealDate.now() + off;
-    Shifted.parse = RealDate.parse;
-    Shifted.UTC = RealDate.UTC;
+    // NON-enumerable: Playwright's page.clock copies every own ENUMERABLE property of
+    // the Date it wraps onto its fake, so an enumerable `now` overwrote the fake's own
+    // and a setFixedTime pin moved new Date() but not Date.now(), which the app reads.
+    Object.defineProperty(Shifted, 'now', { value: () => RealDate.now() + off, writable: true, configurable: true });
+    Object.defineProperty(Shifted, 'parse', { value: RealDate.parse, writable: true, configurable: true });
+    Object.defineProperty(Shifted, 'UTC', { value: RealDate.UTC, writable: true, configurable: true });
     window.Date = /** @type {any} */ (Shifted);
+    // A real server's time stamp (php -S answering auth.php with srv) would re-sync the
+    // app's clock to the real day (chbClockSync), so it is moved by the same amount.
+    const fix = (t) => (typeof t === 'string' ? t.replace(/"srv":(\d{10})/g, (m, n) => '"srv":' + (Number(n) + Math.round(off / 1000))) : t);
+    const rt = Response.prototype.text;
+    Response.prototype.text = async function () {
+        return fix(await rt.call(this));
+    };
+    Response.prototype.json = async function () {
+        return JSON.parse(fix(await rt.call(this)));
+    };
+}
+
+// THE CALENDAR'S OWN SYNC STAYS QUIET unless a suite asks for it. The back office
+// syncs the platforms' calendars on its own timer and reloads the bookings when the
+// answer is news (a catch-all stub's {ok:true} reads as news), which wiped fixtures a
+// suite had laid into the stores a second or two earlier. Seeded only when absent, so
+// a suite's own value stands; autoSyncIcalBlocks(true) still runs on demand.
+function quietCalendarSync() {
+    try {
+        // A year ahead, so a page clock a suite pins later in the day still reads it as recent.
+        if (!localStorage.getItem('nn-ical-last-sync')) localStorage.setItem('nn-ical-last-sync', String(Date.now() + 365 * 864e5));
+    } catch (e) {}
+}
+
+// One page (or context) on the suite's clock, with the calendar sync quiet. bootBrowser
+// does this for every page it makes; a harness that launches its own browser (e2e,
+// layout) calls it itself.
+async function prepPage(pg) {
+    const off = lateShiftMs();
+    if (off) await pg.addInitScript(shiftPageClock, off);
+    await pg.addInitScript(quietCalendarSync);
+    return pg;
 }
 
 // Fixture dates are TODAY-relative (a fixed anchor rots as real time passes)
 // and formatted locally — toISOString() is UTC and slips a day near midnight.
 const d = (o) => {
-    const t = new Date(Date.now() + lateShiftMs());
+    const t = new Date(now());
     const x = new Date(t.getFullYear(), t.getMonth(), t.getDate() + o);
     return `${x.getFullYear()}-${String(x.getMonth() + 1).padStart(2, '0')}-${String(x.getDate()).padStart(2, '0')}`;
+};
+// A Date at a given UK time of day, `o` days from the suite's today.
+const todayAt = (h, m = 0, o = 0) => {
+    const t = new Date(now());
+    return new Date(t.getFullYear(), t.getMonth(), t.getDate() + o, h, m, 0, 0);
 };
 
 // Assertion: prints ✓/✗ and throws on failure so the run stops at the first break.
@@ -100,6 +146,13 @@ async function bootBrowser() {
     const { chromium } = require('playwright');
     const port = await freePort();
     const server = spawn('php', ['-S', `127.0.0.1:${port}`, '-t', __dirname], { stdio: 'ignore' });
+    // A suite that crashes must not leave its php -S behind (five were found
+    // orphaned after one night of runs).
+    process.on('exit', () => {
+        try {
+            server.kill();
+        } catch (e) {}
+    });
     // Wait for php -S to actually accept connections (a fixed sleep flakes on slow CI runners).
     for (let i = 0; i < 60; i++) {
         try {
@@ -113,19 +166,11 @@ async function bootBrowser() {
     // bootBrowser and open their own pages (ui-test-pay and ui-test-yourstay
     // among them), and a guarantee that only half the suites get is not one.
     const rawNewPage = browser.newPage.bind(browser);
-    browser.newPage = async (...a) => {
-        const pg = await rawNewPage(...a);
-        const off = lateShiftMs();
-        if (off) await pg.addInitScript(shiftPageClock, off);
-        return appReadyGoto(pg);
-    };
+    browser.newPage = async (...a) => appReadyGoto(await prepPage(await rawNewPage(...a)));
     // Pages made through a context of their own get the same clock.
     const rawNewContext = browser.newContext.bind(browser);
     browser.newContext = async (...a) => {
-        const ctx = await rawNewContext(...a);
-        const off = lateShiftMs();
-        if (off) await ctx.addInitScript(shiftPageClock, off);
-        return ctx;
+        return prepPage(await rawNewContext(...a));
     };
     const base = `http://127.0.0.1:${port}`;
     const done = async (failures = 0) => {
@@ -195,4 +240,14 @@ function appReadyGoto(page) {
     return page;
 }
 
-module.exports = { d, ok, boot, bootBrowser, freePort, appReadyGoto, keepDay };
+// THE BOOT'S OWN SESSION CHECK LANDS FIRST. The app asks admin_status as it boots and
+// sets the signed-in person from the answer (window.__me is undefined until it has), so
+// a suite that lays its own person or owner-mode must wait for that verdict: on a slow
+// run it landed afterwards and undid what the suite had set (the composer's signer read
+// as the business at 10x CPU). A wait on the state, never a fixed sleep. A stub that
+// never answers costs the timeout, then the suite carries on.
+async function bootVerdict(page, ms) {
+    await page.waitForFunction(() => /** @type {any} */ (window).__me !== undefined, null, { timeout: ms || 10000 }).catch(() => {});
+}
+
+module.exports = { d, ok, boot, bootBrowser, freePort, appReadyGoto, bootVerdict, realClock, now, todayAt, lateShiftMs, prepPage };

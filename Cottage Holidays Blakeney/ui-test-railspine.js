@@ -17,7 +17,7 @@
 //      row and spine chip ≥24px and named.
 //
 // Run: node ui-test-railspine.js   (or node ui-tests.js railspine)
-const { boot } = require('./ui-test-lib'); // pins TZ=Europe/London at require time
+const { boot, now } = require('./ui-test-lib'); // pins TZ=Europe/London at require time
 let fails = 0;
 const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails++; };
 
@@ -62,11 +62,11 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
         }
         if (url.includes('enquiries.php')) return json({ enquiries: ENQ });
         if (url.includes('rates.php')) return json({ properties: PROPS, seasons: {}, occupancy: {} });
-        if (url.includes('accounts.php')) return json({ ok: true, years: [new Date().getFullYear()] });
+        if (url.includes('accounts.php')) return json({ ok: true, years: [new Date(now()).getFullYear()] });
         return json({ ok: true, bookings: [], enquiries: [], threads: [], reviews: [], photos: [], experiences: [], events: [], logs: {}, content: {}, blocks: [], ranges: [], payments: [], seasons: {}, occupancy: {}, properties: [], value: null, mine: {}, safes: {} });
     });
 
-    await page.clock.setFixedTime((() => { const t = new Date(); t.setHours(12, 0, 0, 0); return t; })());
+    await page.clock.setFixedTime((() => { const t = new Date(now()); t.setHours(12, 0, 0, 0); return t; })());
     await page.goto(`${base}/index.html`, { waitUntil: 'domcontentloaded' });
     await page.waitForTimeout(1200);
     await page.evaluate(() => { isAuthenticated = true; document.body.classList.add('owner-mode'); });

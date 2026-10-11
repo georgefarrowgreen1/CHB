@@ -15,7 +15,7 @@
 //     is never "Not signed in anywhere"; a device signed out from elsewhere is
 //     told why; the page names itself for the server's label
 //  §10 "last active yesterday" holds across the night the clocks go forward
-const { boot } = require('./ui-test-lib'); // pins TZ=Europe/London at require time
+const { boot, now } = require('./ui-test-lib'); // pins TZ=Europe/London at require time
 let fails = 0;
 const ok = (b, m) => {
     console.log(`  ${b ? '✓' : '✗'} ${m}`);
@@ -25,7 +25,7 @@ const ok = (b, m) => {
 (async () => {
     const { page, base, done } = await boot({ viewport: { width: 390, height: 844 } });
     const ago = (mins) => {
-        const t = new Date(Date.now() - mins * 60000);
+        const t = new Date(now() - mins * 60000);
         const p = (n) => String(n).padStart(2, '0');
         return `${t.getFullYear()}-${p(t.getMonth() + 1)}-${p(t.getDate())} ${p(t.getHours())}:${p(t.getMinutes())}:00`;
     };

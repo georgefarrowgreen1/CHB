@@ -23,7 +23,6 @@
 const { boot } = require('./ui-test-lib');
 let fails = 0;
 const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails++; };
-require('./ui-test-lib').keepDay(); // the page's clock keeps the fixtures' day past midnight
 const d = require('./ui-test-lib').d; // the harness's day, on that same clock
 
 (async () => {
@@ -949,7 +948,11 @@ const d = require('./ui-test-lib').d; // the harness's day, on that same clock
   const sheetLine = await page.evaluate(() => (document.querySelector('.ods-opsline') || {}).textContent || '');
   ok(/1 departure/.test(sheetLine) && /to collect/.test(sheetLine) && /from the saved sheet/.test(sheetLine),
     `the sheet's ops line speaks the header's grammar, source stated ("${sheetLine.trim()}")`);
-  ok(/1 departure/.test(onlineLine),
+  // Every part the online header said is said again, word for word — the money figure
+  // included. Arrivals and stays are left out on purpose: the header is time-aware (after
+  // the check-in hour an arrival is "staying"), the sheet groups by date.
+  const sameParts = onlineLine.split(' · ').map((x) => x.trim()).filter((x) => x && !/arriv|staying/.test(x));
+  ok(/1 departure/.test(onlineLine) && sameParts.length >= 2 && sameParts.every((x) => sheetLine.includes(x)),
     `…the SAME grammar the online header used moments earlier ("${onlineLine.slice(0, 80)}…")`);
   // (b) the duties — Needs-you rows, routing to the captures
   const duties = await page.evaluate(() => Array.from(document.querySelectorAll('.ods-duty .ny-label')).map((n) => n.textContent));

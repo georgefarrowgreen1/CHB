@@ -58,6 +58,7 @@ const check = (cond, label) => {
     });
     await page.goto(`${t.base}/index.html`);
     await page.waitForTimeout(1500);
+    await require('./ui-test-lib').bootVerdict(page); // the boot's session check lands before the person is laid
     await page.evaluate(() => {
         isAuthenticated = true;
         document.body.classList.add('owner-mode');

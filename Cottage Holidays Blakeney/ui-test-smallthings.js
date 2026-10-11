@@ -19,7 +19,7 @@
 //  Break-tested: the button rule, the pill rule, the head string, the ::before
 //  hit rule, the .tl-day size and the text-wrap rule each fail their named checks.
 // ============================================================
-const { bootBrowser } = require('./ui-test-lib');
+const { bootBrowser, now } = require('./ui-test-lib');
 
 // The LONDON date, shifted at UTC noon. The first version took the UTC date, which
 // is yesterday's between 23:00 and midnight UTC under BST while the page's
@@ -64,7 +64,7 @@ function stub(page, mode, mine) {
   const open = async (mode, mine, w) => {
     const page = await t.browser.newPage({ viewport: { width: w || 390, height: 844 } });
     page.on('pageerror', (e) => { console.log('  PAGEERR:', e.message); fails++; });
-    const at = new Date(); at.setHours(8, 30, 0, 0); await page.clock.setFixedTime(at);
+    const at = new Date(now()); at.setHours(8, 30, 0, 0); await page.clock.setFixedTime(at);
     await stub(page, mode, mine);
     await page.goto(t.base + '/index.html', { waitUntil: 'domcontentloaded' });
     await page.waitForTimeout(1300);
@@ -198,6 +198,13 @@ function stub(page, mode, mine) {
   ok(hero.length >= 4 && hero.every((h) => h >= 44), `the hero's mode switch and ± chips stand at 44 (${[...new Set(hero)].join('/')})`);
   await page.evaluate(() => openProperty('jollyboat'));
   await page.waitForTimeout(600);
+  // Measured at REST: the page arrives with a transform on an ancestor, and mid-way
+  // the arrows read 43×43 under load. Wait for nothing above them to be moving.
+  await page.waitForFunction(() => {
+    const navs = [...document.querySelectorAll('.avail-nav')].filter((e) => e.getClientRects().length);
+    const moving = (el) => { for (let n = el; n; n = n.parentElement) if (n.getAnimations().some((a) => a.playState === 'running')) return true; return false; };
+    return navs.length === 2 && !navs.some(moving);
+  }, null, { timeout: 5000 }).catch(() => {});
   const av = await page.evaluate(() => [...document.querySelectorAll('.avail-nav')].filter((e) => e.getClientRects().length).map((e) => { const r = e.getBoundingClientRect(); return `${Math.round(r.width)}×${Math.round(r.height)}`; }));
   ok(av.length === 2 && av.every((s) => s === '44×44'), `the cottage calendar's ‹ › are 44×44 (${av.join(' ')})`);
   await page.close();

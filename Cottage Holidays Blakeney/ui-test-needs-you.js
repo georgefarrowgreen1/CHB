@@ -9,7 +9,7 @@
 // tests must too — pin the whole process (and the browser it launches) to
 // Europe/London so fixtures built from new Date() agree with the app on
 // any runner, in any timezone. Must run before the first Date call.
-const { d, boot } = require('./ui-test-lib'); // pins TZ=Europe/London at require time
+const { d, boot, now } = require('./ui-test-lib'); // pins TZ=Europe/London at require time
 let fails = 0;
 const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails++; };
 
@@ -518,7 +518,7 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
       cap = pill ? (pill.dataset.tone || '') + ':' + pill.textContent : '';
     } catch (e) {}
     return { level: st && st.level, say: st && st.say, pulse, cap };
-  }, Date.now() - 30 * 60 * 1000); // stamped half an hour ago: the last few tries did not answer
+  }, now() - 30 * 60 * 1000); // stamped half an hour ago: the last few tries did not answer
   ok(sig.level === 'unknown', `the assistant's status line says it could not check (${sig.level} — ${sig.say})`);
   ok(!/All systems normal/.test(sig.say || ''), '…rather than reporting the business healthy');
   ok(!/Everything.s running|jobs and feeds on time|all clear/i.test(sig.pulse), `Manage does not claim the jobs are running (${(sig.pulse || '').slice(0, 90)})`);
