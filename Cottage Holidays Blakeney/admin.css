@@ -5551,7 +5551,7 @@ button.bhub-icbtn { font-family: inherit; cursor: pointer; padding: 0; }
 
 /* The body scrolls under the head; every block is a caption over a card. */
 #edit-modal .bks-body { flex: 1 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding: 0 16px calc(32px + var(--safe-b)); }
-.bks-cap { margin: 20px 0 8px; font-size: var(--fs-sub); font-weight: 600; color: var(--text-muted); }
+.bks-cap { margin: 20px 0 8px; font-size: var(--fs-caption); font-weight: 600; color: var(--text-muted); }
 #modal-error + .bks-cap { margin-top: 8px; }
 .bks-card { overflow: hidden; background: var(--u-ground); border: 1px solid var(--u-edge); border-radius: var(--r-lg); }
 .bks-err {
@@ -8189,7 +8189,7 @@ body.owner-mode .cal-tools .mo-tool {
 #view-activity-log .al-h1 { margin: 4px 0 16px; text-align: left; }
 #act-log-app { max-width: 640px; display: flex; flex-direction: column; gap: 16px; }
 .al-card { border-radius: var(--r-lg); border: 1px solid var(--glass-border); background: var(--glass-bg); }
-.al-cap { margin: 0; padding: 0 4px; display: flex; justify-content: space-between; gap: 12px; font-size: var(--fs-sub); font-weight: 600; color: var(--text-muted); }
+.al-cap { margin: 0; padding: 0 4px; display: flex; justify-content: space-between; gap: 12px; font-size: var(--fs-caption); font-weight: 600; color: var(--text-muted); }
 .al-capn { font-weight: 500; opacity: 0.85; }
 @keyframes alRise { from { opacity: 0; transform: translateY(10px); } }
 @keyframes alGrow { from { transform: scaleY(0); } }
@@ -8274,7 +8274,7 @@ body.owner-mode .cal-tools .mo-tool {
 .al-facts { display: flex; flex-wrap: wrap; gap: 8px; }
 .al-facts span { display: inline-flex; align-items: center; height: 28px; padding: 0 12px; border-radius: var(--r-pill); background: color-mix(in srgb, var(--text-light) 6%, transparent); font-size: var(--fs-caption); color: var(--text-muted); }
 .al-also { font-size: var(--fs-caption); color: var(--text-muted); line-height: 1.45; }
-.al-link { align-self: flex-start; min-height: 44px; padding: 0; border: none; background: none; color: var(--accent-text); font: 600 var(--fs-sub) var(--font-sans); cursor: pointer; }
+.al-link { align-self: flex-start; display: inline-flex; align-items: center; gap: 2px; min-height: 44px; padding: 0; border: none; background: none; color: var(--accent-text); font: 600 var(--fs-sub) var(--font-sans); cursor: pointer; }
 .al-more { align-self: center; min-height: 44px; padding: 0 20px; border-radius: var(--r-pill); border: 1px solid var(--glass-border); background: none; color: var(--text-light); font: 600 var(--fs-sub) var(--font-sans); cursor: pointer; }
 .al-end { margin: 0; text-align: center; font-size: var(--fs-caption); color: var(--text-muted); }
 .al-empty { display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 40px 16px; text-align: center; }
@@ -9821,7 +9821,7 @@ body.light-mode :is(#enq-email-subject, #enq-email-body) { background-color: tra
 .cmp-err:empty { display: none; }
 
 /* Added below the message: one card, a row each, a switch each. */
-.cmp-cap { margin: 16px 0 8px; font-size: var(--fs-sub); font-weight: 600; color: var(--text-muted); }
+.cmp-cap { margin: 16px 0 8px; font-size: var(--fs-caption); font-weight: 600; color: var(--text-muted); }
 .cmp-card { overflow: hidden; background: var(--u-ground); border: 1px solid var(--u-edge); border-radius: var(--r-lg); transition: border-color 250ms var(--out), box-shadow 250ms var(--out); }
 .cmp-card.dropping { border-color: var(--accent-text); box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 25%, transparent); }
 .cmp-row { display: flex; align-items: center; gap: 12px; width: 100%; min-height: 56px; padding: 8px 16px; border: 0; background: none; color: inherit; font: inherit; text-align: left; }

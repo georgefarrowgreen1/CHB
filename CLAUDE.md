@@ -1674,6 +1674,64 @@ refuse for now or refuse for good); each was reproduced before it was fixed.
 - **Not done, said plainly**: reply tokens still never expire; and "Also emailed" addresses that are a removed
   person's still receive (listed on screen for the owner to remove).
 
+## The owner's newest screens, audited (round 8)
+
+Two read-only audits of the newest features and of the back office for drift; each finding reproduced first.
+- **THE BOARD FILTER SAYS ONLY WHAT IT CAN SEE** (`applyTodayFilter`, `paintTodayFilter`, `ibSearchFor`). "Filter the
+  Inbox board" dimmed the old `[data-search]` rows hidden in `#inbox-legacy` and reported "3 matches" over a list
+  nothing had changed; Payments had no rows to match at all. On the Inbox the action is "Search the Inbox" and fills
+  its own search box (a phone's open conversation steps aside); elsewhere it is "Filter the Today board" and goes
+  there. The count is of PAINTED rows, and `renderBookings` / `renderCalendar` are thin wrappers that repaint the
+  filter after their bodies (`renderBookingsBody` / `renderCalendarBody`): every data refresh redrew the rows and the
+  dimming dropped while the banner went on claiming it. Gated by **`ui-test-boardfilter.js`**, five changes
+  break-tested; each renderer is re-rendered ON ITS OWN, because one repainting the whole view hid the other's miss.
+- **A URL CHANGE WAITS FOR AN OVERLAY'S BACK** (`chbRoutePush`, `chbRouteApply`, `__routeQueued`). Closing Messages
+  consumes its history entry with an async `history.back()`, and nav() then pushed `/` before that back landed, so
+  leaving a cottage page with Messages open left `/cottages/<slug>` in the bar and Back went to the homepage. The
+  push is queued while `__overlayClosing` is set and applied in the popstate that clears it.
+- **ANALYTICS KEEPS 400 DAYS** (`ANALYTICS_KEEP_DAYS`): pruning at 180 made the "12 months" window half a year of
+  views against a full year of bookings, so "% of enquiries" ran over 100%. A change is shown only when the earlier
+  window was wholly kept, the daily chart is zero-filled on the database's own dates (`analytics_daily_filled`), the
+  share is capped at 100%, the last window TAPPED wins (`__anaAsk`), and a note says when counting began.
+- **A DEPOSIT TO RETURN IS A DUTY ONLY WHEN NOTHING ELSE IS OWED** (`chbDepositBackDue`, one rule for Payments, the
+  duty, search and the money dossier): returning £75 to a guest who still owes £300 is money going the wrong way.
+- **The confirmation and receipt state the deposit the card TOOK** (`hold_amount` once charged), not the agreed figure
+  an edit may have re-snapshotted.
+- **Devices**: a browser with no device key while the list may be incomplete (`devices_partial`) is judged by the old
+  fingerprint, not called new (one-off false "new device" alerts after migration-143); a device signed out by "Sign
+  out everywhere" is told so (`devices_ended_why`), not "your sign-in has ended".
+- **The rest**: the offline key-safe rotation excludes other cottages' codes (`keysafeExclude`, the online rule); the
+  Tab trap wraps from a focused element it cannot reach (a heading with `tabindex=-1` let Shift+Tab out of the
+  password sheet); the chat header re-asks who is away every three minutes; the weekly analytics email names "A
+  cottage page" and links to Analytics; the search "Export accounts (CSV)" calls `pmExport('csv')`; help topics and
+  search rows name today's screens (no Inbox folders, Guest chat, Backups, Price ideas, Guest list); "Compose an email"
+  is "Email a guest" and opens the Inbox's search, because the one Inbox has no blank compose (said plainly: writing
+  to an address nobody has used yet has no way in); search rows speak `fmtStayRange`; three captions at 13px are the
+  12px tier; the activity log's links end in the drawn chevron.
+- **A WORD IN A ROW'S SUB CAN SWALLOW THE FALLBACK.** Rewording one action to "what guests get out of hours" made
+  "what is the meaning of life" a fuzzy hit, which suppressed the "I can't answer that" reply; the row was dropped
+  later and the window showed nothing. search-test's fallback check caught it. Keep question words out of subs.
+
+## The guest side wears the one look (round 8)
+
+From the guest audit; gated by ui-test-guestpolish §12, each change break-tested.
+- **CARDS TAKE THE CARD RADIUS** (`--r-lg`, 20). `.glass-panel` is a material and sets the SHEET's `--r-panel` (28
+  on a phone, 40 on a computer), so the Cottages page cards, the host card, the desktop booking card, the gallery,
+  My stays' cards and the "Know a great local spot?" box were sheet-cornered while the same cottage card on Home
+  was 20. A photo inside keeps its corner concentric: the card's corner less its padding, never under 6px. The
+  hero panels keep the panel radius (the approved scene hero). Found with a probe that lists every painted element
+  on 28/40 that is not a sheet; re-run it after any card change.
+- **ONE BACK LINK**: the cottage page's "‹ Cottages" and the enquiry step's "‹ Back" are the account pages'
+  `.ga-back` (a real button, the drawn chevron, the destination's name), not a typed "← Back to cottages".
+- **A CHOSEN CHIP IS THE ACCENT on the guest side too**: Things to do's chips (`.exp-chip.is-on`, the travelling
+  pill) and My stays' Upcoming | Past (`.gb-seg-b`, now 44px) were ink and a faint tile while the hero's month
+  chips and switch were already the accent. A count inside a chosen chip takes the chip's ink.
+- Smaller: "Welcome book — <cottage>" (the order of its sibling sheets); My stays says "Check-out today by …" like
+  the label beside it.
+- **ui-test-signin's width check measured the sheet mid-slide**: the step slides in from 16px right, so for its
+  first ~150ms the sheet is wider than itself by design, and a loaded runner read 1–2px. It waits for the sheet's
+  animations to end and asserts scrollLeft too; it still fails at 2px on the original close-button defect.
+
 ## Email delivery is at-least-once now — the OUTBOX (migration-113)
 
 **Two retry regimes, and a flow must be in exactly ONE.** The stamp-on-success
@@ -5257,6 +5315,9 @@ block in admin.js (`oaDev*`), the DEVICES block at the foot of admin.css.
 - **A DAY COUNT IS ROUNDED, NOT FLOORED** (`oaDevSeen`, and `oaSeenWords` beside it): midnight to midnight is 23 hours
   on the day the clocks go forward, so a floored count read yesterday as "today". ui-test-devices §10 pins the clock
   to the morning after 28/03/2027.
+- **THE SERVER'S TIMES ARE LONDON WALL CLOCK, AND ARE READ AS SUCH** (`ukWallToDate`, `ukDaysBetween` in app.js). They
+  carry no offset, and parsing them as the phone's own time put "Active now" on every device seen in the last five
+  hours for an owner in New York (round 8).
 - **The confirm says exactly what getting back in takes**: with two-step, "your password and an emailed code, or a
   passkey" (a passkey saved on the device still signs in), and on your own list, when you have passkeys, "If it's
   lost, remove its passkey too."
@@ -6139,7 +6200,8 @@ header, far below real modals at 2000+, so a glassConfirm raised FROM search cov
   State to know: `__cmdkResults`, `__cmdkSel`, `__cmdkEmpty`, `__cmdkDeep`,
   `__cmdkThread`, `__cmdkConvCtx`; `body.cmdk-open` locks the page scroll and
   `.cmdk-results` scrolls inside with `overscroll-behavior: contain`. The palette's
-  "filter this workspace" uses `renderTodayFilterBar` + the dim machinery. `closeCmdK` is state cleanup + hide; `cmdkBack()` closes
+  "Filter the Today board" uses `renderTodayFilterBar` + the dim machinery, and on the Inbox it is "Search the Inbox",
+  which fills the Inbox's own search (`ibSearchFor`); see "The owner's newest screens, audited". `closeCmdK` is state cleanup + hide; `cmdkBack()` closes
   and returns focus to the crown. `nav()`'s teardown hook is keyed on the overlay's own
   CLASS via a DOM check (app.js may not reach admin globals), so any navigation still
   files the dead-end miss and supersedes in-flight searches.

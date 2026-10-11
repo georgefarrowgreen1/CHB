@@ -704,8 +704,16 @@ function admin_session_check(): void
     $done = true;
     $row = admin_row((int) $_SESSION['admin_id'], true);
     if (!$row || !people_session_ok($row, (int) ($_SESSION['admin_epoch'] ?? 0))) {
-        devices_end((int) ($_SESSION['admin_sess'] ?? 0), 'epoch');
+        $sid = (int) ($_SESSION['admin_sess'] ?? 0);
+        // "Sign out everywhere" moves the epoch AND ends the rows, so the epoch is met
+        // first: say what a device signed out from the list hears, not the bare
+        // "your sign-in has ended".
+        $why = devices_ended_why($sid);
+        devices_end($sid, 'epoch');
         unset($_SESSION['admin_id'], $_SESSION['admin_epoch'], $_SESSION['reauth_at'], $_SESSION['reauth_admin'], $_SESSION['admin_sess']);
+        if ($why === 'all' || $why === 'device') {
+            $_SESSION['admin_ended'] = 'device';
+        }
         return;
     }
     // THIS DEVICE WAS SIGNED OUT from a Devices list — the person's own, or a

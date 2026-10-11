@@ -180,7 +180,11 @@ if ($action === 'summary') {
         // already paid" can fold it into both sides — the guest whose card took
         // £225 was shown "£175.00 already paid" of a "£700.00 total" here while
         // every other document said £225 of £750. The balance is unmoved.
-        'depositCharged' => in_array($holdStatus, ['charged', 'captured', 'kept'], true) ? $holdAmount : 0.0,
+        // What the card TOOK (hold_amount), not the agreed figure an edit may have
+        // moved since — the confirmation's and the invoice's rule.
+        'depositCharged' => in_array($holdStatus, ['charged', 'captured', 'kept'], true)
+            ? ((float) ($b['hold_amount'] ?? 0) > 0 ? round((float) $b['hold_amount'], 2) : $holdAmount)
+            : 0.0,
         'holdAmount' => $holdAmount,
         'holdStatus' => $holdStatus,
         'autopayRepair' => $apRepair,

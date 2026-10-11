@@ -7,11 +7,11 @@
 // the window properties when the bundle loads. Deploy checklist: bump ADMIN_V
 // whenever admin.js changes (it is the ?v= cache-buster).
 // ============================================================
-const ADMIN_BUNDLE_V = 782;
+const ADMIN_BUNDLE_V = 784;
 // admin.css is the owner-only stylesheet, split out of app.css so guests never
 // download it. Injected here (not a static <link>) and version-stamped on its
 // own — bump when admin.css changes. Kept OUT of the sw.js CORE precache.
-const ADMIN_CSS_V = 404;
+const ADMIN_CSS_V = 406;
 function ensureAdminCss() {
     if (document.getElementById('admin-css')) return Promise.resolve();
     return new Promise((resolve) => {
@@ -481,7 +481,7 @@ const CHB_ACT_CAP = {
     'gu.reviews': ['setReviewStatus', 'moderatePhoto', 'setLeadStatus', 'deleteLead'],
     'ks.see': ['openKeysafe', 'keysafeOpen'],
     'ks.change': ['keysafeRotate', 'keysafeSheetRotate', 'keysafeSetEnabled', 'odsKeysafe'],
-    'mo.ask': ['requestPayment', 'editPaymentPlan', 'copyPayLink', 'sendPaymentReminder', 'chatSendBalance', 'moChaseDue', 'setEnquiryPrice', 'setEnquiryPlan', 'usePlanPreset'],
+    'mo.ask': ['requestPayment', 'editPaymentPlan', 'copyPayLink', 'sendPaymentReminder', 'chatSendBalance', 'setEnquiryPrice', 'setEnquiryPlan', 'usePlanPreset'],
     'mo.record': ['recordPayment', 'recordSquareOrphan', 'captureHold', 'odsPay'],
     'mo.refund': ['refundPayment', 'hubRefundPicker', 'releaseHold'],
     'mo.deposit': ['returnDeposit', 'keepDeposit', 'odsDep'],
@@ -493,7 +493,7 @@ const CHB_ACT_CAP = {
     'we.content': ['contentEditSave', 'contentEditImage', 'optimizeHeroNow', 'expApprove', 'expDelete', 'expMove', 'expReject', 'expSave', 'expUpload'],
     'we.news': ['sendBroadcast'],
     'we.stats': ['loadAnalytics', 'exportAnalyticsCsv'],
-    owner: ['runBackupNow', 'runFilesBackupNow', 'verifyBackupNow', 'saveBackupPass', 'saveSmsSettings', 'sendSmsTest', 'connectSquareWebhook', 'loadDiagnostics', 'navDiagnostics', 'diagnoseReplyEmail', 'openStagingSite', 'oaSplitHolder', 'oaSplitHost', 'oaSplitLinkAsk', 'oaSplitUnlink'],
+    owner: ['runBackupNow', 'runFilesBackupNow', 'verifyBackupNow', 'saveBackupPass', 'saveSmsSettings', 'sendSmsTest', 'connectSquareWebhook', 'loadDiagnostics', 'navDiagnostics', 'diagnoseReplyEmail', 'openStagingSite', 'oaSplitHolder', 'oaSplitHost', 'oaSplitUnlink'],
 };
 // Manage sections by permission (settingsOpen's argument); sections anyone may open are not listed.
 const CHB_SEC_CAP = {
@@ -2720,9 +2720,6 @@ function applySavedTheme() {
     } catch (e) {}
     setThemeLabel();
 }
-// Point both "Call to discuss" buttons at the configured phone number.
-// Prefers the value saved in Settings (siteContent['contact-phone']),
-// falling back to the constants above.
 // "Call to discuss" dials the configured number or is not shown (gaPhone's rule).
 function wireCallButtons() {
     const ph = gaPhone();
@@ -6335,9 +6332,9 @@ async function renderGuestBookings() {
             const outTime = b.checkOutTime || '10:00';
             const stayLeft =
                 nightsLeft === 0
-                    ? `Checkout today by ${escapeHtml(outTime)}`
+                    ? `Check-out today by ${escapeHtml(outTime)}`
                     : nightsLeft === 1
-                      ? `Last night — checkout tomorrow by ${escapeHtml(outTime)}`
+                      ? `Last night — check-out tomorrow by ${escapeHtml(outTime)}`
                       : `Until ${fmtDate(b.checkOut)} · ${escapeHtml(outTime)} · ${nightsLeft} nights left`;
             hubCards.push(`
                     <div class="glass-panel my-stay-hub">
@@ -8781,7 +8778,7 @@ async function openWelcomeBook(propKey) {
     const meta = propertyMeta[propKey] || { name: propKey };
     const titleEl = document.getElementById('welcome-modal-title');
     const bodyEl = document.getElementById('welcome-modal-body');
-    if (titleEl) titleEl.textContent = (meta.name || 'Your cottage') + ' — welcome book';
+    if (titleEl) titleEl.textContent = 'Welcome book — ' + (meta.name || 'your cottage'); // the sheets' order: "Amenities — Jollyboat"
     if (bodyEl)
         bodyEl.innerHTML = `<p style="color:var(--text-muted);font-size:var(--fs-body);">Loading…</p>`;
     const m = document.getElementById('welcome-modal');
@@ -13213,8 +13210,9 @@ async function loadChat() {
     thread.innerHTML = `<p class="chat-empty">Loading…</p>`;
     try {
         // `team`: who answers and whether they are away now, asked for as the chat
-        // opens (the poll does not need it).
+        // opens and every few minutes by the poll (CHAT_TEAM_EVERY_MS).
         const payload = loggedIn ? { action: 'thread', team: 1 } : { action: 'thread', token, team: 1 };
+        __chatTeamAt = Date.now();
         const r = await apiPost('messages.php', payload);
         if (Array.isArray(r.team) && chatTeamSet(r.team, r.away)) chatHeadPaint();
         const msgs = r.messages || [];
@@ -13238,6 +13236,10 @@ async function loadChat() {
 //  re-render when the thread actually changed (preserving any instant
 //  FAQ/availability bubbles otherwise), and pause while the tab is hidden. ----
 let __chatPollTimer = null;
+// The header's "Away until 7am" is the server's answer at the time it was asked, so a
+// chat left open past the hour kept saying it: the poll asks again every few minutes.
+const CHAT_TEAM_EVERY_MS = 3 * 60e3;
+let __chatTeamAt = 0;
 function chatStartPolling() {
     chatStopPolling();
     __chatPollTimer = setInterval(chatPoll, 4000); // ping for a host reply every ~4s while open
@@ -13264,7 +13266,13 @@ async function chatPoll() {
     const sigAtFire = __chatSig;
     try {
         const payload = loggedIn ? { action: 'thread' } : { action: 'thread', token };
+        const askTeam = Date.now() - __chatTeamAt >= CHAT_TEAM_EVERY_MS;
+        if (askTeam) {
+            payload.team = 1;
+            __chatTeamAt = Date.now();
+        }
         const r = await apiPost('messages.php', payload);
+        if (askTeam && Array.isArray(r.team) && chatTeamSet(r.team, r.away)) chatHeadPaint();
         if (__chatSig !== sigAtFire) return;
         const msgs = r.messages || [];
         const sig = chatMsgSig(msgs);
@@ -16129,6 +16137,25 @@ function ukDateOfInstant(t) {
     if (isNaN(d.getTime())) return '';
     return d.toLocaleDateString('en-CA', { timeZone: 'Europe/London' });
 }
+// The other direction: a London wall-clock time as the server stores it
+// ('YYYY-MM-DD HH:MM:SS', no offset) to the instant it names. Read as the DEVICE's
+// local time it was hours out abroad (from New York, every device seen in the last
+// five hours read "Active now").
+function ukWallToDate(s) {
+    const m = String(s || '').match(/^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2})(?::(\d{2}))?/);
+    if (!m) return null;
+    const guess = Date.UTC(+m[1], +m[2] - 1, +m[3], +m[4], +m[5], +(m[6] || 0));
+    const p = {};
+    new Intl.DateTimeFormat('en-GB', { timeZone: 'Europe/London', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit', hourCycle: 'h23' })
+        .formatToParts(new Date(guess))
+        .forEach((x) => (p[x.type] = x.value));
+    // London is UTC or UTC+1: read the guess on London's clock and take the difference off.
+    return new Date(guess - (Date.UTC(+p.year, +p.month - 1, +p.day, +p.hour, +p.minute, +p.second) - guess));
+}
+// Whole London calendar days from instant a to instant b.
+function ukDaysBetween(a, b) {
+    return Math.round((Date.parse(ukDateOfInstant(b) + 'T12:00:00Z') - Date.parse(ukDateOfInstant(a) + 'T12:00:00Z')) / 864e5);
+}
 
 // ============ Custom glass date-range picker (customer booking) ============
 // ===================================================================
@@ -16700,6 +16727,18 @@ document.addEventListener('keydown', (e) => {
         if (!items.length) return;
         const first = items[0],
             last = items[items.length - 1];
+        const cur = document.activeElement;
+        // Focus on something inside that Tab cannot reach (a heading focused on purpose,
+        // as the password sheet's done panel does) is no boundary either: Shift+Tab from
+        // it walked out to the page behind the scrim. Step to the nearest item in the
+        // direction of travel, wrapping inside the dialog.
+        if (cur && m.contains(cur) && !items.includes(/** @type {HTMLElement} */ (cur))) {
+            e.preventDefault();
+            const ahead = items.filter((el) => cur.compareDocumentPosition(el) & Node.DOCUMENT_POSITION_FOLLOWING);
+            const behind = items.filter((el) => cur.compareDocumentPosition(el) & Node.DOCUMENT_POSITION_PRECEDING);
+            (e.shiftKey ? behind[behind.length - 1] || last : ahead[0] || first).focus();
+            return;
+        }
         if (e.shiftKey && document.activeElement === first) {
             e.preventDefault();
             last.focus();
@@ -19022,28 +19061,33 @@ function syncCottageUrl(propKey) {
     const slug = COTTAGE_SLUGS[propKey];
     if (!slug) return;
     const url = '/cottages/' + slug;
-    if (!__suppressRouteSync) {
-        try {
-            (location.pathname === url ? history.replaceState : history.pushState).call(
-                history,
-                { cottage: propKey },
-                '',
-                url,
-            );
-        } catch (e) {}
-    }
+    if (!__suppressRouteSync) chbRoutePush({ cottage: propKey }, url);
     updateRouteSeo(propKey);
+}
+// A ROUTE CHANGE WAITS FOR AN OVERLAY'S BACK TO LAND. Leaving a cottage page with
+// Messages open closed the chat (an async history.back()) and pushed "/" before
+// that back arrived, which then popped it: the page said Cottages, the address bar
+// still said /cottages/jollyboat, and Back went to the homepage. Queued while the
+// back is in flight, applied by the popstate that ends it.
+let __routeQueued = null;
+function chbRoutePush(state, url) {
+    if (__overlayClosing) {
+        __routeQueued = { state, url };
+        return;
+    }
+    chbRouteApply(state, url);
+}
+function chbRouteApply(state, url) {
+    try {
+        (location.pathname === url ? history.replaceState : history.pushState).call(history, state, '', url);
+    } catch (e) {}
 }
 // Leaving a cottage page (or /experiences): restore the root URL + default SEO.
 function clearCottageUrl() {
     const onRouted =
         /\/cottages\//.test(location.pathname || '') ||
         /^\/experiences\/?$/.test(location.pathname || '');
-    if (onRouted && !__suppressRouteSync) {
-        try {
-            history.pushState({}, '', '/');
-        } catch (e) {}
-    }
+    if (onRouted && !__suppressRouteSync) chbRoutePush({}, '/');
     // Decide from the PRE-push state (onRouted) — pushState above already reset
     // the pathname, so re-testing it here always said "not a cottage page" and
     // the homepage kept the cottage's title/canonical/og for the whole session.
@@ -19154,6 +19198,11 @@ window.addEventListener('popstate', (ev) => {
     // overlay is already closed; swallow the event.
     if (__overlayClosing) {
         __overlayClosing = false;
+        if (__routeQueued) {
+            const q = __routeQueued;
+            __routeQueued = null;
+            chbRouteApply(q.state, q.url);
+        }
         return;
     }
     // An overlay is open: Back closes IT and stays on the page beneath (the
@@ -22226,7 +22275,7 @@ const CHB_SK_CARD = '<div class="card glass-panel sk-card"><div class="skeleton 
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'r8night5';
+    const BUILD = 'r8night6';
     /** @type {any} */ (window).__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;
