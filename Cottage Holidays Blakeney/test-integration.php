@@ -4094,6 +4094,14 @@ $r = http($loStale, 'POST', '/auth.php', ['action' => 'admin_status']);
 it_check('§56 …and the old id is signed in as nobody', ($r['json']['admin'] ?? null) === false, $r['raw']);
 $cronSrc56 = preg_replace('#//[^\n]*#', '', (string) file_get_contents(__DIR__ . '/cron.php'));
 it_check('§56 the daily prune keeps history by age, not by a bare row count', strpos($cronSrc56, 'OFFSET 5000') === false && strpos($cronSrc56, 'INTERVAL 3 YEAR') !== false, '');
+it_check('§56 …and lets go of the address a row came from after 90 days', (bool) preg_match('/UPDATE activity_log SET ip = NULL WHERE ip IS NOT NULL AND created_at < \(NOW\(\) - INTERVAL 90 DAY\)/', $cronSrc56), '');
+// The statement itself, on the real schema (the source check cannot see a typo in SQL).
+$rootDb->exec("USE `$DB_NAME`");
+$rootDb->exec("INSERT INTO activity_log (actor, category, action, summary, ip, created_at) VALUES ('system', 'system', 'it56.old', '§56 old', '203.0.113.9', NOW() - INTERVAL 100 DAY), ('system', 'system', 'it56.new', '§56 new', '203.0.113.10', NOW() - INTERVAL 5 DAY)");
+$rootDb->exec('UPDATE activity_log SET ip = NULL WHERE ip IS NOT NULL AND created_at < (NOW() - INTERVAL 90 DAY)');
+it_check('§56 …an old row keeps its line and loses its address; a recent one keeps both',
+    $rootDb->query("SELECT ip FROM activity_log WHERE action = 'it56.old'")->fetchColumn() === null
+    && $rootDb->query("SELECT ip FROM activity_log WHERE action = 'it56.new'")->fetchColumn() === '203.0.113.10', '');
 
 // ── §57 the reads that run on every booking page, send and limit check can use an index ──
 // activity_log is kept for three years under a 200,000-row ceiling, and a booking
