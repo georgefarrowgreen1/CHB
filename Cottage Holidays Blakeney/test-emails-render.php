@@ -188,7 +188,7 @@ $PAYURL = site_base_url() . 'index.html?pay=paytok&b=42&k=balance';
 
 // Each entry: label, group, and a closure that triggers the real composer.
 $JOBS = [
-  ['enquiry-ack', 'guest', fn() => send_enquiry_ack($ENQ, false)],
+  ['enquiry-ack', 'guest', fn() => send_enquiry_ack($ENQ)],
   ['booking-confirmation', 'guest', fn() => send_booking_emails($B)],
   ['payment-request', 'guest', fn() => send_payment_request($B, $PAYURL)],
   ['payment-reminder', 'guest', fn() => send_payment_reminder($B, $PAYURL)],
@@ -1126,7 +1126,7 @@ chk('§12 a reminder carries the figure and the due date in the subject', preg_m
 $rc12 = payment_receipt_body(['name' => 'C', 'prop_key' => 'jollyboat', 'prop_name' => 'Jollyboat', 'ref' => 'R', 'kind' => 'deposit', 'amount' => 150.0, 'deposit_charged' => 75.0, 'total' => 750.0, 'paid_so_far' => 150.0, 'balance' => 525.0, 'fully_paid' => false, 'automatic' => false, 'balance_due_date' => '2026-08-07']);
 chk('§12 a receipt\'s subject is the figure it states', $rc12['subject'] === 'Payment received: £225.00 — Jollyboat');
 chk('§12 …and "What’s left" lists the balance and the deposit, in both halves', strpos($rc12['html'], 'What&rsquo;s left') !== false && strpos($rc12['html'], 'Balance of £525.00') !== false && strpos($rc12['text'], "WHAT'S LEFT") !== false && strpos($rc12['text'], 'Your £75.00 deposit') !== false && strpos($rc12['html'], 'Your £75.00 deposit') !== false);
-$ack12 = $cap12(fn() => send_enquiry_ack($ENQ, false));
+$ack12 = $cap12(fn() => send_enquiry_ack($ENQ));
 chk('§12 the enquiry acknowledgement puts its promise in the subject', strpos($ack12['subject'], 'we\'ll reply within a day') !== false);
 // The thank-you: the deposit sentence only when there is a deposit; the unsubscribe always.
 $ty = thank_you_body(['name' => 'Priya Patel', 'prop_key' => 'jollyboat', 'prop_name' => 'Jollyboat', 'check_in' => '2026-09-06', 'check_out' => '2026-09-11', 'deposit' => 75.0, 'rebook_url' => 'https://example.test/cottages/jollyboat', 'unsub' => 'https://example.test/email-optout.php?e=x&t=y']);

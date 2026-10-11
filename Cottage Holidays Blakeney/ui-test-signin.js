@@ -31,6 +31,7 @@ const ok = (c, m) => { console.log((c ? '  ✓ ' : '  ✗ ') + m); if (!c) fails
             }
             if (body.action === 'guest_code_verify') {
                 if (body.code === '000000') return json({ error: "That code isn't right. Check the latest email and try again.", code: 'wrong', left: 4 }, 401);
+                if (body.code === '000001') return json({ error: "That code isn't right. Check the latest email and try again.", code: 'wrong', left: 1 }, 401);
                 if (verifyMode === 'locked') return json({ error: 'Too many tries', code: 'too_many' }, 429);
                 if (verifyMode === 'new') return json({ ok: true, new: true });
                 return json({ ok: true, guest: { name: 'Gwen Rowe', email: body.email } });
@@ -77,6 +78,11 @@ const ok = (c, m) => { console.log((c ? '  ✓ ' : '  ✗ ') + m); if (!c) fails
     await page.fill('#ga-code', '000000');
     await page.waitForTimeout(400);
     ok(await page.evaluate(() => /isn't right/.test((document.getElementById('login-error') || {}).textContent || '') && document.getElementById('ga-codebox').classList.contains('is-bad')), 'a wrong code says so');
+    // The tries left reach the page: the request error dropped them, so this sentence
+    // could never show.
+    await page.fill('#ga-code', '000001');
+    await page.waitForTimeout(400);
+    ok(await page.evaluate(() => /1 more try, or send a new one/.test((document.getElementById('login-error') || {}).textContent || '')), 'with one try left it says so');
     await page.fill('#ga-code', '482913');
     await page.waitForTimeout(800);
     const inn = await page.evaluate(() => ({

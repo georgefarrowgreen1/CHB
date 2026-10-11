@@ -1160,9 +1160,8 @@ Found by the guest-endpoint and scheduled-jobs reviews; each was reproduced firs
   **ui-test-inbox §10** (its own row, the warning, linking the thread, asking again, a proven chat still
   joining), test-jobs, test-requires, test-reply (the handled list), test-content-keys. Break-tested one fix at a
   time. admin.js budget +600 bytes gz: the unconfirmed-chat handling and its warning card (owner-only, cached).
-- **Not done, said plainly**: register and enquiry answers still reveal whether an account or a booking exists
-  (`guest_register` 409 / `verify`, `account_exists`); fixing it changes the sign-up flow. And `script-src` still
-  allows the whole of jsDelivr and cdnjs.
+- **Not done, said plainly**: `script-src` still allows the whole of jsDelivr and cdnjs. (The register and
+  enquiry answers that revealed an account or a booking were closed by the security leftovers' Step 3.)
 
 ## A refresh does the work once (round 5, performance)
 
@@ -8199,7 +8198,9 @@ silently overlap a real guest, and its own "Those dates clash — try again" bra
 unreachable because the override guaranteed the server would never say so.
 
 **REGISTERING AN EMAIL IS NOT PROOF YOU OWN IT** (`guests.email_verified_at`,
-migration-111). `my_bookings_payload` matches stays on `LOWER(b.email) = LOWER(?)`
+migration-111). NB the password sign-up this describes (`guest_register`) is RETIRED: an account is made only by
+an emailed code now (see the security leftovers' Step 3); the rules below still guard the unproven accounts it left.
+`my_bookings_payload` matches stays on `LOWER(b.email) = LOWER(?)`
 and NOTHING verified the address — `guest_register` created the account and signed
 the person in on the spot, so registering with a guest's email handed over their
 booking: dates, party, money, arrival details, and the door code once inside its
@@ -10542,7 +10543,8 @@ guest UX in a browser, owner UX in a browser). What it set:
   **`require_guest_proven()`** (arrival-access, guest-checkout, photos submit,
   reviews submit, welcome) — test-auth-posture accepts it as the guest marker.
   `guest_login` refuses an unproven account only while bookings exist for it.
-  **Confirming from a browser that did not register** (`$_SESSION['reg_gid']`)
+  **Confirming the address** (any browser now: the registering browser's
+  exception went with the password sign-up, see Step 3 of the security leftovers)
   clears the unproven password (`''` — `guest_change_password` then accepts a
   blank current one), deletes its passkeys and bumps `auth_epoch`, which signs
   out every earlier session on its next request (`guest_session_check`, called
@@ -11057,6 +11059,40 @@ ships as its own PR.
   through approval, the deploy's move, the missed photo, deletion), §62 and §75 re-aimed to the private folder,
   ui-test-inbox §12 (the Photo link), smoke-test (the redraw). Thirteen mutations break-tested, each failing its own
   named check. NB php -S reads no .htaccess, so the private folder's refusal is test-photo's to check, not §85's.
+
+### Step 3: following an enquiry is one screen for every address
+
+- **THE ENQUIRY'S ANSWER SAYS NOTHING ABOUT THE ADDRESS.** `enquiries.php` answered `account_exists`, and the sent
+  screen offered "Welcome back — Sign in" or "Create account" by it, so typing a guest's email into the public form
+  told anyone whether they had an account. Both answers are `{ok}` now (an admin edit keeps its `id`).
+- **"Follow this enquiry"** (`#enq-follow`, the `enqFollow*` block in app.js): the same offer for every address, a
+  6-digit code to the email the enquiry gave (the sign-in's own `guest_code_request`/`_verify`, and its six-cell
+  `.ga-code` box), then a done state that only now says what is true: "Welcome back, Hannah" (an account; "with your
+  other bookings" when there are stays), or "You're in, Hannah" (made now, with "and so is your stay from March" when
+  bookings were already against the address). A new address's account is made CONFIRMED with the enquiry's phone,
+  address and postcode (`guest_code_register` takes them; a postcode that is not one is refused, not stored). A
+  back-office email signs in to the back office, as on the sign-in sheet. Withheld when the enquiry has no email.
+  The third progress step reads "Sent". The handlers return nothing on purpose: the dispatcher re-enables a button
+  when its handler's promise settles, which would undo the resend's 30-second wait.
+- **THE PASSWORD SIGN-UP IS RETIRED** (`guest_register` answers 410 `retired` in words and makes nothing): it made an
+  account for an address nobody had proven, and its 409 "already exists" told anyone which addresses had one. The
+  unproven accounts it left are still guarded as before, and proving one now always clears its password (the
+  registering browser's exception, `$_SESSION['reg_gid']`, went with it).
+- **The acknowledgement email** has one line for everyone ("Follow this enquiry in My stays… we'll send you a code")
+  and a "Follow your enquiry" button to `?open=stay`; `send_enquiry_ack($enq)` lost its second argument.
+- **The tries left reach the page** (`apiErr`'s `left`): it was dropped, so the sign-in sheet's "1 more try, or send a
+  new one" could never show.
+- Also: the You page's door code has its own class (`.ga-doorcode`); it shared `.ga-code` with the code box and so
+  was laid out as a six-column grid.
+- **A deviation from the demo, said plainly**: the demo masked the address ("h•••@gmail.com"); the screen shows it in
+  full, as the sign-in sheet does. The guest has just typed it, and a typo is then visible.
+- Gates: integration **§50b** (the same answer for a known address and a stranger; following by code makes the
+  account with the enquiry's details and shows the enquiry in My stays), §19/§19b re-aimed (410, the left-behind
+  account, the postcode refusal), every other sign-up in the suite now by code (`$itGuest`) or as a stored unproven
+  row (`$itLegacyGuest`), §62 re-aimed (proving unlinks the earlier chat); **ui-test-enquiry §7** (the offer, the
+  code step, five digits, a wrong code, the account made with the details, the identical screen when an old server
+  still says `account_exists`, Welcome back), ui-test-signin (one try left), ui-test-nodogs (no email, no step).
+  Eight mutations break-tested, each failing its own named check.
 
 ## Self-repair & error reporting
 - Errors: client capture (app.js, third-party webview noise filtered, sends

@@ -1620,8 +1620,11 @@ function previewBlockedToast() {
 }
 // `status` lets the offline-queue replayer keep 401/403 (re-auth) and drop other 4xx.
 // Object.assign, not assignment, so both fields are part of the type.
-function apiErr(message, status, code) {
-    return Object.assign(new Error(message), { status: status, code: code ? String(code) : '' });
+// `left` is how many tries a code has left. It was dropped here, so the sign-in
+// sheet's "1 more try, or send a new one" could never show.
+function apiErr(message, status, code, left) {
+    const n = Number(left);
+    return Object.assign(new Error(message), { status: status, code: code ? String(code) : '', left: left !== undefined && Number.isFinite(n) ? n : undefined });
 }
 // NO IN-FLIGHT COALESCING HERE, and that is a decision, not an omission: it was shipped
 // and WITHDRAWN. This is the app's only POST channel and several of its busiest calls are
@@ -1712,7 +1715,7 @@ async function apiPostCore(endpoint, payload, opts) {
         if (res.status === 401) maybeHandleStaleAdmin(data.code);
         // `code` where the endpoint gives one, so a caller can tell apart outcomes that
         // both arrive as "not done": `already_sent` means the guest HAS the email.
-        throw apiErr(data.error || 'That didn’t go through — check your signal and try again.', res.status, data.code);
+        throw apiErr(data.error || 'That didn’t go through — check your signal and try again.', res.status, data.code, data.left);
     }
     chbClockSync(data.srv);
     // A request that just SUCCEEDED is the only honest connectivity probe there
@@ -1768,7 +1771,7 @@ async function apiGetCore(endpoint) {
     }
     if (!res.ok) {
         if (res.status === 401) maybeHandleStaleAdmin(data.code);
-        throw apiErr(data.error || 'That didn’t go through — check your signal and try again.', res.status, data.code);
+        throw apiErr(data.error || 'That didn’t go through — check your signal and try again.', res.status, data.code, data.left);
     }
     chbClockSync(data.srv);
     return data;
@@ -4107,7 +4110,7 @@ function gaLeadHtml(x, kind) {
         badge = left === 0 ? 'Check-out today' : 'Staying now · ' + left + ' night' + (left === 1 ? '' : 's') + ' left';
         when = `Check-out ${dpSpoken(b.checkOut)} by ${b.checkOutTime || '10:00'}`;
         ask = b.doorCode
-            ? `<div class="ga-ask"><div class="ga-ask-t"><span>Your door code</span><b class="ga-code">${escapeHtml(b.doorCode)}</b></div><button type="button" class="btn-glass ga-ask-btn" ${chbAttrs('guestCopyCode', String(b.doorCode), CHB_SELF)}>Copy</button></div>`
+            ? `<div class="ga-ask"><div class="ga-ask-t"><span>Your door code</span><b class="ga-doorcode">${escapeHtml(b.doorCode)}</b></div><button type="button" class="btn-glass ga-ask-btn" ${chbAttrs('guestCopyCode', String(b.doorCode), CHB_SELF)}>Copy</button></div>`
             : '';
     } else {
         when = `Stayed ${payRange(b.checkIn, b.checkOut)}`;
@@ -14796,8 +14799,8 @@ function openEnquireModal() {
             : 'New · no reviews yet';
     }
     enquireBack(); // always start on the Review step
-    // The optional "create account" step (3) only applies to guests who aren't
-    // signed in — hide its progress segment for everyone else.
+    // The sent step (3), with its optional "Follow this enquiry", only applies to
+    // guests who aren't signed in — hide its progress segment for everyone else.
     const showAcct = !currentGuest;
     ['enq-prog-3', 'enq-prog-line2'].forEach((id) => {
         const el = document.getElementById(id);
@@ -14842,7 +14845,7 @@ function enquireBack() {
     setEnqMsg('review', '');
     setEnqMsg('details', '');
 }
-// Light up the progress indicator (1 = Your stay, 2 = Your details, 3 = Account).
+// Light up the progress indicator (1 = Your stay, 2 = Your details, 3 = Sent).
 let __enqStepWas = 0;
 function setEnqStep(n) {
     const p1 = document.getElementById('enq-prog-1'),
@@ -19551,7 +19554,6 @@ async function submitEnquiry(propKey) {
         submitBtn.textContent = 'Sending…';
     }
     enqStepsShow();
-    let enqResp = null;
     try {
         const rr = propertyRates[propKey] || defaultRates[propKey] || {};
         const enqPayload = {
@@ -19581,7 +19583,7 @@ async function submitEnquiry(propKey) {
         // answers a repeated id from its ledger. Without one, tapping Send again after
         // "couldn't be sent" made a second enquiry, each with its own emails.
         enqPayload.op_id = chbOpFor(['enquiry', enqPayload]);
-        enqResp = await apiPost('enquiries.php', enqPayload);
+        await apiPost('enquiries.php', enqPayload);
         chbOpBump();
     } catch (e) {
         enqStepsEnd(false);
@@ -19648,9 +19650,9 @@ async function submitEnquiry(propKey) {
         // NO EMAIL, NO EMAIL PROMISES. Both this client and enquiries.php deliberately
         // accept an enquiry with a phone and no address — a guest who prefers to be
         // called — and the sent screen then promised an email three times and offered
-        // an account step that CANNOT work (enquireCreateAccount answers "We need a
-        // valid email", on a screen with no email field and no way back). Everything
-        // here is rewritten to what will actually happen.
+        // an account step that CANNOT work (an account is keyed on an email, and the
+        // screen has no email field and no way back). Everything here is rewritten to
+        // what will actually happen.
         const noEmail = !String(email || '').trim();
         const howEl = document.getElementById('enq-sent-how');
         if (howEl) {
@@ -19675,34 +19677,19 @@ async function submitEnquiry(propKey) {
                     : 'Pay the deposit and the cottage is yours — we’ll look after the rest';
             } catch (e) {}
         }
-        // If this email already has an account, show "sign in" instead of "create".
-        const exists = !!(enqResp && enqResp.account_exists);
-        const newBlk = document.getElementById('enq-acct-new');
-        const existBlk = document.getElementById('enq-acct-existing');
-        // An account is keyed on an email address, so with none there is nothing to
-        // create and nothing to recover — the step is withheld rather than offered
-        // and then refused.
-        if (newBlk) newBlk.style.display = exists || noEmail ? 'none' : '';
-        if (existBlk) existBlk.style.display = exists && !noEmail ? '' : 'none';
+        // FOLLOW THIS ENQUIRY: the same screen for every address. Whether the email
+        // has an account or a booking is learned only by whoever can open its inbox
+        // (the answer no longer says). An account is keyed on an email address, so
+        // with none there is nothing to follow, and the step is withheld rather than
+        // offered and then refused.
+        enqFollowShow(noEmail ? 'none' : 'start');
         const d = document.getElementById('enquire-step-details');
         if (d) d.style.display = 'none';
         acctStep.style.display = '';
         setEnqStep(3);
-        const am = document.getElementById('enq-acct-msg');
-        if (am) {
-            am.textContent = '';
-            am.classList.remove('show');
-        }
-        // THE SENT MOMENT LEADS WITH THE TICK. The optional password field used to be
-        // focused 80ms in, with no preventScroll — which scrolled the sheet 111px and
-        // cut the progress row under the grabber, so the screen that exists to say
-        // "sent" opened on an OPTIONAL account form. setEnqStep(3) already focuses
-        // #enq-h-sent (preventScroll), which is what announces the change; the field
-        // is still cleared, and it is one tab away.
-        if (!exists) {
-            const pw = document.getElementById('enq-acct-password');
-            if (pw) pw.value = '';
-        }
+        // THE SENT MOMENT LEADS WITH THE TICK: setEnqStep(3) focuses #enq-h-sent
+        // (preventScroll), which announces the change. Nothing in the follow step
+        // takes the focus until the guest asks for a code.
         const sheet = document.querySelector('#enquire-modal .modal-box');
         if (sheet) sheet.scrollTop = 0;
         return;
@@ -19722,7 +19709,7 @@ async function submitEnquiry(propKey) {
         } catch (e) {}
     }
 }
-// Stashed details for the optional post-enquiry account creation (step 3).
+// The details the enquiry just carried, for the optional "Follow this enquiry" step.
 let __enqAcct = null;
 // Clear the enquiry form back to its defaults.
 function resetEnquiryForm() {
@@ -19759,106 +19746,275 @@ function resetEnquiryForm() {
         autofillGuestEnquiry();
     } catch (e) {} // re-fill + re-lock for a logged-in guest
 }
-// Create the guest's account from the details they just used for the enquiry.
-async function enquireCreateAccount() {
-    const msg = document.getElementById('enq-acct-msg');
-    const setM = (t) => {
-        if (msg) {
-            msg.textContent = t;
-            msg.classList.add('show');
+// ─── FOLLOW THIS ENQUIRY (step 3, optional) ─────────────────────────────────────
+// The same screen for every address: a 6-digit code goes to the email the enquiry
+// gave, and only whoever can open that inbox signs in, finds their account or makes
+// one with the details they have just given. The old step asked enquiries.php
+// whether the address had an account and said so on screen, which told anyone who
+// typed a guest's email whether they had stayed.
+const __enqFollow = { busy: false, cool: 0, t: 0 };
+function enqFollowEl(id) {
+    return /** @type {HTMLElement|null} */ (document.getElementById(id));
+}
+// 'none' (no email: nothing to follow), 'start', 'code' or 'done'.
+function enqFollowShow(state) {
+    const wrap = enqFollowEl('enq-follow');
+    if (wrap) wrap.hidden = state === 'none';
+    ['start', 'code', 'done'].forEach((s) => {
+        const el = enqFollowEl('enq-follow-' + s);
+        if (el) el.hidden = s !== state;
+    });
+    const email = (__enqAcct && __enqAcct.email) || '';
+    document.querySelectorAll('#enq-follow .enq-follow-to').forEach((b) => (b.textContent = email));
+    const skip = enqFollowEl('enq-follow-skip');
+    if (skip) skip.textContent = state === 'done' ? 'Close' : 'No thanks, maybe later';
+    enqFollowMsg('');
+    if (state !== 'code') {
+        clearInterval(__enqFollow.t);
+        __enqFollow.cool = 0;
+    }
+}
+// The refusal sits in the part on screen: under the button on the start, under the
+// code on the code step.
+function enqFollowMsg(text) {
+    const codeUp = !!(enqFollowEl('enq-follow-code') && !enqFollowEl('enq-follow-code').hidden);
+    ['enq-acct-msg', 'enq-follow-msg'].forEach((id) => {
+        const el = enqFollowEl(id);
+        if (!el) return;
+        const mine = (id === 'enq-follow-msg') === codeUp;
+        el.textContent = mine ? text || '' : '';
+        el.classList.toggle('show', mine && !!text);
+    });
+}
+function enqFollowBusy(id, on) {
+    const b = /** @type {HTMLButtonElement|null} */ (document.getElementById(id));
+    if (!b) return;
+    b.classList.toggle('is-busy', on);
+    b.disabled = on;
+    if (on) b.setAttribute('aria-busy', 'true');
+    else b.removeAttribute('aria-busy');
+}
+function enqFollowCooldown() {
+    __enqFollow.cool = 30;
+    clearInterval(__enqFollow.t);
+    const paint = () => {
+        const b = /** @type {HTMLButtonElement|null} */ (document.getElementById('enq-follow-resend'));
+        if (b) {
+            b.textContent = __enqFollow.cool > 0 ? `Send a new code in ${__enqFollow.cool}s` : 'Send a new code';
+            b.disabled = __enqFollow.cool > 0;
         }
     };
-    const pwd = (document.getElementById('enq-acct-password') || {}).value || '';
-    if (!__enqAcct || !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(__enqAcct.email || '')) {
-        setM('We need a valid email to create your account.');
-        return;
-    }
-    if (pwd.length < 8) {
-        setM('Please choose a password of at least 8 characters.');
-        return;
-    }
-    const btn = document.getElementById('enq-acct-btn');
-    if (btn) {
-        btn.disabled = true;
-        btn.classList.add('is-busy');
-    }
+    paint();
+    __enqFollow.t = window.setInterval(() => {
+        __enqFollow.cool--;
+        paint();
+        if (__enqFollow.cool <= 0) clearInterval(__enqFollow.t);
+    }, 1000);
+}
+// The handlers return nothing on purpose: the dispatcher re-enables a button when
+// its handler's promise settles, which would undo the resend's cooldown.
+function enqFollowSend() {
+    enqFollowAsk(false);
+}
+function enqFollowResend() {
+    if (__enqFollow.cool > 0) return;
+    enqFollowAsk(true);
+}
+async function enqFollowAsk(again) {
+    const email = (__enqAcct && __enqAcct.email) || '';
+    if (!email || __enqFollow.busy) return;
+    __enqFollow.busy = true;
+    const btnId = again ? 'enq-follow-resend' : 'enq-follow-send';
+    enqFollowBusy(btnId, true);
     try {
-        const res = await apiPost('auth.php', {
-            action: 'guest_register',
-            name: __enqAcct.name,
-            email: __enqAcct.email,
-            phone: __enqAcct.phone,
-            address: __enqAcct.address,
-            postcode: __enqAcct.postcode,
-            password: pwd,
+        await apiPost('auth.php', { action: 'guest_code_request', email });
+    } catch (e) {
+        __enqFollow.busy = false;
+        enqFollowBusy(btnId, false);
+        enqFollowMsg((e && e.message) || 'We couldn’t send the code. Check your signal and try again.');
+        return;
+    }
+    __enqFollow.busy = false;
+    enqFollowBusy(btnId, false);
+    if (!again) enqFollowShow('code');
+    const i = /** @type {HTMLInputElement|null} */ (document.getElementById('enq-code'));
+    if (i) {
+        i.value = '';
+        enqFollowInput(i);
+    }
+    enqFollowCooldown();
+    if (again) {
+        enqFollowMsg('');
+        toast('A new code is on its way.');
+    }
+    setTimeout(() => {
+        try {
+            if (i) i.focus({ preventScroll: false });
+        } catch (e) {}
+    }, 60);
+}
+function enqFollowInput(el) {
+    const v = String(el.value || '').replace(/\D/g, '').slice(0, 6);
+    if (el.value !== v) el.value = v;
+    const box = enqFollowEl('enq-codebox');
+    if (box) {
+        box.classList.remove('is-bad', 'is-ok');
+        box.querySelectorAll('.ga-cell').forEach((c, k) => {
+            c.textContent = v[k] || '';
+            c.classList.toggle('is-cur', k === Math.min(v.length, 5) && v.length < 6);
         });
-        // As above — but the enquiry HAS been sent either way, so say both.
-        if (res && res.verify) {
-            __enqAcct = null;
-            resetEnquiryForm();
-            try {
-                closeEnquireModal();
-            } catch (e) {}
-            enquireDraftClear();
-            toast("Enquiry sent. We've emailed you a sign-in link to confirm it's you.");
-            return;
+    }
+    if (v.length === 6) enqFollowVerify(v);
+}
+function enqFollowContinue() {
+    const i = /** @type {HTMLInputElement|null} */ (document.getElementById('enq-code'));
+    const v = String((i && i.value) || '').replace(/\D/g, '');
+    if (v.length < 6) {
+        enqFollowMsg('Enter all 6 digits.');
+        const box = enqFollowEl('enq-codebox');
+        if (box) box.classList.add('is-bad');
+        if (i) i.focus();
+        return;
+    }
+    enqFollowVerify(v);
+}
+// "and so is your stay from March": the stays decide the sentence, and are only
+// read once the code has proved the inbox.
+function enqFollowStaysSay(rows) {
+    if (rows.length > 1) return `your ${rows.length} other stays`;
+    const ci = String((rows[0] && rows[0].check_in) || '');
+    const d = new Date(ci + 'T12:00:00Z');
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(ci) || isNaN(d.getTime())) return 'your other stay';
+    const month = d.toLocaleDateString('en-GB', { month: 'long', timeZone: 'UTC' });
+    return `your stay from ${month}${ci.slice(0, 4) === todayDashed().slice(0, 4) ? '' : ' ' + ci.slice(0, 4)}`;
+}
+async function enqFollowVerify(code) {
+    const acct = __enqAcct;
+    if (!acct || !acct.email || __enqFollow.busy) return;
+    __enqFollow.busy = true;
+    enqFollowBusy('enq-follow-go', true);
+    const box = enqFollowEl('enq-codebox');
+    if (box) box.classList.add('is-ok');
+    const refuse = (msg) => {
+        __enqFollow.busy = false;
+        enqFollowBusy('enq-follow-go', false);
+        if (box) {
+            box.classList.remove('is-ok');
+            box.classList.add('is-bad');
         }
-        currentGuest = res.guest;
-        isAuthenticated = false;
-        setAuthUI(); // one role at a time
-        setGuestUI();
+        enqFollowMsg(msg);
+        const i = /** @type {HTMLInputElement|null} */ (document.getElementById('enq-code'));
+        if (i) {
+            i.focus();
+            i.select();
+        }
+    };
+    let res;
+    try {
+        res = await apiPost('auth.php', { action: 'guest_code_verify', email: acct.email, code });
+    } catch (e) {
+        let m = (e && e.message) || 'That code didn’t work. Try again.';
+        if (e && e.code === 'wrong' && e.left <= 2) m = `That code isn't right. ${e.left} more ${e.left === 1 ? 'try' : 'tries'}, or send a new one.`;
+        return refuse(m);
+    }
+    // A BACK-OFFICE SIGN-IN'S EMAIL: the code is that sign-in, as on the sign-in
+    // sheet. Someone invited who hasn't started yet chooses a password there.
+    if (res && res.admin) {
+        __enqFollow.busy = false;
         __enqAcct = null;
         resetEnquiryForm();
         try {
             closeEnquireModal();
         } catch (e) {}
         enquireDraftClear();
-        toast("Enquiry sent and your account is ready — you're signed in.");
+        if (res.choose) {
+            AU.email = acct.email;
+            AU.link = '';
+            AU.first = res.first || '';
+            AU.username = res.username || '';
+            AU.loginId = acct.email;
+            AU.by = res.by || '';
+            openGuestAuthModal();
+            authGo('invite');
+            return;
+        }
+        authAdminIn(res.me, 'Enquiry sent. You’re signed in to the back office.', res.ownerFirst);
+        return;
+    }
+    let guest = res && res.guest;
+    let made = false;
+    if (res && res.new) {
+        // A new address: the account is made CONFIRMED with the details the enquiry
+        // has just carried, so nothing is asked twice.
         try {
-            nav('view-guest-bookings');
-            await renderGuestBookings();
-        } catch (e) {}
-    } catch (e) {
-        setM(
-            /exist|registered|already/i.test((e && e.message) || '')
-                ? 'You already have an account with this email — close this and sign in.'
-                : (e && e.message) || 'Sorry, your account could not be created.',
-        );
-    } finally {
-        if (btn) {
-            btn.disabled = false;
-            btn.classList.remove('is-busy');
+            const r2 = await apiPost('auth.php', {
+                action: 'guest_code_register',
+                name: acct.name,
+                phone: acct.phone,
+                address: acct.address,
+                postcode: acct.postcode,
+            });
+            guest = r2 && r2.guest;
+            made = true;
+        } catch (e) {
+            return refuse((e && e.message) || 'We couldn’t make your account. Try again.');
         }
     }
+    __enqFollow.busy = false;
+    enqFollowBusy('enq-follow-go', false);
+    // Signed in, with the sign-in sheet's own bookkeeping (authSignedIn), minus the
+    // sheet it closes and the page it moves to: the guest is still on this one.
+    currentGuest = guest || { name: acct.name, email: acct.email, phone: acct.phone, address: acct.address, postcode: acct.postcode };
+    isAuthenticated = false;
+    setAuthUI();
+    authRemember(currentGuest);
+    setGuestUI();
+    let stays = [];
+    try {
+        const mb = await apiGet('my-bookings.php');
+        stays = (mb && Array.isArray(mb.bookings) && mb.bookings) || [];
+    } catch (e) {}
+    const first = String((currentGuest && currentGuest.name) || acct.name || '').trim().split(/\s+/)[0] || 'there';
+    const h = enqFollowEl('enq-follow-done-h');
+    const p = enqFollowEl('enq-follow-done-p');
+    if (h) h.textContent = made ? `You’re in, ${first}` : `Welcome back, ${first}`;
+    if (p) {
+        p.textContent = made
+            ? stays.length
+                ? `Your enquiry is in My stays, and so is ${enqFollowStaysSay(stays)}.`
+                : 'Your account uses the details you just gave. Your enquiry is in My stays.'
+            : stays.length
+              ? 'This enquiry is in My stays, with your other bookings.'
+              : 'This enquiry is in My stays.';
+    }
+    enqFollowShow('done');
+    setTimeout(() => {
+        try {
+            if (h) h.focus({ preventScroll: true });
+        } catch (e) {}
+    }, 40);
 }
-// Returning guest: close the enquiry modal and open the sign-in modal with their
-// email prefilled (the enquiry has already been sent).
-function enquireSignInInstead() {
-    const email = (__enqAcct && __enqAcct.email) || '';
+function enqFollowOpen() {
     __enqAcct = null;
     resetEnquiryForm();
     try {
         closeEnquireModal();
     } catch (e) {}
-    try {
-        AU.email = email;
-        openGuestAuthModal();
-        if (email) authGo('email');
-    } catch (e) {}
     enquireDraftClear();
     try {
-        toast('Enquiry sent — sign in to track it.');
+        openGuestArea();
     } catch (e) {}
 }
-// Skip the optional account step — the enquiry has already been sent.
+// Skip (or, once followed, close) the optional step — the enquiry has already been sent.
 function enquireSkipAccount() {
+    const followed = !!(enqFollowEl('enq-follow-done') && !enqFollowEl('enq-follow-done').hidden);
     __enqAcct = null;
     resetEnquiryForm();
     try {
         closeEnquireModal();
     } catch (e) {}
     enquireDraftClear();
-    toast("Enquiry sent — we'll confirm availability and your price by email.");
+    if (!followed) toast("Enquiry sent — we'll confirm availability and your price by email.");
 }
 
 // ===================================================================
@@ -21741,7 +21897,7 @@ const CHB_SK_CARD = '<div class="card glass-panel sk-card"><div class="skeleton 
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'sec2photos';
+    const BUILD = 'sec3follow';
     /** @type {any} */ (window).__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;

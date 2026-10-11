@@ -463,18 +463,11 @@ if ($action === 'submit') {
         }
     } catch (\Throwable $e) {
     }
-    // Does this email already have a guest account? Used to tailor the follow-up so a
-    // returning guest is nudged to sign in rather than create another account.
+    // NOTHING HERE SAYS WHETHER THE ADDRESS HAS AN ACCOUNT OR A BOOKING. The answer
+    // used to carry `account_exists`, so anyone could type a guest's email into the
+    // form and learn whether they had stayed. The sent screen is the same for every
+    // address now and offers an emailed code; only the inbox learns the rest.
     $email = clean($in['email'] ?? '');
-    $accountExists = false;
-    if ($email !== '') {
-        try {
-            $st = db()->prepare('SELECT 1 FROM guests WHERE email = ? LIMIT 1');
-            $st->execute([$email]);
-            $accountExists = (bool) $st->fetchColumn();
-        } catch (\Throwable $e) {
-        }
-    }
     // Emails go out AFTER the response is flushed (mail_after_response): the
     // enquiry is already saved, so the guest shouldn't wait on two SMTP
     // handshakes — on a slow mail day that blocked the public form long enough
@@ -484,12 +477,11 @@ if ($action === 'submit') {
     // need an email about an enquiry they just edited themselves.
     if ($isAdminEdit) {
         // The new id lets the edit carry the agreed terms across (set_terms).
-        json_out(op_finish($opTok, ['ok' => true, 'id' => $enqId, 'account_exists' => $accountExists]));
+        json_out(op_finish($opTok, ['ok' => true, 'id' => $enqId]));
     }
     require_once __DIR__ . '/mailer.php';
     $ackName = $name;
     $ackEmail = $email;
-    $ackAccountExists = $accountExists;
     $ownerCtx = [
         'id' => $enqId,
         'name' => $name,
@@ -508,7 +500,7 @@ if ($action === 'submit') {
     ];
     $base = site_base_url(); // built from $_SERVER now, used after flush
     $alertBody = trim(($name ?: 'Someone') . ' · ' . $checkIn . '–' . $checkOut);
-    mail_after_response(function () use ($ackName, $ackEmail, $ackAccountExists, $ownerCtx, $base, $alertBody) {
+    mail_after_response(function () use ($ackName, $ackEmail, $ownerCtx, $base, $alertBody) {
         // Wake the owner's devices (best-effort) — not for the owner's own edit,
         // which returned above. AFTER the response too, like the emails: it makes
         // an HTTPS request to each device's push service and, when none answers,
@@ -521,17 +513,14 @@ if ($action === 'submit') {
         // Acknowledge the enquiry to the guest (best-effort).
         try {
             if ($ackEmail !== '' && function_exists('send_enquiry_ack')) {
-                send_enquiry_ack(
-                    [
-                        'id' => (int) $ownerCtx['id'],
-                        'name' => $ackName,
-                        'email' => $ackEmail,
-                        'prop_key' => $ownerCtx['prop_key'],
-                        'check_in' => $ownerCtx['check_in'],
-                        'check_out' => $ownerCtx['check_out'],
-                    ],
-                    $ackAccountExists,
-                );
+                send_enquiry_ack([
+                    'id' => (int) $ownerCtx['id'],
+                    'name' => $ackName,
+                    'email' => $ackEmail,
+                    'prop_key' => $ownerCtx['prop_key'],
+                    'check_in' => $ownerCtx['check_in'],
+                    'check_out' => $ownerCtx['check_out'],
+                ]);
             }
         } catch (\Throwable $e) {
         }
@@ -578,7 +567,7 @@ if ($action === 'submit') {
         }
     });
 
-    json_out(op_finish($opTok, ['ok' => true, 'account_exists' => $accountExists]));
+    json_out(op_finish($opTok, ['ok' => true]));
 }
 
 // All remaining actions are admin-only

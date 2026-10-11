@@ -247,6 +247,36 @@ $noCsrf = $admin;
 unset($noCsrf['csrf']);
 it_check('admin POST without the CSRF header → 403', http($noCsrf, 'POST', '/bookings.php', ['action' => 'set_notes', 'id' => 1])['code'] === 403);
 
+// A GUEST ACCOUNT IS MADE ONE WAY: by proving the inbox with an emailed code
+// (guest_code_request → guest_code_verify → guest_code_register). The harness
+// cannot read the email, so the stored code is set to a known one in between.
+$cHash = fn($email, $code) => hash_hmac('sha256', 'code:' . strtolower($email) . ':' . $code, $SECRET);
+$cSet = function ($email, $code) use ($rootDb, $cHash, $DB_NAME) {
+    $rootDb->prepare("UPDATE `$DB_NAME`.guest_codes SET code_hash = ? WHERE email = ? AND used_at IS NULL")->execute([$cHash($email, $code), strtolower($email)]);
+};
+$itGuest = function (array &$jar, string $name, string $email, array $more = []) use ($rootDb, $cSet, $DB_NAME) {
+    $e = strtolower($email);
+    // A fixture, not the abuse gate (§56 owns that): the per-IP and per-address
+    // ceilings would otherwise run out across the suite's many accounts.
+    $rootDb->prepare("DELETE FROM `$DB_NAME`.login_attempts WHERE identifier IN ('guestcode', ?, ?)")->execute(['code:' . $e, 'codev:' . $e]);
+    http($jar, 'POST', '/auth.php', ['action' => 'guest_code_request', 'email' => $email]);
+    $cSet($e, '424242');
+    $r = http($jar, 'POST', '/auth.php', ['action' => 'guest_code_verify', 'email' => $email, 'code' => '424242']);
+    if (!empty($r['json']['new'])) {
+        $r = http($jar, 'POST', '/auth.php', ['action' => 'guest_code_register', 'name' => $name] + $more);
+    }
+    return $r;
+};
+// An account the retired password sign-up left behind: unproven, its password
+// chosen by whoever typed the address. Nothing makes one now, so it is written
+// straight into the table, and the protections for the ones already stored are
+// tested against it.
+$itLegacyGuest = function (string $name, string $email, string $password) use ($rootDb, $DB_NAME): int {
+    $rootDb->prepare("INSERT INTO `$DB_NAME`.guests (name, email, phone, address, postcode, password_hash, email_verified_at) VALUES (?, ?, '', '1 Test Lane, Norwich', 'NR25 7AB', ?, NULL)")
+        ->execute([$name, strtolower($email), password_hash($password, PASSWORD_DEFAULT)]);
+    return (int) $rootDb->lastInsertId();
+};
+
 // ---- 5. Dynamic accommodations over the real endpoint --------------------
 echo "\n== 4. Cottage creation (rates.php) ==\n";
 $r = http($admin, 'POST', '/rates.php', ['action' => 'create', 'name' => 'Test Cottage', 'couple_rate' => 100]);
@@ -1753,47 +1783,45 @@ $bk = $ksPayload($ksFarBid);
 it_check('keeper OFF sends no pending flag — a held-back card would assert a safe', ($bk['door_code_pending'] ?? true) === false, json_encode($bk['door_code_pending'] ?? 'absent'));
 http($admin, 'POST', '/keysafe.php', ['action' => 'set_enabled', 'prop_key' => $propKey, 'enabled' => true]);
 
-// (b) The arrival-window write: a REAL guest session (register mints one, with
-// the csrf cookie the jar picks up), writing to THEIR OWN booking only.
-// REGISTERING AN EMAIL THAT ALREADY HAS BOOKINGS DOES NOT HAND OVER THE STAY.
-// my_bookings_payload matches on the email alone, so signing someone in the moment
-// they typed one gave anybody who guessed a guest's address their dates, money,
-// arrival details and (inside its reveal window) the door code. The account is made
-// but stays unverified, and the magic link — emailed TO that address — is the proof.
+// (b) A REAL guest session for the keysafe guest's own booking.
+// SIGNING UP WITH A PASSWORD IS RETIRED: it made an account for an address nobody had
+// proven, and its "an account with this email already exists" told anyone which
+// addresses had one. The old door answers in words and makes nothing.
 $gj = [];
 $r = http($gj, 'POST', '/auth.php', ['action' => 'guest_register', 'name' => 'Keysafe Guest', 'email' => 'ks@gmail.com',
     'password' => 'longenough1', 'address' => '1 Test Lane, Norwich', 'postcode' => 'NR25 7AB']);
-it_check('registering an email that already has bookings does NOT sign you in',
-    ($r['json']['ok'] ?? false) === true && ($r['json']['verify'] ?? false) === true && !isset($r['json']['guest']), $r['raw']);
-// Asked the way a real client asks — my-bookings is read-only, so the read is
-// a GET. This used to POST, riding the write route's require_guest(); with
-// that route gone the POST meets the 405 first and the check proved nothing.
-$r = http($gj, 'GET', '/my-bookings.php');
-it_check('…and that half-made account can read nothing', $r['code'] === 401, $r['raw']);
-// The bypass that makes the refusal real: the password was chosen by whoever
-// registered, so accepting it here would reopen the door the check just shut.
+it_check('the retired password sign-up answers 410 in words and makes no account',
+    $r['code'] === 410 && ($r['json']['code'] ?? '') === 'retired' && strpos((string) ($r['json']['error'] ?? ''), 'code') !== false
+    && (int) $rootDb->query("SELECT COUNT(*) FROM guests WHERE email = 'ks@gmail.com'")->fetchColumn() === 0, $r['raw']);
+// AN ACCOUNT IT LEFT BEHIND STILL CANNOT TAKE A STAY. my_bookings_payload matches on
+// the email alone, and such an account's password was chosen by whoever typed the
+// address, so while bookings exist for it that password must not sign in.
+$gvid = $itLegacyGuest('Keysafe Guest', 'ks@gmail.com', 'longenough1');
 $r = http($gj, 'POST', '/auth.php', ['action' => 'guest_login', 'email' => 'ks@gmail.com', 'password' => 'longenough1']);
-it_check('…nor can the password they just chose sign them in', $r['code'] === 403, $r['raw']);
+it_check('a left-behind unproven account\'s password does not sign in while the address has bookings', $r['code'] === 403, $r['raw']);
+// Asked the way a real client asks — my-bookings is read-only, so the read is a GET.
+$r = http($gj, 'GET', '/my-bookings.php');
+it_check('…and with no session nothing can be read', $r['code'] === 401, $r['raw']);
 // The rightful owner opens the emailed link, which IS the proof of the address.
-$gvid = (int) $rootDb->query("SELECT id FROM guests WHERE email = 'ks@gmail.com'")->fetchColumn();
 $gts = time();
 $gtok = substr(hash_hmac('sha256', 'login:' . $gvid . ':' . $gts, $SECRET), 0, 32); // login_token()'s own shape
 $r = http($gj, 'POST', '/auth.php', ['action' => 'guest_magic_consume', 'guest_id' => $gvid, 'ts' => $gts, 'token' => $gtok]);
 it_check('(fixture) the emailed sign-in link signs the guest in', ($r['json']['ok'] ?? false) === true, $r['raw']);
 it_check('…and stamps the address as proven', $rootDb->query("SELECT email_verified_at FROM guests WHERE id = $gvid")->fetchColumn() !== null, '');
-// A BRAND-NEW address has nothing to claim, so the ordinary guest is unaffected.
+// A BRAND-NEW address: the emailed code makes the account, CONFIRMED, with no password.
 $gj2 = [];
-$r = http($gj2, 'POST', '/auth.php', ['action' => 'guest_register', 'name' => 'Fresh Guest', 'email' => 'fresh-guest@gmail.com',
-    'password' => 'longenough1', 'address' => '2 Test Lane, Norwich', 'postcode' => 'NR25 7AB']);
-it_check('a brand-new email still signs straight in', ($r['json']['ok'] ?? false) === true && empty($r['json']['verify']) && !empty($r['json']['guest']), $r['raw']);
-// ── REGISTERING IS NOT OWNING, EVEN FOR A BRAND-NEW ADDRESS (migration-127) ──
-// The account signs in but is UNPROVEN: a booking made against that address
-// later must not land in a squatter's My Stays.
+$r = $itGuest($gj2, 'Fresh Guest', 'fresh-guest@gmail.com');
+$fg = $rootDb->query("SELECT email_verified_at, password_hash FROM guests WHERE email = 'fresh-guest@gmail.com'")->fetch();
+it_check('a brand-new email signs in by code, its account confirmed and without a password',
+    !empty($r['json']['guest']) && $fg && $fg['email_verified_at'] !== null && (string) $fg['password_hash'] === '', $r['raw']);
+// ── AN UNPROVEN ACCOUNT LEFT BEHIND IS NOT OWNING (migration-127) ──
+// It signs in while nothing is booked to its address, but stays UNPROVEN: a booking
+// made against that address later must not land in a squatter's My Stays.
 $squatEmail = 'squat-' . bin2hex(random_bytes(3)) . '@gmail.com';
 $sqA = []; // the squatter's browser
-$r = http($sqA, 'POST', '/auth.php', ['action' => 'guest_register', 'name' => 'Squat Ter', 'email' => $squatEmail,
-    'password' => 'squatpass1', 'address' => '3 Test Lane, Norwich', 'postcode' => 'NR25 7AB']);
-it_check('§19b a fresh registration signs in', !empty($r['json']['guest']), $r['raw']);
+$itLegacyGuest('Squat Ter', $squatEmail, 'squatpass1');
+$r = http($sqA, 'POST', '/auth.php', ['action' => 'guest_login', 'email' => $squatEmail, 'password' => 'squatpass1']);
+it_check('§19b a left-behind unproven account signs in while nothing is booked to its address', !empty($r['json']['guest']), $r['raw']);
 it_check('…but is NOT stamped proven', $rootDb->query("SELECT email_verified_at FROM guests WHERE email = " . $rootDb->quote($squatEmail))->fetchColumn() === null, '');
 $rootDb->exec("INSERT INTO bookings (prop_key, name, email, check_in, check_out, adults, children, payment, deposit_paid, agreed_total, agreed_nightly, agreed_txn_fee, agreed_nights, notes) VALUES ('$propKey','Real Owner'," . $rootDb->quote($squatEmail) . ",'2031-03-02','2031-03-05',2,0,'paid',300,300,300,0,3,'OWNER-PRIVATE-NOTE')");
 $sqBid = (int) $rootDb->lastInsertId();
@@ -1837,17 +1865,18 @@ it_check('§19b with no password left, a new one is set without a current one', 
 $r = http($sqB, 'POST', '/auth.php', ['action' => 'guest_change_password', 'current' => 'wrongpass', 'next' => 'ownerpass3']);
 it_check('…but once set, the current one is required again', $r['code'] === 403, $r['raw']);
 $rootDb->exec("DELETE FROM bookings WHERE id = $sqBid");
-// The SAME browser that registered keeps its password on confirming (the ordinary
-// guest who reads their email on the device they signed up with).
-$keepEmail = 'keep-' . bin2hex(random_bytes(3)) . '@gmail.com';
-$kp = [];
-http($kp, 'POST', '/auth.php', ['action' => 'guest_register', 'name' => 'Keep Me', 'email' => $keepEmail,
-    'password' => 'keeppass12', 'address' => '4 Test Lane, Norwich', 'postcode' => 'NR25 7AB']);
-$kpGid = (int) $rootDb->query("SELECT id FROM guests WHERE email = " . $rootDb->quote($keepEmail))->fetchColumn();
-$kts = time();
-$r = http($kp, 'POST', '/auth.php', ['action' => 'guest_magic_consume', 'guest_id' => $kpGid, 'ts' => $kts, 'token' => substr(hash_hmac('sha256', 'login:' . $kpGid . ':' . $kts, $SECRET), 0, 32)]);
-it_check('§19b confirming in the browser that registered keeps the password', ($r['json']['reset'] ?? true) === false
-    && (string) $rootDb->query("SELECT password_hash FROM guests WHERE id = $kpGid")->fetchColumn() !== '', $r['raw']);
+// The code sign-up takes the details an enquiry has just given (the "Follow this
+// enquiry" step), and refuses a postcode that is not one rather than storing it.
+$fe = 'follow-' . bin2hex(random_bytes(3)) . '@gmail.com';
+$fj = [];
+$r = $itGuest($fj, 'Fern Follow', $fe, ['phone' => '07700 900123', 'address' => '5 Quay Street, Blakeney', 'postcode' => 'not a postcode']);
+it_check('§19b the code sign-up refuses a postcode that is not one, in words', $r['code'] === 400 && strpos((string) ($r['json']['error'] ?? ''), 'postcode') !== false
+    && (int) $rootDb->query('SELECT COUNT(*) FROM guests WHERE email = ' . $rootDb->quote($fe))->fetchColumn() === 0, $r['raw']);
+$r = http($fj, 'POST', '/auth.php', ['action' => 'guest_code_register', 'name' => 'Fern Follow', 'phone' => '07700 900123', 'address' => '5 Quay Street, Blakeney', 'postcode' => 'NR25 7NA']);
+$fr = $rootDb->query('SELECT phone, address, postcode, email_verified_at FROM guests WHERE email = ' . $rootDb->quote($fe))->fetch();
+it_check('§19b …and keeps the enquiry\'s phone, address and postcode, confirmed', ($r['json']['ok'] ?? false) === true && $fr
+    && $fr['phone'] === '07700 900123' && $fr['address'] === '5 Quay Street, Blakeney' && $fr['postcode'] === 'NR25 7NA' && $fr['email_verified_at'] !== null, $r['raw']);
+$rootDb->prepare('DELETE FROM guests WHERE email = ?')->execute([$fe]);
 // The guest arrival-window write was REMOVED with its feature, so my-bookings
 // is read-only to guests again. Asserted as an absence THROUGH THE ENDPOINT:
 // a live route would answer 200/400/404 on its own terms, and any POST now
@@ -2024,8 +2053,7 @@ it_check('…and the deposit returns', ($r['json']['ok'] ?? false) === true, $r[
 
 // A GUEST SESSION can never confirm — the step-up is not a way in.
 $rg = [];
-http($rg, 'POST', '/auth.php', ['action' => 'guest_register', 'name' => 'Reauth Guest2', 'email' => 'reauth2@gmail.com',
-    'password' => 'longenough1', 'address' => '9 Test Lane, Norwich', 'postcode' => 'NR25 7AB']);
+$itGuest($rg, 'Reauth Guest2', 'reauth2@gmail.com');
 $r = http($rg, 'POST', '/auth.php', ['action' => 'admin_reauth_password', 'password' => 'it-pass-123']);
 it_check('a guest session cannot confirm as the owner', $r['code'] === 401, $r['raw']);
 // NB passkeys.php refuses everything when the WebAuthn library is absent (as
@@ -2165,15 +2193,10 @@ $mcOut = date('Y-m-d', strtotime('+124 days'));
 $rootDb->exec("INSERT INTO bookings (prop_key, name, email, check_in, check_out, adults, children, payment, deposit_paid, agreed_total, agreed_nightly, agreed_txn_fee, agreed_nights) VALUES ('$propKey','Mixed Case','Mixed.Case@Gmail.COM','$mcIn','$mcOut',2,0,'deposit',100,400,400,0,4)");
 $mcBid = (int) $rootDb->lastInsertId();
 $mj = [];
-$r = http($mj, 'POST', '/auth.php', ['action' => 'guest_register', 'name' => 'Mixed Case', 'email' => 'mixed.case@gmail.com',
-    'password' => 'longenough1', 'address' => '3 Test Lane, Norwich', 'postcode' => 'NR25 7AB']);
-it_check('(fixture) the account is made against the LOWER-case address', ($r['json']['ok'] ?? false) === true, $r['raw']);
+$r = $itGuest($mj, 'Mixed Case', 'mixed.case@gmail.com');
+it_check('(fixture) the emailed code makes the account against the LOWER-case address and signs them in', !empty($r['json']['guest']), $r['raw']);
 $mcGid = (int) $rootDb->query("SELECT id FROM guests WHERE email = 'mixed.case@gmail.com'")->fetchColumn();
 it_check('…and `email = ?` found that account despite the mixed-case stay', $mcGid > 0, "guest id $mcGid");
-$mts = time();
-$mtok = substr(hash_hmac('sha256', 'login:' . $mcGid . ':' . $mts, $SECRET), 0, 32);
-$r = http($mj, 'POST', '/auth.php', ['action' => 'guest_magic_consume', 'guest_id' => $mcGid, 'ts' => $mts, 'token' => $mtok]);
-it_check('(fixture) the emailed link signs them in', ($r['json']['ok'] ?? false) === true, $r['raw']);
 $r = http($mj, 'GET', '/my-bookings.php');
 $mcIds = array_map(fn($b) => (int) ($b['id'] ?? 0), $r['json']['bookings'] ?? []);
 it_check('a MIXED-CASE stay reaches its own guest', in_array($mcBid, $mcIds, true), $r['raw']);
@@ -2490,14 +2513,10 @@ $rootDb->exec("INSERT INTO bookings (prop_key, name, email, check_in, check_out,
 $coTomId = (int) $rootDb->lastInsertId();
 $rootDb->exec("INSERT INTO bookings (prop_key, name, email, check_in, check_out, adults, children, payment, deposit_paid, agreed_total, agreed_nightly, agreed_txn_fee, agreed_nights) VALUES ('$propKey','Tap Guest','tapguest@gmail.com','2026-01-02','$coYest',2,0,'paid',400,400,400,0,2)");
 $coPastId = (int) $rootDb->lastInsertId();
-// Sign the guest in the real way (register → unverified → magic link, the §19 recipe).
+// Sign the guest in the real way: the emailed code, which proves the inbox.
 $coJar = [];
-http($coJar, 'POST', '/auth.php', ['action' => 'guest_register', 'name' => 'Tap Guest', 'email' => 'tapguest@gmail.com',
-    'password' => 'longenough1', 'address' => '1 Tap Lane', 'postcode' => 'NR25 7AB']);
+$itGuest($coJar, 'Tap Guest', 'tapguest@gmail.com');
 $coGid = (int) $rootDb->query("SELECT id FROM guests WHERE email = 'tapguest@gmail.com'")->fetchColumn();
-$coTs = time();
-$coTok = substr(hash_hmac('sha256', 'login:' . $coGid . ':' . $coTs, $SECRET), 0, 32);
-http($coJar, 'POST', '/auth.php', ['action' => 'guest_magic_consume', 'guest_id' => $coGid, 'ts' => $coTs, 'token' => $coTok]);
 // No session at all → 401 before anything is looked at.
 $anon = [];
 $r = http($anon, 'POST', '/guest-checkout.php', ['action' => 'left', 'booking_id' => $coId, 'op_id' => 'gco-anon-000001']);
@@ -3328,10 +3347,8 @@ it_check('§49 …through the POST door too', $r['code'] === 403 && strpos($r['r
 $r = http($admin, 'GET', '/experiences.php');
 it_check('§49 the owner sees the list', $r['code'] === 200 && strpos($r['raw'], '§49 Seal trip') !== false, substr($r['raw'], 0, 120));
 $nbJar = [];
-$r = http($nbJar, 'POST', '/auth.php', ['action' => 'guest_register', 'name' => 'Not Booked', 'email' => 'notbooked49@gmail.com', 'password' => 'longenough1', 'address' => '1 Test Lane, Norwich', 'postcode' => 'NR25 7AB']);
-$rootDb->exec("UPDATE guests SET email_verified_at = NOW() WHERE email = 'notbooked49@gmail.com'");
-$r = http($nbJar, 'POST', '/auth.php', ['action' => 'guest_login', 'email' => 'notbooked49@gmail.com', 'password' => 'longenough1']);
-it_check('§49 (the guest is signed in, so the next refusal is about bookings)', ($r['json']['ok'] ?? false) === true, $r['raw']);
+$r = $itGuest($nbJar, 'Not Booked', 'notbooked49@gmail.com');
+it_check('§49 (the guest is signed in, so the next refusal is about bookings)', !empty($r['json']['guest']), $r['raw']);
 $r = http($nbJar, 'GET', '/experiences.php');
 it_check('§49 a signed-in guest who has never booked is refused', $r['code'] === 403 && strpos($r['raw'], '§49') === false, $r['raw']);
 $rootDb->exec("INSERT INTO bookings (prop_key, name, email, check_in, check_out, adults, children, payment, deposit_paid, agreed_total, agreed_nightly, agreed_txn_fee, agreed_nights) VALUES ('$propKey','Not Booked','notbooked49@gmail.com','2024-03-01','2024-03-04',2,0,'paid',300,300,300,0,3)");
@@ -3359,10 +3376,6 @@ $rootDb->exec("DELETE FROM bookings WHERE email = 'notbooked49@gmail.com'");
 $rootDb->exec("DELETE FROM guests WHERE email = 'notbooked49@gmail.com'");
 
 echo "\n== §50 The code-first sign-in ==\n";
-$cHash = fn($email, $code) => hash_hmac('sha256', 'code:' . strtolower($email) . ':' . $code, $SECRET);
-$cSet = function ($email, $code) use ($rootDb, $cHash, $DB_NAME) {
-    $rootDb->prepare("UPDATE `$DB_NAME`.guest_codes SET code_hash = ? WHERE email = ? AND used_at IS NULL")->execute([$cHash($email, $code), $email]);
-};
 $rootDb->exec("USE `$DB_NAME`");
 $newJar = [];
 $r = http($newJar, 'POST', '/auth.php', ['action' => 'guest_code_request', 'email' => 'Newbie50@Gmail.com']);
@@ -3398,9 +3411,11 @@ $r = http($newJar, 'GET', '/my-bookings.php');
 it_check('§50 …signed in and proven (no "confirm your email" limbo)', $r['code'] === 200 && empty($r['json']['unproven']), $r['raw']);
 $r = http($newJar, 'POST', '/auth.php', ['action' => 'guest_code_verify', 'email' => 'newbie50@gmail.com', 'code' => '246801']);
 it_check('§50 a code works once', $r['code'] === 401, $r['raw']);
-// A squatter registered a guest's email with a password; the real guest's CODE ends that claim.
+// A squatter's account left behind by the retired password sign-up; the real guest's
+// CODE ends that claim.
 $sqJar = [];
-http($sqJar, 'POST', '/auth.php', ['action' => 'guest_register', 'name' => 'Squatter', 'email' => 'claim50@gmail.com', 'password' => 'squatpass1', 'address' => '1 Test Lane, Norwich', 'postcode' => 'NR25 7AB']);
+$itLegacyGuest('Squatter', 'claim50@gmail.com', 'squatpass1');
+http($sqJar, 'POST', '/auth.php', ['action' => 'guest_login', 'email' => 'claim50@gmail.com', 'password' => 'squatpass1']);
 $rootDb->exec("INSERT INTO bookings (prop_key, name, email, check_in, check_out, adults, children, payment, deposit_paid, agreed_total, agreed_nightly, agreed_txn_fee, agreed_nights) VALUES ('$propKey','Real Guest','claim50@gmail.com','2024-03-01','2024-03-04',2,0,'paid',300,300,300,0,3)");
 $realJar = [];
 http($realJar, 'POST', '/auth.php', ['action' => 'guest_code_request', 'email' => 'claim50@gmail.com']);
@@ -3434,6 +3449,38 @@ it_check('§50 …while nine is still under the line', $r['code'] === 200 && ($r
 $rootDb->exec("DELETE FROM login_attempts WHERE identifier LIKE 'code%'");
 $rootDb->exec("DELETE FROM bookings WHERE email = 'claim50@gmail.com'");
 $rootDb->exec("DELETE FROM guests WHERE email IN ('claim50@gmail.com', 'newbie50@gmail.com')");
+$rootDb->exec("DELETE FROM guest_codes");
+
+// §50b FOLLOWING AN ENQUIRY. Its answer used to carry `account_exists`, so typing a
+// guest's email into the public form told anyone whether they had an account. The
+// answer is now the same for every address; only the inbox learns the rest.
+$fol50 = 'follow50-' . bin2hex(random_bytes(3)) . '@gmail.com';
+$enq50 = fn(&$jar, $name, $email) => http($jar, 'POST', '/enquiries.php', [
+    'action' => 'submit', 'prop_key' => $propKey, 'name' => $name, 'email' => $email, 'phone' => '07700 900150',
+    'check_in' => $ukPlus(610), 'check_out' => $ukPlus(613), 'adults' => 2, 'children' => 0, 'message' => 'Following along',
+    'address' => '50 Quay Street, Blakeney', 'postcode' => 'NR25 7NA', 'terms_accepted' => 1, 'no_dogs' => 1,
+]);
+$rootDb->exec("DELETE FROM login_attempts WHERE identifier = 'enquiry'");
+$knownJar50 = [];
+$rKnown = $enq50($knownJar50, 'Keysafe Guest', 'ks@gmail.com');
+$folJar = [];
+$rNew = $enq50($folJar, 'Fola Fifty', $fol50);
+it_check('§50b the enquiry\'s answer says nothing about the address: the same keys for a guest with an account and for a stranger',
+    $rKnown['code'] === 200 && $rNew['code'] === 200 && array_keys($rKnown['json'] ?? []) === array_keys($rNew['json'] ?? [])
+    && !array_key_exists('account_exists', $rKnown['json'] ?? []) && !array_key_exists('account_exists', $rNew['json'] ?? []),
+    $rKnown['raw'] . ' / ' . $rNew['raw']);
+$rootDb->exec("DELETE FROM login_attempts WHERE identifier = 'enquiry'");
+// The follow step: a code to the enquiry's address, then an account made CONFIRMED
+// with the details the enquiry has just given, which sees the enquiry in My stays.
+$r = $itGuest($folJar, 'Fola Fifty', $fol50, ['phone' => '07700 900150', 'address' => '50 Quay Street, Blakeney', 'postcode' => 'NR25 7NA']);
+$fr50 = $rootDb->query('SELECT phone, address, postcode, email_verified_at FROM guests WHERE email = ' . $rootDb->quote($fol50))->fetch();
+it_check('§50b following by code makes the account with the enquiry\'s details, confirmed', !empty($r['json']['guest']) && $fr50
+    && $fr50['address'] === '50 Quay Street, Blakeney' && $fr50['postcode'] === 'NR25 7NA' && $fr50['email_verified_at'] !== null, $r['raw']);
+$r = http($folJar, 'GET', '/my-bookings.php');
+$folEnqs = array_values(array_filter($r['json']['enquiries'] ?? [], fn($e) => is_array($e) && ($e['check_in'] ?? '') === $ukPlus(610)));
+it_check('§50b …and the enquiry is in their My stays', $r['code'] === 200 && empty($r['json']['unproven']) && count($folEnqs) === 1, substr($r['raw'], 0, 200));
+$rootDb->prepare('DELETE FROM enquiries WHERE email IN (?, ?) AND message = ?')->execute([$fol50, 'ks@gmail.com', 'Following along']);
+$rootDb->prepare('DELETE FROM guests WHERE email = ?')->execute([$fol50]);
 $rootDb->exec("DELETE FROM guest_codes");
 
 echo "\n== §51 People: separate sign-ins, and what each person can do ==\n";
@@ -4546,12 +4593,12 @@ $t = $thr62($imp62Tid);
 it_check('§62 the owner\'s chat list marks it NOT verified', is_array($t) && ($t['verified'] ?? null) === false, json_encode($t));
 $r = http($admin, 'POST', '/messages.php', ['action' => 'thread', 'thread_id' => $imp62Tid]);
 it_check('§62 …and the thread carries none of that guest\'s bookings', $r['code'] === 200 && ($r['json']['thread']['verified'] ?? null) === false && ($r['json']['bookings'] ?? null) === [], substr($r['raw'], 0, 300));
-// (b) A guest account: unproven, then proven in the browser that registered it.
+// (b) A guest account left unproven by the retired password sign-up, then proven.
 $g62 = 'gina62-' . bin2hex(random_bytes(3)) . '@gmail.com';
 $gj62 = [];
-$r = http($gj62, 'POST', '/auth.php', ['action' => 'guest_register', 'name' => 'Gina Sixtytwo', 'email' => $g62, 'password' => 'ginapass12', 'address' => '6 Test Lane, Norwich', 'postcode' => 'NR25 7AB']);
-$gid62 = (int) $rootDb->query('SELECT id FROM guests WHERE email = ' . $rootDb->quote($g62))->fetchColumn();
-it_check('§62 (fixture) a new account signs in, unproven', !empty($r['json']['guest']) && $gid62 > 0, $r['raw']);
+$gid62 = $itLegacyGuest('Gina Sixtytwo', $g62, 'ginapass12');
+$r = http($gj62, 'POST', '/auth.php', ['action' => 'guest_login', 'email' => $g62, 'password' => 'ginapass12']);
+it_check('§62 (fixture) an unproven account signs in', !empty($r['json']['guest']) && $gid62 > 0, $r['raw']);
 http($gj62, 'POST', '/messages.php', ['action' => 'send', 'body' => 'Hello from my account']);
 $gt62 = (int) $rootDb->query("SELECT id FROM chat_threads WHERE guest_id = $gid62")->fetchColumn();
 $t = $thr62($gt62);
@@ -4567,7 +4614,13 @@ $r = http($gj62, 'POST', '/auth.php', ['action' => 'guest_send_reset']);
 it_check('§62 an unproven account cannot send itself reset links', $r['code'] === 403 && ($r['json']['code'] ?? '') === 'email_unproven', $r['raw']);
 $ts62 = time();
 $r = http($gj62, 'POST', '/auth.php', ['action' => 'guest_magic_consume', 'guest_id' => $gid62, 'ts' => $ts62, 'token' => substr(hash_hmac('sha256', 'login:' . $gid62 . ':' . $ts62, $SECRET), 0, 32)]);
-it_check('§62 (fixture) the guest confirms the email in the browser that registered it', ($r['json']['ok'] ?? false) === true && ($r['json']['reset'] ?? true) === false, $r['raw']);
+it_check('§62 (fixture) the guest confirms the email', ($r['json']['ok'] ?? false) === true, $r['raw']);
+// Proving the address ends what the unproven account set up, its chat included:
+// nothing can tell the guest's own words there from a squatter's. A chat started
+// once the address is proven is theirs.
+it_check('§62 …and the chat the unproven account started is no longer linked to it', $rootDb->query("SELECT guest_id FROM chat_threads WHERE id = $gt62")->fetchColumn() === null, '');
+http($gj62, 'POST', '/messages.php', ['action' => 'send', 'body' => 'Hello again, confirmed now']);
+$gt62 = (int) $rootDb->query("SELECT id FROM chat_threads WHERE guest_id = $gid62")->fetchColumn();
 $rootDb->exec("INSERT INTO bookings (prop_key, name, email, check_in, check_out, adults, children, payment, deposit_paid, agreed_total, agreed_nightly, agreed_txn_fee, agreed_nights) VALUES ('$propKey','Gina Sixtytwo'," . $rootDb->quote($g62) . ",'" . $ukPlus(-1) . "','" . $ukPlus(2) . "',2,0,'paid',300,300,300,0,3)");
 $g62Bid = (int) $rootDb->lastInsertId();
 $t = $thr62($gt62);
@@ -4609,8 +4662,8 @@ $rootDb->exec("DELETE FROM login_attempts WHERE identifier LIKE 'codev:%62%' OR 
 // browser, everything the squatter set up goes with the password.
 $s62 = 'squat62-' . bin2hex(random_bytes(3)) . '@gmail.com';
 $sj62 = [];
-http($sj62, 'POST', '/auth.php', ['action' => 'guest_register', 'name' => 'Squatter Sixtytwo', 'email' => $s62, 'password' => 'squatpass62', 'address' => '9 Test Lane, Norwich', 'postcode' => 'NR25 7AB']);
-$sGid62 = (int) $rootDb->query('SELECT id FROM guests WHERE email = ' . $rootDb->quote($s62))->fetchColumn();
+$sGid62 = $itLegacyGuest('Squatter Sixtytwo', $s62, 'squatpass62');
+http($sj62, 'POST', '/auth.php', ['action' => 'guest_login', 'email' => $s62, 'password' => 'squatpass62']);
 $rootDb->prepare('INSERT INTO push_subscriptions (guest_id, endpoint, p256dh, auth, created_at) VALUES (?,?,?,?,NOW())')->execute([$sGid62, 'https://fcm.googleapis.com/fcm/send/it62-squat', 'k', 'a']);
 http($sj62, 'POST', '/messages.php', ['action' => 'send', 'body' => 'Squatter says hello']);
 $sTid62 = (int) $rootDb->query("SELECT id FROM chat_threads WHERE guest_id = $sGid62")->fetchColumn();
@@ -4693,11 +4746,9 @@ echo "\n== §64 deleting an account never takes an upcoming stay with it ==\n";
 $rootDb->exec("DELETE FROM login_attempts WHERE identifier IN ('register', 'guestcode', 'chat')");
 $d64 = 'dora64-' . bin2hex(random_bytes(3)) . '@gmail.com';
 $dj64 = [];
-http($dj64, 'POST', '/auth.php', ['action' => 'guest_register', 'name' => 'Dora Sixtyfour', 'email' => $d64, 'password' => 'dorapass64x', 'address' => '4 Test Lane, Norwich', 'postcode' => 'NR25 7AB']);
+$r = $itGuest($dj64, 'Dora Sixtyfour', $d64);
 $dGid64 = (int) $rootDb->query('SELECT id FROM guests WHERE email = ' . $rootDb->quote($d64))->fetchColumn();
-$ts64 = time();
-$r = http($dj64, 'POST', '/auth.php', ['action' => 'guest_magic_consume', 'guest_id' => $dGid64, 'ts' => $ts64, 'token' => substr(hash_hmac('sha256', 'login:' . $dGid64 . ':' . $ts64, $SECRET), 0, 32)]);
-it_check('§64 (fixture) a proven, signed-in guest', $dGid64 > 0 && ($r['json']['ok'] ?? false) === true, $r['raw']);
+it_check('§64 (fixture) a proven, signed-in guest', $dGid64 > 0 && !empty($r['json']['guest']), $r['raw']);
 $ci64 = date('Y-m-d', strtotime('+20 days'));
 $co64 = date('Y-m-d', strtotime('+23 days'));
 $rootDb->exec("INSERT INTO bookings (prop_key, name, email, phone, check_in, check_out, adults, children, payment, deposit_paid, agreed_total, agreed_nightly, agreed_txn_fee, agreed_nights) VALUES ('$propKey','Dora Sixtyfour'," . $rootDb->quote($d64) . ",'07700 900164','$ci64','$co64',2,0,'deposit',100,400,400,0,3)");
@@ -4904,10 +4955,8 @@ echo "\n== §70 a deleted account takes its whole conversation ==\n";
 $rootDb->exec("DELETE FROM login_attempts WHERE identifier IN ('register', 'guestcode', 'chat')");
 $z70 = 'zara70-' . bin2hex(random_bytes(3)) . '@gmail.com';
 $zj70 = [];
-http($zj70, 'POST', '/auth.php', ['action' => 'guest_register', 'name' => 'Zara Seventy', 'email' => $z70, 'password' => 'zarapass70x', 'address' => '7 Test Lane, Norwich', 'postcode' => 'NR25 7AB']);
+$itGuest($zj70, 'Zara Seventy', $z70);
 $zGid70 = (int) $rootDb->query('SELECT id FROM guests WHERE email = ' . $rootDb->quote($z70))->fetchColumn();
-$ts70 = time();
-http($zj70, 'POST', '/auth.php', ['action' => 'guest_magic_consume', 'guest_id' => $zGid70, 'ts' => $ts70, 'token' => substr(hash_hmac('sha256', 'login:' . $zGid70 . ':' . $ts70, $SECRET), 0, 32)]);
 $rootDb->exec("INSERT INTO bookings (prop_key, name, email, check_in, check_out, adults, children, payment, deposit_paid, agreed_total, agreed_nightly, agreed_txn_fee, agreed_nights) VALUES ('$propKey','Zara Seventy'," . $rootDb->quote($z70) . ", DATE_SUB(CURDATE(), INTERVAL 30 DAY), DATE_SUB(CURDATE(), INTERVAL 27 DAY),2,0,'paid',300,300,300,0,3)");
 $zBid70 = (int) $rootDb->lastInsertId();
 http($zj70, 'POST', '/messages.php', ['action' => 'send', 'body' => 'Was the wifi password changed?']);
@@ -5121,10 +5170,8 @@ it_check('§75 deleting the conversation deletes its photo, file and WebP copy',
 // suggestions; an approved photo and a published card stay, without its name.
 $g75 = 'gwen75-' . bin2hex(random_bytes(3)) . '@gmail.com';
 $gj75 = [];
-http($gj75, 'POST', '/auth.php', ['action' => 'guest_register', 'name' => 'Gwen Seventyfive', 'email' => $g75, 'password' => 'gwenpass75x', 'address' => '7 Test Lane, Norwich', 'postcode' => 'NR25 7AB']);
+$itGuest($gj75, 'Gwen Seventyfive', $g75);
 $gid75 = (int) $rootDb->query('SELECT id FROM guests WHERE email = ' . $rootDb->quote($g75))->fetchColumn();
-$ts75 = time();
-http($gj75, 'POST', '/auth.php', ['action' => 'guest_magic_consume', 'guest_id' => $gid75, 'ts' => $ts75, 'token' => substr(hash_hmac('sha256', 'login:' . $gid75 . ':' . $ts75, $SECRET), 0, 32)]);
 $up = $mp75('/chat-upload.php', [], 'mine.jpg', $jpg75, $gj75);
 $gStaged75 = (string) ($up['url'] ?? '');
 http($gj75, 'POST', '/messages.php', ['action' => 'send', 'body' => 'Our photo', 'attachment' => $gStaged75]);

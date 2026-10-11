@@ -8,7 +8,8 @@
 //          admin_invite_accept (the links people.php and the sign-in page send),
 //          admin_me_set, admin_email_begin / _finish, admin_twofa_set,
 //          admin_avatar_set / _remove (your own details)
-//  Guest:  guest_register, guest_login, guest_logout, guest_status
+//  Guest:  guest_code_request / _verify / _register (the sign-in and sign-up),
+//          guest_login, guest_logout, guest_status
 // ============================================================
 // Sign-in writes the session, so this endpoint keeps its lock (session-lib.php).
 define('CHB_KEEPS_SESSION', true);
@@ -20,10 +21,12 @@ guest_session_check(); // a revoked guest session (migration-127) is signed out 
 // Resilient: if the login_attempts table doesn't exist (migration not run),
 // these helpers silently do nothing, so logins are never blocked by a missing table.
 // PROVING AN ADDRESS (the magic link or an emailed code): stamps email_verified_at,
-// and ENDS ANY CLAIM THAT CAME BEFORE IT. An unproven account's password was chosen
-// by whoever registered, which may not be the person reading this inbox — so
-// proving the address from any OTHER browser clears that password, forgets its
-// passkeys and signs out every earlier session. Returns whether it did.
+// and ENDS ANY CLAIM THAT CAME BEFORE IT. An unproven account was made by the old
+// password sign-up (retired), with a password chosen by whoever typed the address,
+// who may not be the person reading this inbox — so proving the address clears
+// that password, forgets its passkeys and signs out every earlier session. Returns
+// whether it did. Nothing makes an unproven account now; this is for the ones
+// already stored.
 function guest_prove_address(int $gid): bool
 {
     $reset = false;
@@ -31,7 +34,7 @@ function guest_prove_address(int $gid): bool
         $vq = db()->prepare('SELECT email_verified_at FROM guests WHERE id = ?');
         $vq->execute([$gid]);
         $wasProven = $vq->fetchColumn() !== null;
-        if (!$wasProven && (int) ($_SESSION['reg_gid'] ?? 0) !== $gid) {
+        if (!$wasProven) {
             db()->prepare("UPDATE guests SET password_hash = '', auth_epoch = auth_epoch + 1 WHERE id = ?")->execute([$gid]);
             try {
                 db()->prepare('DELETE FROM guest_passkeys WHERE guest_id = ?')->execute([$gid]);
@@ -59,7 +62,6 @@ function guest_prove_address(int $gid): bool
     } catch (\Throwable $e) {
         // migration-111/127 not applied — nothing to stamp.
     }
-    unset($_SESSION['reg_gid']);
     return $reset;
 }
 function guest_code_hash(string $email, string $code): string
@@ -858,124 +860,14 @@ switch ($action) {
         json_out(['ok' => true, 'me' => admin_me_payload(admin_row((int) $me['id'], true))]);
 
     // ---------------- GUEST ----------------
+    // RETIRED. An account is made by proving the inbox: guest_code_request, then
+    // guest_code_verify, then guest_code_register. Signing up with a password
+    // created an account for an address nobody had proven, and its "an account
+    // with this email already exists" told anyone which addresses had one. A page
+    // cached from before (the enquiry's old "Create account" step) is told what to
+    // do instead, and nothing is created.
     case 'guest_register':
-        rate_limit('register', 10); // curb row-flooding + email-enumeration probing (409 reveals existence)
-        $name = clean($in['name'] ?? '');
-        $email = strtolower(clean($in['email'] ?? ''));
-        $phone = clean($in['phone'] ?? '');
-        $address = clean($in['address'] ?? '');
-        $postcode = clean($in['postcode'] ?? '');
-        $pw = field_text($in['password'] ?? '');
-        if ($name === '' || $email === '') {
-            json_out(['error' => 'Your name and email are required'], 400);
-        }
-        if (strlen($pw) < 8) {
-            json_out(['error' => 'Please choose a password of at least 8 characters.'], 400);
-        }
-        if (mb_strlen($name) > 160 || strlen($email) > 190 || mb_strlen($phone) > 60) {
-            json_out(['error' => 'One of those details is too long — please shorten it.'], 400);
-        }
-        if ($address === '') {
-            json_out(['error' => 'Please enter your UK address'], 400);
-        }
-        if (!uk_postcode_valid($postcode)) {
-            json_out(['error' => 'Please enter a valid UK postcode'], 400);
-        }
-        if (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
-            json_out(['error' => 'Please enter a valid email address'], 400);
-        }
-        $stmt = db()->prepare('SELECT id FROM guests WHERE email = ?');
-        $stmt->execute([$email]);
-        if ($stmt->fetch()) {
-            json_out(['error' => 'An account with this email already exists'], 409);
-        }
-
-        // REGISTERING AN EMAIL IS NOT PROOF YOU OWN IT. my_bookings_payload matches
-        // stays on `b.email = ?`, so signing someone in the instant
-        // they type an address handed over every booking already made against it —
-        // dates, party, money, the arrival details, and the door code once inside
-        // its reveal window — to anyone who guessed a guest's email. Nothing else
-        // in the flow verifies the address.
-        // So: an address that ALREADY HAS RECORDS gets no session here. The account
-        // is created (the password they chose is theirs), and we email the existing
-        // magic link, which is the app's own proof-of-control. A genuinely new guest
-        // — the ordinary case — is unaffected and still signs straight in.
-        // BOOKINGS ONLY, deliberately — not enquiries. The enquiry flow registers an
-        // account moments after the guest submits an enquiry with that same address,
-        // so counting enquiries would send every ordinary new guest to their inbox
-        // and the "your account is ready" path would never happen. A booking is also
-        // where the exposure actually is: money, arrival details and the door code
-        // hang off a booking; an enquiry carries none of them.
-        $claimsExisting = false;
-        try {
-            $c = db()->prepare('SELECT 1 FROM bookings WHERE email = ? LIMIT 1');
-            $c->execute([$email]);
-            $claimsExisting = (bool) $c->fetchColumn();
-        } catch (\Throwable $e) {
-            // Can't tell — assume it DOES claim records. Failing closed costs a new
-            // guest one email; failing open hands over someone's booking.
-            $claimsExisting = true;
-        }
-
-        $hash = password_hash($pw, PASSWORD_DEFAULT);
-        // NO ACCOUNT IS VERIFIED AT REGISTRATION ANY MORE. An address with nothing
-        // behind it TODAY can still gain bookings tomorrow — and an account squatting
-        // a guest's email would then inherit them (dates, money, the door code). So
-        // every new account starts unproven: it signs in (when there is nothing to
-        // claim) and works, but sees no stays until the emailed link is opened.
-        try {
-            db()
-                ->prepare('INSERT INTO guests (name, email, phone, address, postcode, password_hash, email_verified_at) VALUES (?,?,?,?,?,?,?)')
-                ->execute([$name, $email, $phone, $address, $postcode, $hash, null]);
-        } catch (\Throwable $e) {
-            // migration-111 not applied yet — keep the pre-verification write.
-            db()
-                ->prepare('INSERT INTO guests (name, email, phone, address, postcode, password_hash) VALUES (?,?,?,?,?,?)')
-                ->execute([$name, $email, $phone, $address, $postcode, $hash]);
-        }
-        $newGuestId = (int) db()->lastInsertId();
-        // THIS browser registered the account — so the password it chose is the
-        // confirmer's own if the link is opened here (see guest_magic_consume).
-        $_SESSION['reg_gid'] = $newGuestId;
-
-        if ($claimsExisting) {
-            try {
-                $ts = time();
-                $url = site_base_url() . 'index.html?mlogin=' . $newGuestId . '&t=' . $ts . '&k=' . login_token($newGuestId, $ts);
-                require_once __DIR__ . '/mailer.php';
-                send_magic_link_email(['id' => $newGuestId, 'name' => $name, 'email' => $email], $url);
-            } catch (\Throwable $e) {
-            }
-            log_activity('account', 'guest.register_verify', 'New account for an email that already has bookings — sign-in link emailed instead of signing in', ['actor' => 'guest', 'entity' => 'guest', 'entity_id' => (string) $newGuestId]);
-            json_out([
-                'ok' => true,
-                'verify' => true,
-                'message' => "Account created. We've emailed you a sign-in link at " . $email . " — tap it to confirm it's you and see your stay.",
-            ]);
-        }
-
-        session_regenerate_id(true); // new session id on login — prevents session fixation
-        guest_session_begin($newGuestId);
-        unset($_SESSION['admin_id']); // one role at a time: a guest session ends any admin session
-        // The confirmation link: until it is opened the account sees no stays.
-        try {
-            $ts = time();
-            $url = site_base_url() . 'index.html?mlogin=' . $newGuestId . '&t=' . $ts . '&k=' . login_token($newGuestId, $ts);
-            require_once __DIR__ . '/mailer.php';
-            send_magic_link_email(['id' => $newGuestId, 'name' => $name, 'email' => $email], $url);
-        } catch (\Throwable $e) {
-        }
-        log_activity('account', 'guest.register', 'New guest account — ' . $name, ['actor' => 'guest', 'entity' => 'guest', 'entity_id' => (string) $_SESSION['guest_id']]);
-        json_out([
-            'ok' => true,
-            'guest' => [
-                'name' => $name,
-                'email' => $email,
-                'phone' => $phone,
-                'address' => $address,
-                'postcode' => $postcode,
-            ],
-        ]);
+        json_out(['error' => 'Accounts are made with a code we email you now. Reload the page, then sign in with your email.', 'code' => 'retired'], 410);
 
     case 'guest_login':
         $email = strtolower(clean($in['email'] ?? ''));
@@ -1026,12 +918,11 @@ switch ($action) {
             } catch (\Throwable $e) {
             }
         }
-        // THE PASSWORD IS NOT THE PROOF. An account created against an address that
-        // already had bookings is left unverified (guest_register), and the password
-        // was chosen by whoever registered — so accepting it here would walk straight
-        // back through the door the registration check just closed. Only the emailed
-        // link proves the address; re-send it and say so. Grandfathered accounts and
-        // every ordinary new guest are stamped verified, so nobody real meets this.
+        // THE PASSWORD IS NOT THE PROOF. An account the old password sign-up made
+        // (retired; nothing makes one now) was left unverified, and its password was
+        // chosen by whoever typed the address — so accepting it here while bookings
+        // exist for the address would hand them over. Only the emailed link or code
+        // proves the address; re-send the link and say so.
         try {
             $vq = db()->prepare('SELECT email_verified_at FROM guests WHERE id = ?');
             $vq->execute([(int) $row['id']]);
@@ -1264,12 +1155,21 @@ switch ($action) {
         if (mb_strlen($name) < 2) {
             json_out(['error' => "Add your name, so we know who we're talking to."], 400);
         }
-        require_fits($in, ['name' => [160, 'Your name']]);
+        require_fits($in, ['name' => [160, 'Your name'], 'phone' => [60, 'Your phone number']]);
+        // The enquiry's "Follow this enquiry" step passes the details the guest has
+        // just given, so the account starts with them instead of asking again. The
+        // sign-in sheet sends a name alone, and the rest stays empty until they book.
+        $phone = clean($in['phone'] ?? '');
+        $address = clean($in['address'] ?? '');
+        $postcode = clean($in['postcode'] ?? '');
+        if ($postcode !== '' && !uk_postcode_valid($postcode)) {
+            json_out(['error' => 'Please enter a valid UK postcode'], 400);
+        }
         $stmt = db()->prepare('SELECT id FROM guests WHERE email = ?');
         $stmt->execute([$email]);
         $gid = (int) ($stmt->fetchColumn() ?: 0);
         if ($gid <= 0) {
-            db()->prepare("INSERT INTO guests (name, email, phone, address, postcode, password_hash, email_verified_at) VALUES (?, ?, '', '', '', '', NOW())")->execute([$name, $email]);
+            db()->prepare("INSERT INTO guests (name, email, phone, address, postcode, password_hash, email_verified_at) VALUES (?, ?, ?, ?, ?, '', NOW())")->execute([$name, $email, $phone, $address, $postcode]);
             $gid = (int) db()->lastInsertId();
             log_activity('account', 'guest.registered', 'New guest account (email confirmed by code)', ['actor' => 'guest', 'entity' => 'guest', 'entity_id' => (string) $gid]);
         }
@@ -1308,15 +1208,8 @@ switch ($action) {
             json_out(['error' => 'This sign-in link is invalid.'], 401);
         }
         // THIS is the proof of address — the link was emailed to it and has just been
-        // opened. Stamping it here is what lets an account created against existing
-        // bookings finally sign in (guest_register / guest_login).
-        // AND IT ENDS ANY CLAIM THAT CAME BEFORE IT. An unproven account's password
-        // was chosen by whoever registered, which may not be the person reading this
-        // inbox — so proving the address from any OTHER browser clears that password,
-        // forgets its passkeys and signs out every earlier session. Opened in the
-        // browser that registered, the password is the confirmer's own and stays.
+        // opened — AND IT ENDS ANY CLAIM THAT CAME BEFORE IT (guest_prove_address).
         $reset = guest_prove_address((int) $row['id']);
-        unset($_SESSION['reg_gid']);
         // A RESET link (sent by the owner from Manage → Guests) opens a short window
         // in which this session may choose a new password without the old one —
         // the link was emailed to the address, which is the proof. Kept in the

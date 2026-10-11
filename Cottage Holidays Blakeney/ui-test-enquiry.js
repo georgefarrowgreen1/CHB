@@ -7,13 +7,16 @@
 //  failed send rendered 836px from the field it named, never cleared, said the
 //  same thing twice and claimed the dates were missing when they were set.
 //
-//  Five claims, each measured on the real flow rather than on a composer:
+//  The claims, each measured on the real flow rather than on a composer:
 //   §1 the refusal answers the tap — in the viewport, naming the field it focuses,
 //      and never left standing over a state it no longer describes
 //   §2 the picker does not move under the finger that just tapped it
 //   §3 working is not disabled — a busy Send spins, it does not fade
-//   §4 the sent moment leads with the tick, not with an optional password field
+//   §4 the sent moment leads with the tick, not with the optional follow step
 //   §5 the sibling sheets have ONE primary each and no browser file control
+//   §6 sending again after a lost answer is the same enquiry
+//   §7 following the enquiry is one screen for every address; only the emailed
+//      code says whether there is an account or a stay
 //
 //  NB the refusal element is #enq-msg-details throughout: e2e-test and
 //  ui-test-motion-system both read its textContent, and keeping it as THE
@@ -268,7 +271,7 @@ const FILL = {
         };
     });
     check(sent.scrollTop === 0, `the sheet opens at the top, on the tick (scrollTop ${sent.scrollTop})`);
-    check(sent.focus !== 'enq-acct-password', `…and not on the optional password field (${sent.focus || '(none)'})`);
+    check(!/enq-follow|enq-code/.test(sent.focus), `…and not on the optional follow step (${sent.focus || '(none)'})`);
     check(sent.drawn === 1 && sent.marks === 1, `"sent" is said ONCE — one drawn tick, no second ✓ (${sent.drawn}/${sent.marks})`);
     check(!/^rgba?\(0, 0, 0/.test(sent.sumBg), `…and the receipt is a well, not a black stain (${sent.sumBg})`);
 
@@ -352,6 +355,113 @@ const FILL = {
     await page.evaluate(() => submitEnquiry('jollyboat'));
     check(sentIds.length === 3 && sentIds[2] !== sentIds[0], 'an enquiry made after one went is a new one, even in the same words');
     holdSend = null;
+
+    // ─── §7 FOLLOW THIS ENQUIRY: ONE SCREEN FOR EVERY ADDRESS ──────────────────
+    // The sent screen asked enquiries.php whether the email had an account and
+    // offered "Welcome back — Sign in" or "Create account" accordingly, so anyone who
+    // typed a guest's address learned whether they had stayed. Now every address gets
+    // the same offer, a code goes to the inbox, and only after the code does the
+    // screen say anything about an account or a stay.
+    console.log('\n§7 Following the enquiry: one screen for every address, the inbox decides');
+    const authPosts = [];
+    let verifyAnswer = { ok: true, new: true };
+    let stayRows = [];
+    await page.route('**/auth.php', async (route) => {
+        let b = {};
+        try { b = JSON.parse(route.request().postData() || '{}'); } catch (e) {}
+        authPosts.push(b);
+        const json = (o, st = 200) => route.fulfill({ status: st, contentType: 'application/json', body: JSON.stringify(o) });
+        if (b.action === 'guest_code_verify' && b.code === '111111') return json({ error: "That code isn't right. Check the latest email and try again.", code: 'wrong', left: 2 }, 401);
+        if (b.action === 'guest_code_verify') return json(verifyAnswer);
+        if (b.action === 'guest_code_register') return json({ ok: true, guest: { name: b.name, email: 'sam@example.com', phone: b.phone || '', address: b.address || '', postcode: b.postcode || '' } });
+        return json({ ok: true });
+    });
+    await page.route('**/my-bookings.php', (route) => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ bookings: stayRows, enquiries: [], completed_stays: 0 }) }));
+    const followState = () => page.evaluate(() => {
+        const vis = (id) => { const el = document.getElementById(id); return !!el && el.getClientRects().length > 0; };
+        const a = document.activeElement;
+        return {
+            start: vis('enq-follow-start'), code: vis('enq-follow-code'), done: vis('enq-follow-done'),
+            startText: ((document.getElementById('enq-follow-start') || {}).innerText || '').replace(/\s+/g, ' ').trim(),
+            codeText: ((document.getElementById('enq-follow-code') || {}).innerText || '').replace(/\s+/g, ' ').trim(),
+            title: ((document.getElementById('enq-follow-done-h') || {}).textContent || '').trim(),
+            text: ((document.getElementById('enq-follow-done-p') || {}).textContent || '').trim(),
+            msg: ((document.getElementById('enq-follow-msg') || {}).textContent || '').trim(),
+            skip: ((document.getElementById('enq-follow-skip') || {}).textContent || '').trim(),
+            focus: a ? a.id : '',
+            old: !!document.getElementById('enq-acct-new') || !!document.getElementById('enq-acct-existing') || !!document.getElementById('enq-acct-password'),
+            guest: typeof currentGuest !== 'undefined' && currentGuest ? currentGuest.email : '',
+        };
+    });
+    const sendFresh = async (answer) => {
+        holdSend = (route) => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(answer) });
+        await fillAll();
+        await page.evaluate(() => submitEnquiry('jollyboat'));
+        await page.waitForFunction(() => document.getElementById('enquire-step-account').style.display === '', null, { timeout: 8000 });
+        await page.waitForTimeout(300);
+        holdSend = null;
+    };
+    // (a) A NEW address.
+    await page.evaluate(() => { currentGuest = null; setGuestUI(); });
+    await sendFresh({ success: true, id: 9 });
+    const s1 = await followState();
+    check(s1.start && !s1.code && !s1.done, `the sent screen offers to follow the enquiry (${JSON.stringify([s1.start, s1.code, s1.done])})`);
+    check(/Follow this enquiry/.test(s1.startText) && /sam@example\.com/.test(s1.startText) && /Only someone who can open that inbox/.test(s1.startText),
+        `…by a code to the address the enquiry gave (${s1.startText.slice(0, 120)})`);
+    check(!s1.old, 'the old Create account / Welcome back blocks are gone');
+    check(!/enq-follow|enq-code/.test(s1.focus), `…and nothing in it takes the focus before the guest asks (${s1.focus || '(none)'})`);
+    await page.click('#enq-follow-send');
+    await page.waitForFunction(() => document.getElementById('enq-follow-code') && !document.getElementById('enq-follow-code').hidden, null, { timeout: 5000 });
+    await page.waitForTimeout(150);
+    const req = authPosts.filter((b) => b.action === 'guest_code_request');
+    check(req.length === 1 && req[0].email === 'sam@example.com', `"Email me a code" asks for a code to that address (${JSON.stringify(req)})`);
+    const s2 = await followState();
+    check(s2.code && !s2.start && /Check your email/.test(s2.codeText) && /sam@example\.com/.test(s2.codeText), `…then asks for it, naming the inbox (${s2.codeText.slice(0, 90)})`);
+    check(s2.focus === 'enq-code', `…with the code field ready (${s2.focus})`);
+    check(await page.evaluate(() => { const i = document.getElementById('enq-code'); return i.getAttribute('autocomplete') === 'one-time-code' && i.getAttribute('inputmode') === 'numeric'; }),
+        'the field offers the code from Mail (one-time-code, numeric)');
+    check(await page.evaluate(() => { const b = document.getElementById('enq-follow-resend'); return b.disabled && /in \d+s/.test(b.textContent); }),
+        'a new code can be asked for again only after a short wait, which it shows');
+    await page.fill('#enq-code', '12345');
+    await page.click('#enq-follow-go');
+    await page.waitForTimeout(150);
+    check((await followState()).msg === 'Enter all 6 digits.', 'Continue with five digits says what is missing');
+    await page.fill('#enq-code', '111111');
+    await page.waitForFunction(() => /isn.t right/.test((document.getElementById('enq-follow-msg') || {}).textContent || ''), null, { timeout: 5000 });
+    const s3 = await followState();
+    check(/2 more tries/.test(s3.msg) && s3.code && !s3.guest, `a wrong code says so and signs nobody in (${s3.msg})`);
+    verifyAnswer = { ok: true, new: true };
+    stayRows = [];
+    await page.fill('#enq-code', '424242');
+    await page.waitForFunction(() => document.getElementById('enq-follow-done') && !document.getElementById('enq-follow-done').hidden, null, { timeout: 5000 });
+    const reg = authPosts.filter((b) => b.action === 'guest_code_register');
+    check(reg.length === 1 && reg[0].name === FILL['enq-name'] && reg[0].phone === FILL['enq-phone'] && reg[0].address === FILL['enq-address'] && reg[0].postcode === FILL['enq-postcode'],
+        `a new address makes the account with the details the enquiry gave (${JSON.stringify(reg[0] || {})})`);
+    const s4 = await followState();
+    check(s4.title === 'You’re in, Sam' && s4.text === 'Your account uses the details you just gave. Your enquiry is in My stays.', `…and says so once the inbox is proven (${s4.title} / ${s4.text})`);
+    check(s4.guest === 'sam@example.com' && s4.skip === 'Close', `…signed in, the way out reading Close (${s4.guest}, ${s4.skip})`);
+    check(!authPosts.some((b) => b.action === 'guest_register'), 'nothing posts the retired password sign-up');
+    await page.click('[data-act="enqFollowOpen"]');
+    await page.waitForTimeout(500);
+    check(await page.evaluate(() => !document.getElementById('enquire-modal').classList.contains('open')), 'Open My stays closes the enquiry');
+
+    // (b) An address WITH an account and a stay, answered by an OLD server that still
+    // says so: the screen before the code is word for word the same.
+    await page.evaluate(() => { currentGuest = null; setGuestUI(); });
+    const regBefore = authPosts.filter((b) => b.action === 'guest_code_register').length;
+    await sendFresh({ success: true, id: 10, account_exists: true });
+    const s5 = await followState();
+    check(s5.start && s5.startText === s1.startText, `an account behind the address changes nothing before the code (${s5.startText === s1.startText})`);
+    await page.click('#enq-follow-send');
+    await page.waitForFunction(() => document.getElementById('enq-follow-code') && !document.getElementById('enq-follow-code').hidden, null, { timeout: 5000 });
+    verifyAnswer = { ok: true, guest: { name: 'Sam Ferris', email: 'sam@example.com', phone: '', address: '', postcode: '' } };
+    stayRows = [{ id: 5, prop_key: 'jollyboat', name: 'Sam Ferris', email: 'sam@example.com', check_in: d(-200), check_out: d(-197), adults: 2, children: 0, payment: 'paid', deposit_paid: 300, agreed_total: 300 }];
+    await page.fill('#enq-code', '424242');
+    await page.waitForFunction(() => document.getElementById('enq-follow-done') && !document.getElementById('enq-follow-done').hidden, null, { timeout: 5000 });
+    const s6 = await followState();
+    check(s6.title === 'Welcome back, Sam' && s6.text === 'This enquiry is in My stays, with your other bookings.', `a known address is welcomed back, after the code (${s6.title} / ${s6.text})`);
+    check(authPosts.filter((b) => b.action === 'guest_code_register').length === regBefore, '…and no second account is made');
+    await page.evaluate(() => { try { closeEnquireModal(); } catch (e) {} currentGuest = null; setGuestUI(); });
 
     console.log(fails ? `\n${fails} FAILED` : '\nAll checks passed');
     await t.done(fails);

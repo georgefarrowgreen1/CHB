@@ -166,7 +166,7 @@
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="apple-mobile-web-app-title" content="CHB Stays">
-    <link rel="stylesheet" href="app.css?v=392">
+    <link rel="stylesheet" href="app.css?v=393">
     <!-- Fonts are SELF-HOSTED (fonts/ — latin-subset variable woff2, @font-face
          in app.css): no Google origins to connect to at all. Preload both so
          text renders in the real faces on first paint (display:swap covers the
@@ -763,7 +763,7 @@
                         <span class="enq-prog-line"></span>
                         <span class="enq-prog-step" id="enq-prog-2">Your details</span>
                         <span class="enq-prog-line" id="enq-prog-line2"></span>
-                        <span class="enq-prog-step" id="enq-prog-3">Account</span>
+                        <span class="enq-prog-step" id="enq-prog-3">Sent</span>
                     </div>
                     <button class="reviews-modal-close" data-act="closeEnquireModal" aria-label="Close"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
                 </div>
@@ -911,9 +911,8 @@
                     </div>
                 </div>
 
-                <!-- STEP 3 (only shown to guests who aren't signed in): set a password to
-                     quickly create an account from the details just entered. The enquiry
-                     has already been sent by this point, so this step is entirely optional. -->
+                <!-- STEP 3 (only shown to guests who aren't signed in): the enquiry is sent,
+                     and the guest may follow it in My stays. Entirely optional. -->
                 <div id="enquire-step-account" style="display:none;">
                     <!-- The sent MOMENT: the receipt's own drawn tick + halo (display
                          flips restart CSS animations, so this needs no JS), then the
@@ -932,23 +931,33 @@
                         <div class="enq-sched-row"><span class="enq-sched-dot ghost" aria-hidden="true"></span><span class="enq-sched-when">Next</span><span class="enq-sched-what" id="enq-sched-today">An email confirming your dates &amp; price, with a secure payment link</span></div>
                         <div class="enq-sched-row"><span class="enq-sched-dot ghost" aria-hidden="true"></span><span class="enq-sched-when">Then</span><span class="enq-sched-what" id="enq-sched-then">Pay the deposit and the cottage is yours — we'll look after the rest</span></div>
                     </div>
-                    <!-- New guest: set a password to create an account -->
-                    <div id="enq-acct-new">
-                        <h2 class="section-title" style="font-size:var(--fs-title);margin:18px 0 6px;text-align:left;">Create your account</h2>
-                        <p style="font-size:var(--fs-sub);color:var(--text-muted);margin:0 0 16px;">Set a password to manage this booking, message us, and book faster next time — using the details you just entered.</p>
-                        <label class="modal-label" for="enq-acct-password">Choose a password</label>
-                        <input type="password" class="input-glass" id="enq-acct-password" autocomplete="new-password" placeholder="Create a password">
-                        <p class="enq-modal-msg" id="enq-acct-msg" role="alert"></p>
-                        <button class="btn-glass btn-accent" id="enq-acct-btn" style="width:100%;padding:16px;" data-act="enquireCreateAccount">Create account</button>
-                    </div>
-                    <!-- Returning guest (email already has an account): sign in instead -->
-                    <div id="enq-acct-existing" style="display:none;">
-                        <h2 class="section-title" style="font-size:var(--fs-title);margin:18px 0 6px;text-align:left;">Welcome back</h2>
-                        <p style="font-size:var(--fs-sub);color:var(--text-muted);margin:0 0 16px;">You already have an account with this email — sign in to track this enquiry and manage your bookings.</p>
-                        <button class="btn-glass btn-accent" style="width:100%;padding:16px;" data-act="enquireSignInInstead">Sign in</button>
+                    <!-- FOLLOW THIS ENQUIRY: the same screen for every address. A 6-digit
+                         code goes to the email the enquiry gave; only someone who can open
+                         that inbox signs in, finds their account or makes one. Nothing on
+                         this screen says whether the address has an account or a booking. -->
+                    <div id="enq-follow" class="enq-follow">
+                        <div id="enq-follow-start">
+                            <h2 class="section-title enq-follow-h">Follow this enquiry</h2>
+                            <p class="enq-follow-p">We'll email a 6-digit code to <b class="enq-follow-to"></b>. Only someone who can open that inbox can follow it.</p>
+                            <p class="enq-modal-msg" id="enq-acct-msg" role="alert"></p>
+                            <button class="btn-glass btn-accent enq-follow-btn" id="enq-follow-send" data-act="enqFollowSend">Email me a code</button>
+                        </div>
+                        <div id="enq-follow-code" hidden>
+                            <h2 class="section-title enq-follow-h" id="enq-follow-code-h" tabindex="-1">Check your email</h2>
+                            <p class="enq-follow-p">Enter the 6-digit code we sent to <b class="enq-follow-to"></b>.</p>
+                            <div class="ga-code" id="enq-codebox"><span class="ga-cell"></span><span class="ga-cell"></span><span class="ga-cell"></span><span class="ga-cell"></span><span class="ga-cell"></span><span class="ga-cell"></span><input id="enq-code" inputmode="numeric" autocomplete="one-time-code" maxlength="6" aria-label="The 6-digit code from the email" data-act-input="enqFollowInput" data-pass="self"></div>
+                            <p class="enq-modal-msg" id="enq-follow-msg" role="alert"></p>
+                            <button class="btn-glass btn-accent enq-follow-btn" id="enq-follow-go" data-act="enqFollowContinue">Continue</button>
+                            <button type="button" class="ga-alink enq-follow-resend" id="enq-follow-resend" data-act="enqFollowResend">Send a new code</button>
+                        </div>
+                        <div id="enq-follow-done" hidden>
+                            <h2 class="section-title enq-follow-h" id="enq-follow-done-h" tabindex="-1"></h2>
+                            <p class="enq-follow-p" id="enq-follow-done-p"></p>
+                            <button class="btn-glass btn-accent enq-follow-btn" data-act="enqFollowOpen">Open My stays</button>
+                        </div>
                     </div>
                     <div style="text-align:center;margin-top:14px;">
-                        <a href="#" data-act="pdCall" data-fn="enquireSkipAccount" style="cursor:pointer;text-decoration:underline;color:var(--text-muted);font-size:var(--fs-sub);display:inline-flex;align-items:center;min-height:44px;padding:0 8px;">No thanks, maybe later</a>
+                        <a href="#" id="enq-follow-skip" data-act="pdCall" data-fn="enquireSkipAccount" style="cursor:pointer;text-decoration:underline;color:var(--text-muted);font-size:var(--fs-sub);display:inline-flex;align-items:center;min-height:44px;padding:0 8px;">No thanks, maybe later</a>
                     </div>
                 </div>
             </div>
@@ -1775,7 +1784,7 @@
     <div id="changeover-toasts" class="toast-stack"></div>
 
     <!-- --- JAVASCRIPT --- -->
-    <script defer src="app.js?v=1213"></script>
+    <script defer src="app.js?v=1214"></script>
 
     <!-- App-style guest shell (bottom tab bar + install chip). External so the
          single-page index.html stays reviewable; gated to guests via CSS. -->

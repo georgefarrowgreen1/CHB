@@ -2444,9 +2444,9 @@ function send_direct_followup_email($lead)
     return smtp_send($lead['email'], $lead['name'] ?? '', $subject, $text, $html, [], null, null, $headers);
 }
 
-// Acknowledge a guest's enquiry by email. $accountExists tailors the closing line:
-// returning guests are pointed to sign in; new guests are invited to create an account.
-function send_enquiry_ack($enq, $accountExists = false)
+// Acknowledge a guest's enquiry by email. The closing line is the same for every
+// address: signing in with an emailed code both finds an account and makes one.
+function send_enquiry_ack($enq)
 {
     $email = trim((string) ($enq['email'] ?? ''));
     if ($email === '') {
@@ -2457,10 +2457,8 @@ function send_enquiry_ack($enq, $accountExists = false)
     $prop = function_exists('prop_display') ? prop_display($enq['prop_key'] ?? '')['name'] ?? '' : '';
     $pretty = fn($d) => $d ? email_date($d) : '';
     $dates = trim($pretty($enq['check_in'] ?? '') . ' to ' . $pretty($enq['check_out'] ?? ''), ' to');
-    $url = function_exists('site_base_url') ? site_base_url() : '/';
-    $acctLine = $accountExists
-        ? 'You already have an account with us — sign in to track this enquiry and manage your bookings.'
-        : 'Tip: create an account next time you visit (just set a password) to track this enquiry, message us and book faster.';
+    $url = (function_exists('site_base_url') ? site_base_url() : '/') . 'index.html?open=stay';
+    $acctLine = "Follow this enquiry in My stays: sign in on the site with this email and we'll send you a code. No password needed.";
 
     // THE PROMISE IN THE SUBJECT: the one question this email answers is "when do I hear
     // back?", so it is readable before the email is opened.
@@ -2506,7 +2504,7 @@ function send_enquiry_ack($enq, $accountExists = false)
             true,
         ) .
         email_note(email_esc($acctLine)) .
-        email_btn($url, $accountExists ? 'Sign in' : 'Visit the site');
+        email_btn($url, 'Follow your enquiry');
     $html = email_shell($pre, $inner);
     // One-shot with no stamp-on-success cron behind it: a transport blip used
     // to lose the promise email forever. Queue-on-failure (the outbox rules).
