@@ -450,6 +450,14 @@ function chb_send_sample_emails($which = 'all', $prefix = '[SAMPLE] ')
                 return smtp_send($owner, 'Subscriber', $m['subject'], $m['text'], $m['html']);
             },
         ],
+        // A newsletter sign-up joins only when this email's link is opened. The sample's
+        // link is shaped like a real one and confirms nothing.
+        'newsletter_confirm' => [
+            'Newsletter: confirm your email',
+            function () use ($owner) {
+                return send_newsletter_confirm($owner, 'Test Guest', site_base_url() . 'index.html?nlconfirm=sample-token&t=' . time() . '&k=sample');
+            },
+        ],
         // "A space has opened up" — sent when a cancellation frees dates someone is
         // waiting on. wl_send() is already a plain function taking a row, so this
         // needed no extraction; it simply had no way in.

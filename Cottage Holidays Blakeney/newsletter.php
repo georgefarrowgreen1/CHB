@@ -1,38 +1,75 @@
 <?php
 // ============================================================
 //  newsletter.php — a simple opt-in mailing list the owner controls.
-//   POST {action:'subscribe', email, name?}   -> public: join the list
+//   POST {action:'subscribe', email, name?}   -> public: ask to join (a link is emailed)
+//   POST {action:'confirm', token, t, k}       -> public: the emailed link, opened
 //   POST {action:'unsubscribe', token}        -> public: opt out (one-click)
-//   GET                                        -> admin: count + recent subscribers
-//   POST {action:'broadcast', subject, body}   -> admin: email all active subscribers
+//   GET                                        -> admin: counts + recent subscribers
+//   POST {action:'broadcast', subject, body}   -> admin: email every confirmed subscriber
 //
-//  Sending uses smtp_send(); each message carries a one-click unsubscribe link.
+//  A sign-up joins the list only when the link emailed to the address is opened
+//  (newsletter-lib.php, migration-146). Each newsletter carries a one-click
+//  unsubscribe link.
 // ============================================================
 require_once __DIR__ . '/db.php';
+require_once __DIR__ . '/newsletter-lib.php';
+
+// Confirmation emails to one address in a day, whoever asks (counted in the same
+// ledger as the rate limits, by a hash of the address).
+function newsletter_confirm_allowed(string $email): bool
+{
+    $key = 'nlmail:' . substr(sha1(strtolower($email)), 0, 40);
+    try {
+        $s = db()->prepare('SELECT COUNT(*) FROM login_attempts WHERE identifier = ? AND attempted_at > (NOW() - INTERVAL 1 DAY)');
+        $s->execute([$key]);
+        if ((int) $s->fetchColumn() >= NEWSLETTER_CONFIRM_MAILS_PER_DAY) {
+            return false;
+        }
+        db()->prepare('INSERT INTO login_attempts (ip, identifier, success) VALUES (?,?,0)')->execute([client_ip_key(), $key]);
+    } catch (\Throwable $e) {
+    }
+    return true;
+}
 
 // ---- Admin: list subscribers --------------------------------------------
 if ($_SERVER['REQUEST_METHOD'] === 'GET') {
     require_admin();
     try {
-        $active = (int) db()
-            ->query('SELECT COUNT(*) FROM newsletter_subscribers WHERE unsubscribed_at IS NULL')
-            ->fetchColumn();
-        $total = (int) db()->query('SELECT COUNT(*) FROM newsletter_subscribers')->fetchColumn();
+        // Active = confirmed and not unsubscribed; waiting = signed up, link not yet opened.
+        $c = db()
+            ->query(
+                'SELECT SUM(unsubscribed_at IS NULL AND confirmed_at IS NOT NULL) AS active,
+                        SUM(unsubscribed_at IS NULL AND confirmed_at IS NULL) AS waiting,
+                        SUM(unsubscribed_at IS NOT NULL) AS unsubscribed, COUNT(*) AS total
+                   FROM newsletter_subscribers',
+            )
+            ->fetch();
         $recent = db()
             ->query(
-                'SELECT email, name, created_at, unsubscribed_at FROM newsletter_subscribers ORDER BY created_at DESC LIMIT 50',
+                'SELECT email, name, created_at, confirmed_at, unsubscribed_at FROM newsletter_subscribers ORDER BY created_at DESC LIMIT 50',
             )
             ->fetchAll();
     } catch (\Throwable $e) {
         json_out(['error' => 'Could not read subscribers — has migrate.php been run?'], 500);
     }
-    json_out(['ok' => true, 'active' => $active, 'total' => $total, 'recent' => $recent]);
+    json_out([
+        'ok' => true,
+        'active' => (int) ($c['active'] ?? 0),
+        'waiting' => (int) ($c['waiting'] ?? 0),
+        'unsubscribed' => (int) ($c['unsubscribed'] ?? 0),
+        'total' => (int) ($c['total'] ?? 0),
+        'recent' => $recent,
+    ]);
 }
 
 $in = body();
 $action = $in['action'] ?? '';
 
 // ---- Public: subscribe ---------------------------------------------------
+// NOBODY JOINS UNTIL THE INBOX SAYS SO. This added any address it was given and
+// switched an unsubscribed one straight back on. Now it emails a link, and only
+// opening it puts the address on the list (or back on it). The answer is the same
+// for every address, so the form never says who is on the list.
 if ($action === 'subscribe') {
     rate_limit('newsletter', 12); // curb unauthenticated signup flooding
     $email = strtolower(clean($in['email'] ?? ''));
@@ -42,21 +79,71 @@ if ($action === 'subscribe') {
     if (!filter_var($email, FILTER_VALIDATE_EMAIL) || strlen($email) > 190) {
         json_out(['error' => 'Please enter a valid email address.'], 400);
     }
-    $source = clean($in['source'] ?? 'site');
-    $token = bin2hex(random_bytes(16));
+    require_fits($in, ['name' => [160, 'Your name']]);
+    $source = mb_substr(clean($in['source'] ?? 'site'), 0, 40);
     try {
-        // Re-subscribing an existing (perhaps previously unsubscribed) email just
-        // reactivates it; we never expose whether the email was already on the list.
-        db()
-            ->prepare(
-                'INSERT INTO newsletter_subscribers (email, name, token, source)
-                       VALUES (?,?,?,?)
-                       ON DUPLICATE KEY UPDATE name = VALUES(name), unsubscribed_at = NULL',
-            )
-            ->execute([$email, $name, $token, $source]);
+        $q = db()->prepare('SELECT id, name, token, confirmed_at, unsubscribed_at FROM newsletter_subscribers WHERE email = ?');
+        $q->execute([$email]);
+        $row = $q->fetch() ?: null;
+        $plan = newsletter_signup_plan($row);
+        if ($plan === 'add') {
+            // A racing second sign-up for the same address simply finds the row.
+            db()
+                ->prepare('INSERT INTO newsletter_subscribers (email, name, token, source) VALUES (?,?,?,?) ON DUPLICATE KEY UPDATE id = id')
+                ->execute([$email, $name, bin2hex(random_bytes(16)), $source]);
+            $q->execute([$email]);
+            $row = $q->fetch() ?: null;
+        }
+        if ($plan !== 'none' && $row && newsletter_confirm_allowed($email)) {
+            require_once __DIR__ . '/mailer.php';
+            $link = newsletter_confirm_link(site_base_url(), (string) $row['token'], time());
+            $res = send_newsletter_confirm($email, (string) ($row['name'] ?: $name), $link);
+            if (!empty($res['ok'])) {
+                db()->prepare('UPDATE newsletter_subscribers SET confirm_sent_at = NOW() WHERE id = ?')->execute([(int) $row['id']]);
+            } elseif (($res['error'] ?? '') !== 'Mail disabled') {
+                // The same answer still goes back (the form never says who is on the
+                // list); the owner hears that the link did not go.
+                log_activity('settings', 'newsletter.confirm_fail', 'A newsletter confirmation email could not be sent', ['actor' => 'system', 'severity' => 'warn', 'entity' => 'newsletter', 'meta' => ['detail' => (string) ($res['error'] ?? '')]]);
+            }
+        }
     } catch (\Throwable $e) {
-        json_out(['error' => 'Could not subscribe right now.'], 500);
+        if (db_schema_missing($e)) {
+            json_out(['error' => 'Sign-ups are being updated. Please try again in a minute.'], 503);
+        }
+        json_out(['error' => 'Could not sign you up right now.'], 500);
     }
+    json_out(['ok' => true]);
+}
+
+// ---- Public: the emailed link, opened -------------------------------------
+// The page posts it (index.html?nlconfirm=…), so a mail scanner that fetches the
+// link confirms nothing. Confirming an unsubscribed address puts it back on.
+if ($action === 'confirm') {
+    rate_limit('nlconfirm', 30);
+    $token = clean($in['token'] ?? '');
+    $v = newsletter_confirm_check($token, clean($in['t'] ?? ''), clean($in['k'] ?? ''));
+    if ($v === 'expired') {
+        json_out(['error' => 'That link has expired. Sign up again and we’ll send you a fresh one.', 'code' => 'expired'], 410);
+    }
+    if ($v !== 'ok') {
+        json_out(['error' => 'That link isn’t right. Sign up again and we’ll send you a fresh one.', 'code' => 'invalid'], 400);
+    }
+    try {
+        $q = db()->prepare('SELECT id FROM newsletter_subscribers WHERE token = ?');
+        $q->execute([$token]);
+        $id = (int) ($q->fetchColumn() ?: 0);
+        if ($id <= 0) {
+            json_out(['error' => 'That sign-up is no longer on our list. Sign up again and we’ll send you a fresh link.', 'code' => 'gone'], 404);
+        }
+        // confirmed_at is set BEFORE unsubscribed_at is cleared: MySQL assigns left to
+        // right, so a returning subscriber's consent is dated now, not when they first joined.
+        db()
+            ->prepare('UPDATE newsletter_subscribers SET confirmed_at = IF(unsubscribed_at IS NOT NULL OR confirmed_at IS NULL, NOW(), confirmed_at), unsubscribed_at = NULL WHERE id = ?')
+            ->execute([$id]);
+    } catch (\Throwable $e) {
+        json_out(['error' => 'Could not confirm right now. Please try the link again in a minute.'], 500);
+    }
+    log_activity('settings', 'newsletter.confirm', 'Newsletter sign-up confirmed', ['actor' => 'guest', 'entity' => 'newsletter']);
     json_out(['ok' => true]);
 }
 
@@ -89,8 +176,9 @@ if ($action === 'broadcast') {
     }
 
     try {
+        // Confirmed subscribers only: a sign-up still waiting on its link never agreed.
         $subs = db()
-            ->query('SELECT email, name, token FROM newsletter_subscribers WHERE unsubscribed_at IS NULL')
+            ->query('SELECT email, name, token FROM newsletter_subscribers WHERE unsubscribed_at IS NULL AND confirmed_at IS NOT NULL')
             ->fetchAll();
     } catch (\Throwable $e) {
         json_out(['error' => 'Could not read subscribers.'], 500);

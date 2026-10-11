@@ -149,15 +149,16 @@ function activity_business_events($per = 12)
     } catch (\Throwable $e) {
     }
 
-    // Newsletter sign-ups
+    // Newsletter sign-ups: a sign-up joins only when its emailed link is opened
+    // (migration-146), so one still waiting says so.
     try {
         foreach (
             db()
-                ->query("SELECT email, created_at FROM newsletter_subscribers ORDER BY created_at DESC LIMIT $per")
+                ->query("SELECT email, created_at, confirmed_at FROM newsletter_subscribers ORDER BY created_at DESC LIMIT $per")
                 ->fetchAll()
             as $r
         ) {
-            $push('signup', 'Newsletter sign-up', $r['email'], $r['created_at']);
+            $push('signup', $r['confirmed_at'] === null ? 'Newsletter sign-up, not confirmed yet' : 'Newsletter sign-up', $r['email'], $r['created_at']);
         }
     } catch (\Throwable $e) {
     }

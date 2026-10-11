@@ -136,6 +136,10 @@ jobs:
         working-directory: "Cottage Holidays Blakeney"
         run: php test-guestfaq.php
 
+      - name: Newsletter sign-ups are confirmed by email (the link, the plan, the wiring)
+        working-directory: "Cottage Holidays Blakeney"
+        run: php test-newsletter.php
+
       - name: Watcher rules (identity, cap, due/expiry, and when they must stay silent)
         working-directory: "Cottage Holidays Blakeney"
         run: php test-watchers.php

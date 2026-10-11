@@ -6445,6 +6445,114 @@ $rootDb->exec("DELETE FROM guest_photos WHERE caption IN ('it85', 'w', 's') AND 
 clearstatcache();
 it_check('§85 deleting the conversation deletes its photos from the private folder', $r['code'] === 200 && !is_file($work . '/uploads/private/' . $name85) && !is_file($work . '/uploads/private/' . $oldChat85) && !is_file($work . '/uploads/private/' . $oldChat85 . '.webp'), $r['raw']);
 
+// §86 NEWSLETTER SIGN-UPS ARE CONFIRMED BY EMAIL (the security leftovers, step 4). The
+// footer form put any address it was given on the list at once, and switched an
+// unsubscribed one straight back on. A sign-up now waits until the emailed link is
+// opened, the broadcast goes to confirmed addresses only, and the form answers the same
+// for every address. Mail is off here, so the email itself is test-emails-render's: an
+// attempt to send is read off the per-address counter the cap keeps.
+echo "\n== §86 newsletter sign-ups are confirmed ==\n";
+$rootDb->exec("DELETE FROM login_attempts WHERE identifier IN ('newsletter', 'nlconfirm') OR identifier LIKE 'nlmail:%'");
+$rootDb->exec('DELETE FROM newsletter_subscribers');
+$nlMails86 = fn($em) => (int) $rootDb->query('SELECT COUNT(*) FROM login_attempts WHERE identifier = ' . $rootDb->quote('nlmail:' . substr(sha1(strtolower($em)), 0, 40)))->fetchColumn();
+$nlRow86 = function ($em) use ($rootDb) {
+    $s = $rootDb->prepare('SELECT * FROM newsletter_subscribers WHERE email = ?');
+    $s->execute([$em]);
+    $r = $s->fetch(PDO::FETCH_ASSOC);
+    return is_array($r) ? $r : [];
+};
+$sig86 = fn($tok, $t) => substr(hash_hmac('sha256', 'nlconfirm|' . $tok . '|' . $t, $SECRET), 0, 32);
+$nlPost86 = fn($b) => http($noJar, 'POST', '/newsletter.php', $b);
+$same86 = function (...$rs) {
+    $k = array_map(function ($r) {
+        $j = $r['json'] ?? null;
+        if (is_array($j)) {
+            unset($j['srv']);
+        }
+        return json_encode([$r['code'], $j]);
+    }, $rs);
+    return count(array_unique($k)) === 1;
+};
+// THE MIGRATION KEEPS EVERYONE ALREADY ON THE LIST: its own backfill statement, run on
+// a subscriber from before it and on one who had unsubscribed.
+$rootDb->exec("INSERT INTO newsletter_subscribers (email, name, token, source, created_at) VALUES ('old86@example.com', 'Old', '" . bin2hex(random_bytes(16)) . "', 'footer', NOW() - INTERVAL 200 DAY)");
+$rootDb->exec("INSERT INTO newsletter_subscribers (email, name, token, source, created_at, unsubscribed_at) VALUES ('off86@example.com', 'Off', '" . bin2hex(random_bytes(16)) . "', 'footer', NOW() - INTERVAL 300 DAY, NOW() - INTERVAL 3 DAY)");
+$mig86 = (string) file_get_contents($work . '/migration-146-newsletter-confirm.sql');
+$upd86 = preg_match('/^UPDATE newsletter_subscribers[^;]*;/m', $mig86, $mm86) ? $mm86[0] : '';
+if ($upd86 !== '') {
+    $rootDb->exec($upd86);
+}
+$old86 = $nlRow86('old86@example.com');
+$off86 = $nlRow86('off86@example.com');
+it_check('§86 (fixture) the migration\'s backfill statement was found and ran', $upd86 !== '', '');
+it_check('§86 the migration keeps a subscriber from before it on the list, joined when they signed up', ($old86['confirmed_at'] ?? null) !== null && $old86['confirmed_at'] === $old86['created_at'], json_encode($old86));
+it_check('§86 …and one who had unsubscribed stays off', array_key_exists('confirmed_at', $off86) && $off86['confirmed_at'] === null && $off86['unsubscribed_at'] !== null, json_encode($off86));
+
+$a86 = $nlPost86(['action' => 'subscribe', 'email' => 'new86@example.com', 'source' => 'footer']);
+$b86 = $nlPost86(['action' => 'subscribe', 'email' => 'old86@example.com', 'source' => 'footer']);
+$c86 = $nlPost86(['action' => 'subscribe', 'email' => 'OFF86@example.com', 'source' => 'footer']);
+it_check('§86 the form answers the same for a new address, one on the list and one that unsubscribed', $a86['code'] === 200 && $same86($a86, $b86, $c86), $a86['raw'] . ' | ' . $b86['raw'] . ' | ' . $c86['raw']);
+$new86 = $nlRow86('new86@example.com');
+it_check('§86 a new address waits: on the table, not confirmed', $new86 !== [] && $new86['confirmed_at'] === null && $new86['unsubscribed_at'] === null, json_encode($new86));
+it_check('§86 …and a link was sent to it', $nlMails86('new86@example.com') === 1, (string) $nlMails86('new86@example.com'));
+it_check('§86 an address already on the list is sent nothing', $nlMails86('old86@example.com') === 0, (string) $nlMails86('old86@example.com'));
+$off86b = $nlRow86('off86@example.com');
+it_check('§86 one that unsubscribed stays unsubscribed (typing it is not consent)', $off86b['unsubscribed_at'] !== null && $off86b['confirmed_at'] === null, json_encode($off86b));
+it_check('§86 …and is sent a link to come back by', $nlMails86('off86@example.com') === 1, (string) $nlMails86('off86@example.com'));
+$last86 = [];
+for ($i = 0; $i < 3; $i++) {
+    $last86 = $nlPost86(['action' => 'subscribe', 'email' => 'new86@example.com', 'source' => 'footer']);
+}
+it_check('§86 three confirmation emails a day to one address, however often it is typed', $nlMails86('new86@example.com') === 3, (string) $nlMails86('new86@example.com'));
+it_check('§86 …and over the cap the form still answers the same', $same86($a86, $last86), $last86['raw']);
+
+$g86 = http($adm83, 'GET', '/newsletter.php');
+it_check('§86 the Newsletter page counts the confirmed and the waiting apart', $g86['code'] === 200 && ($g86['json']['active'] ?? -1) === 1 && ($g86['json']['waiting'] ?? -1) === 1 && ($g86['json']['unsubscribed'] ?? -1) === 1, $g86['raw']);
+$bc86 = http($adm83, 'POST', '/newsletter.php', ['action' => 'broadcast', 'subject' => 'It86', 'body' => 'Hello from §86']);
+it_check('§86 a newsletter goes to confirmed addresses only (the one waiting is left out)', $bc86['code'] === 200 && ($bc86['json']['subscribers'] ?? -1) === 1, $bc86['raw']);
+$q86 = $mailProbe('echo "\n" . json_encode(["waiting" => email_outbox_wanted(["ref" => "newsletter:new86@example.com"]), "on" => email_outbox_wanted(["ref" => "newsletter:old86@example.com"])]);');
+it_check('§86 a queued newsletter copy is not sent to an address still waiting, and is to one on the list', is_array($q86) && $q86['waiting'] === false && $q86['on'] === true, json_encode($q86));
+
+$tok86 = (string) $new86['token'];
+$t86 = time();
+$scan86 = http($noJar, 'GET', '/index.html?nlconfirm=' . $tok86 . '&t=' . $t86 . '&k=' . $sig86($tok86, $t86));
+it_check('§86 fetching the link (what a mail scanner does) confirms nothing', $scan86['code'] === 200 && $nlRow86('new86@example.com')['confirmed_at'] === null, (string) $scan86['code']);
+$r = $nlPost86(['action' => 'confirm', 'token' => $tok86, 't' => (string) $t86, 'k' => str_repeat('0', 32)]);
+it_check('§86 a link with the wrong signature confirms nothing', $r['code'] === 400 && ($r['json']['code'] ?? '') === 'invalid' && $nlRow86('new86@example.com')['confirmed_at'] === null, $r['raw']);
+$r = $nlPost86(['action' => 'confirm', 'token' => $tok86]);
+it_check('§86 …nor the subscriber\'s token on its own (it is in every unsubscribe link)', $r['code'] === 400 && $nlRow86('new86@example.com')['confirmed_at'] === null, $r['raw']);
+$tOld86 = $t86 - 8 * 86400;
+$r = $nlPost86(['action' => 'confirm', 'token' => $tok86, 't' => (string) $tOld86, 'k' => $sig86($tok86, $tOld86)]);
+it_check('§86 a link more than a week old has expired, and says so', $r['code'] === 410 && ($r['json']['code'] ?? '') === 'expired' && $nlRow86('new86@example.com')['confirmed_at'] === null, $r['raw']);
+$r = $nlPost86(['action' => 'confirm', 'token' => $tok86, 't' => (string) $t86, 'k' => $sig86($tok86, $t86)]);
+it_check('§86 the emailed link, opened, puts the address on the list', $r['code'] === 200 && $nlRow86('new86@example.com')['confirmed_at'] !== null, $r['raw']);
+$offTok86 = (string) $off86b['token'];
+$r = $nlPost86(['action' => 'confirm', 'token' => $offTok86, 't' => (string) $t86, 'k' => $sig86($offTok86, $t86)]);
+$off86c = $nlRow86('off86@example.com');
+it_check('§86 one that unsubscribed comes back only by opening the link', $r['code'] === 200 && $off86c['unsubscribed_at'] === null && $off86c['confirmed_at'] !== null, json_encode($off86c));
+// MySQL assigns left to right: a returning subscriber's consent must be dated NOW, not
+// left at the day they first joined (the update sets it before clearing the unsubscribe).
+$leftTok86 = bin2hex(random_bytes(16));
+$rootDb->exec("INSERT INTO newsletter_subscribers (email, token, created_at, confirmed_at, unsubscribed_at) VALUES ('left86@example.com', '$leftTok86', NOW() - INTERVAL 100 DAY, NOW() - INTERVAL 100 DAY, NOW() - INTERVAL 3 DAY)");
+$r = $nlPost86(['action' => 'confirm', 'token' => $leftTok86, 't' => (string) $t86, 'k' => $sig86($leftTok86, $t86)]);
+$fresh86 = (int) $rootDb->query("SELECT COUNT(*) FROM newsletter_subscribers WHERE email = 'left86@example.com' AND unsubscribed_at IS NULL AND confirmed_at > NOW() - INTERVAL 10 MINUTE")->fetchColumn();
+it_check('§86 …and their consent is dated the day they came back, not the day they first joined', $r['code'] === 200 && $fresh86 === 1, json_encode($nlRow86('left86@example.com')));
+$ghost86 = bin2hex(random_bytes(16));
+$r = $nlPost86(['action' => 'confirm', 'token' => $ghost86, 't' => (string) $t86, 'k' => $sig86($ghost86, $t86)]);
+it_check('§86 a link for a sign-up no longer on the list says so', $r['code'] === 404 && ($r['json']['code'] ?? '') === 'gone', $r['raw']);
+
+// The daily tidy: a sign-up never confirmed goes a month after its last link; one sent
+// a fresh link recently stays, and an unsubscribe stays as the record of it.
+$rootDb->exec("INSERT INTO newsletter_subscribers (email, token, created_at) VALUES ('stale86@example.com', '" . bin2hex(random_bytes(16)) . "', NOW() - INTERVAL 40 DAY)");
+$rootDb->exec("INSERT INTO newsletter_subscribers (email, token, created_at, confirm_sent_at) VALUES ('fresh86@example.com', '" . bin2hex(random_bytes(16)) . "', NOW() - INTERVAL 40 DAY, NOW() - INTERVAL 2 DAY)");
+$rootDb->exec("INSERT INTO newsletter_subscribers (email, token, created_at, unsubscribed_at) VALUES ('gone86@example.com', '" . bin2hex(random_bytes(16)) . "', NOW() - INTERVAL 40 DAY, NOW() - INTERVAL 35 DAY)");
+http($noJar, 'GET', '/self-repair.php?cron=' . $SECRET);
+it_check('§86 the daily tidy clears a sign-up nobody confirmed, a month after its last link', $nlRow86('stale86@example.com') === [], '');
+it_check('§86 …keeps one sent a fresh link two days ago', $nlRow86('fresh86@example.com') !== [], '');
+it_check('§86 …and keeps an unsubscribe, as the record of it', $nlRow86('gone86@example.com') !== [], '');
+$rootDb->exec('DELETE FROM newsletter_subscribers');
+$rootDb->exec("DELETE FROM login_attempts WHERE identifier IN ('newsletter', 'nlconfirm') OR identifier LIKE 'nlmail:%'");
+
 echo "\n== Summary ==\n";
 if ($fail) {
     echo "  $fail CHECK(S) FAILED \xE2\x9D\x8C\n\n";

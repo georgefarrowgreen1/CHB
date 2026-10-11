@@ -161,6 +161,7 @@ $REGISTRY = [
     'watchers-lib.php' => ['lib', [], 'pure rules for standing queries (no direct entry)'],
     'nightshift-lib.php' => ['lib', [], 'RETIRED: an empty file that replaces the removed Mac assistant library on the host (the deploy never deletes files)'],
     'keysafe-lib.php' => ['lib', [], 'the key safe keeper’s pure judgements (bad codes, generation, the reveal window); required by keysafe.php and my-bookings.php'],
+    'newsletter-lib.php' => ['lib', [], 'the newsletter sign-up’s confirmation link and plan (pure); required by newsletter.php'],
     'watchers.php' => ['admin', ['require_admin'], "the owner's own standing queries — names cottages and dates"],
     'watchers-run.php' => ['cron', [], 'fires due watchers daily; manual run is POST + require_admin'],
     'autopay-lib.php' => ['lib', [], 'saves the agreed card and collects the balance on the day; required by autopay-run.php and pay.php (no entry of its own)'],

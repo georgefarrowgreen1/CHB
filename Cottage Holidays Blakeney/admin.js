@@ -28437,20 +28437,22 @@ async function loadNewsletter() {
         return;
     }
     const active = r.active || 0,
-        total = r.total || 0;
-    // Stashed so the send confirm's BUTTON can state the scale ("Send to 412
-    // subscribers") — the bulk chase's informed-confirm posture. This page is
-    // the only route to that button, so the figure is the one just rendered;
-    // unknown falls back to a countless label rather than inventing a number.
+        waiting = r.waiting || 0,
+        unsub = r.unsubscribed || 0;
+    // The send confirm's button states this count ("Send to 412 subscribers"); this
+    // page is its only route, so the figure is the one just rendered.
     __nlActive = active;
-    const recent = (r.recent || []).filter((s) => !s.unsubscribed_at).slice(0, 12);
-    // The two figures are stat tiles; who is on the list folds under its own count.
-    const list = recent.length
-        ? bhubFoldGrp('nlsubs', 'Who’s subscribed', '', stCap('unk', String(active)), `<div style="font-size:var(--fs-sub);color:var(--text-muted);">${recent.map((s) => escapeHtml(s.email)).join(' · ')}${active > recent.length ? ' …' : ''}</div>`)
-        : ''; // the tile above already says 0
+    const rows = (r.recent || []).filter((s) => !s.unsubscribed_at);
+    // Who is on the list, and who has still to open the link, fold under their
+    // counts. A tile already says 0.
+    const fold = (key, label, sub, n, on) => {
+        const list = rows.filter((s) => !!s.confirmed_at === on).slice(0, 12);
+        return list.length ? bhubFoldGrp(key, label, sub, stCap('unk', String(n)), `<div style="font-size:var(--fs-sub);color:var(--text-muted);">${list.map((s) => escapeHtml(s.email)).join(' · ')}${n > list.length ? ' …' : ''}</div>`) : '';
+    };
+    const list = fold('nlsubs', 'Who’s subscribed', unsub ? `${unsub} unsubscribed` : '', active, true) + fold('nlwait', 'Waiting to confirm', 'No newsletters until they confirm', waiting, false);
     stats.innerHTML = `<div class="u-stats">
                     <div class="u-stat"><div class="u-stat-n">${active}</div><div class="u-stat-l">Active subscribers</div></div>
-                    <div class="u-stat"><div class="u-stat-n">${total - active}</div><div class="u-stat-l">Unsubscribed</div></div>
+                    <div class="u-stat"><div class="u-stat-n">${waiting}</div><div class="u-stat-l">Waiting to confirm</div></div>
                 </div>${list}`;
 }
 // ---- Status (Manage → Status) ----
