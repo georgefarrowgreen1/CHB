@@ -215,6 +215,22 @@ function booking_balance_due_date($b)
     }
     return date('Y-m-d', strtotime($b['check_in'] . ' -' . payment_balance_days() . ' days'));
 }
+// …and the date a guest is TOLD. A booking made inside the balance window owes in
+// full from the day it was made, so the standard date (check-in minus the window)
+// lands before the booking existed: the request email said "£528.20 due Fri 25 Sep"
+// about a booking made on 5 Oct, and the invoice and confirmation agreed with it.
+// Clamped to the day it was made, as the back office (bookingPlanDueDate) already
+// did. DISPLAY ONLY: the window test and the chaser's SQL keep the raw date, or a
+// booking made inside the window would read as outside it on its first day.
+function booking_balance_due_shown($b)
+{
+    $due = booking_balance_due_date($b);
+    if ($due === null || !empty($b['balance_due_date'])) {
+        return $due;
+    }
+    $made = substr((string) ($b['created_at'] ?? ''), 0, 10);
+    return preg_match('/^\d{4}-\d{2}-\d{2}$/', $made) && $made > $due ? $made : $due;
+}
 
 // ONE validator for a payment plan's fields, wherever they arrive — the Add
 // Booking form and the hub's Edit-plan dialog must refuse the same things in

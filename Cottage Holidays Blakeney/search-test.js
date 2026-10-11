@@ -2144,7 +2144,9 @@ process.on('exit', (code) => { if (!__searchTestDone && code === 0) { console.er
         // action reaches — what bulk drops is the preview, never the server rules.
         const posts = [];
         const realPost = ctx.apiPost;
-        ctx.apiPost = async (url, body) => { posts.push({ url, body }); if (body && body.id === 2 && ctx.__bulkFailTwo) throw new Error('SMTP refused'); return { ok: true, amount: 100 }; };
+        // No `amount` in the answer: the total then falls back to each row's own ask.
+        // (A server that does report one wins — checked below with a real figure.)
+        ctx.apiPost = async (url, body) => { posts.push({ url, body }); if (body && body.id === 2 && ctx.__bulkFailTwo) throw new Error('SMTP refused'); return { ok: true }; };
         let out = await ctx.chbBulkRun(three);
         check('one request per emailable guest, none for the skipped one', posts.length === 2 && posts.every((p) => /bookings\.php/.test(p.url) && p.body.action === 'request_payment'), `${posts.length} posts`);
         check('through the request_payment endpoint with the right ids', posts.map((p) => p.body.id).join(',') === '1,2', posts.map((p) => p.body.id).join(','));
@@ -2158,6 +2160,18 @@ process.on('exit', (code) => { if (!__searchTestDone && code === 0) { console.er
         out = await ctx.chbBulkRun(allThree);
         check('everyone reachable → a plain success naming the total chased', !out.state && /2 balance requests sent/.test(out.say) && /£860/.test(out.say), out.say);
         check('and even a full success offers no undo', !out.undo);
+        // THE SERVER'S STAGE IS WHAT EACH EMAIL ASKS FOR: the confirm and the total
+        // follow nextPayment (booking_next_payment) — they listed the whole stay
+        // beside a request that would ask for the deposit.
+        const npRow = bRow(1, 'Richard Berry', 'rb@x.co', 440);
+        npRow.b.nextPayment = { kind: 'deposit', due: 110, damages: 50, charge: 160 };
+        check('a batch row asks for the server\'s next payment, not the whole outstanding', ctx.chbBulkAsks(npRow) === 160, String(ctx.chbBulkAsks(npRow)));
+        check('…and falls back to the outstanding when the booking carries none', ctx.chbBulkAsks(bRow(2, 'Cara Bell', 'cb@x.co', 420)) === 420);
+        posts.length = 0;
+        ctx.apiPost = async (url, body) => { posts.push({ url, body }); return { ok: true, amount: body.id === 1 ? 160 : 420 }; };
+        out = await ctx.chbBulkRun([npRow, bRow(2, 'Cara Bell', 'cb@x.co', 420)]);
+        check('the total chased is what the server says each email asked for', /£580/.test(out.say), out.say);
+        ctx.apiPost = async (url, body) => { posts.push({ url, body }); if (body && body.id === 2 && ctx.__bulkFailTwo) throw new Error('SMTP refused'); return { ok: true }; };
 
         // A SERVER failure is a miss too, and reads differently from a missing address.
         posts.length = 0;

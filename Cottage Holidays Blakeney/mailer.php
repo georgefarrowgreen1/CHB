@@ -1972,7 +1972,9 @@ function owner_payment_notice_body($b)
     // owner reading "Type: balance" beside £120 of a £290 balance would take the
     // booking as settled and stop chasing it.
     $typeLine = !empty($b['partial']) ? 'part payment towards the ' . $what : $what;
-    $settled = ($b['status'] ?? '') === 'paid';
+    // Settled only when nothing is left — a rental paid with the refundable deposit
+    // still to take is not "paid in full".
+    $settled = ($b['status'] ?? '') === 'paid' && round((float) ($b['balance'] ?? 0), 2) <= 0.005;
     $statusTxt = $settled ? ' — now paid in full' : '';
     $prop = $b['prop_name'] ?? ($b['prop_key'] ?? 'a cottage');
     // THE OWNER'S ACTUAL QUESTION IS "IS THAT THE LOT?" — and the only answer this
@@ -3046,7 +3048,12 @@ function send_booking_emails($b)
             // (Arrive and Leave are the dates block above — said once, not twice.)
             email_rows([
                 ['Party', $esc($party)],
-                ['Payment', email_cap(($b['payment'] ?? 'unpaid') === 'paid' ? 'ok' : (($b['payment'] ?? 'unpaid') === 'deposit' ? 'warn' : 'bad'), ($b['payment'] ?? 'unpaid') === 'paid' ? 'Paid in full' : (($b['payment'] ?? 'unpaid') === 'deposit' ? 'Deposit paid' : 'Not paid yet'))],
+                // "Paid in full" only when the balance below says so: the rental can be
+                // settled ('paid') with the refundable deposit still to take, and the
+                // badge sat directly above "Balance remaining £75.00".
+                ['Payment', ($b['payment'] ?? 'unpaid') === 'paid' && $balNow > 0.005
+                    ? email_cap('warn', $money($balNow) . ' to pay')
+                    : email_cap(($b['payment'] ?? 'unpaid') === 'paid' ? 'ok' : (($b['payment'] ?? 'unpaid') === 'deposit' ? 'warn' : 'bad'), ($b['payment'] ?? 'unpaid') === 'paid' ? 'Paid in full' : (($b['payment'] ?? 'unpaid') === 'deposit' ? 'Deposit paid' : 'Not paid yet'))],
             ]) .
             // An address is its own block with a Maps link, not a value squeezed into
             // the 40/60 grid — where a long one wrapped to three right-aligned lines.
@@ -3496,6 +3503,9 @@ function payment_request_body($b, $payUrl, $accent, $bacs)
     $name = first_name($b['name'], 'Guest');
     $prop = $b['prop_name'] ?: 'your cottage';
     $what = $b['kind'] === 'balance' ? 'remaining balance' : 'deposit';
+    if (round((float) $b['amount'], 2) <= 0.005 && round((float) ($b['damages'] ?? 0), 2) > 0.005) {
+        $what = 'refundable deposit'; // the rental is settled; only the deposit is left
+    }
     $rail = payment_rail($b);
 
     // When the refundable deposit rides this payment (first payment), state the true
@@ -3674,7 +3684,12 @@ function send_payment_request($b, $payUrl)
 // amount is derived server-side from the booking; nothing is trusted from input.
 function request_booking_payment($b, $kind, $reminder = false)
 {
-    $kind = $kind === 'balance' ? 'balance' : 'deposit';
+    // NO STAGE GIVEN, THE PLAN DECIDES — the same derivation pay.php makes when the
+    // link is opened (the link carries no stage). The back office's request,
+    // reminder, preview and the chat's pay link pass null, because a stage chosen by
+    // the caller is how an email came to say "£528.20 due" over a link that took
+    // £188.30. The scheduled chasers still name theirs: their queries select for it.
+    $kind = $kind === null ? booking_payment_kind($b) : ($kind === 'balance' ? 'balance' : 'deposit');
     if (!square_enabled()) {
         return ['ok' => false, 'error' => 'Square payments are not switched on.'];
     }
@@ -3682,7 +3697,15 @@ function request_booking_payment($b, $kind, $reminder = false)
         return ['ok' => false, 'error' => 'No guest email on file.'];
     }
     $amt = booking_amount_due($b, $kind);
-    if ($amt['due'] <= 0) {
+    $rate = get_rate($b['prop_key']);
+    // The refundable damage deposit still to take, which pay.php bundles into this
+    // payment — booking_damages_due, the derivation the charge itself reads (a
+    // deposit already handed over in cash counts against it).
+    $damages = function_exists('booking_damages_due') ? (float) booking_damages_due($b, $rate) : 0.0;
+    // NOTHING TO PAY MEANS NOTHING AT ALL: the rental settled with the deposit still
+    // to take is £75 the guest owes, and checking the rental alone refused to ask
+    // for it while every screen said it was owed.
+    if ($amt['due'] + $damages <= 0.005) {
         return ['ok' => false, 'error' => 'Nothing left to pay.', 'amount' => 0];
     }
     // No stage in the link — pay.php derives it from the booking on open, so an
@@ -3690,21 +3713,6 @@ function request_booking_payment($b, $kind, $reminder = false)
     // email still quotes $kind's figures, which are right at the moment of
     // sending; the link simply stops promising they still will be.
     $payUrl = site_base_url() . 'index.html?pay=' . pay_token($b['id']) . '&b=' . (int) $b['id'];
-    $rate = get_rate($b['prop_key']);
-    // The refundable damage deposit is CHARGED with the guest's first rental payment
-    // (only while hold_status is 'none') and returned after checkout. Mirror pay.php's
-    // derivation so the email states the full amount the card will be charged, not
-    // just the rental portion. Zero once the deposit has already ridden a payment.
-    $damages = 0.0;
-    if (($b['hold_status'] ?? 'none') === 'none') {
-        $damages = round((float) ($b['agreed_booking_fee'] ?? 0), 2);
-        // Legacy rows (no snapshot) fall back to a live calc; a modern row with a
-        // waived (£0) deposit stays £0 rather than showing the property standard.
-        if (($b['agreed_total'] ?? null) === null && $rate) {
-            $pp = price_breakdown($rate, $b['adults'], $b['children'], $b['check_in'], $b['check_out']);
-            $damages = round((float) ($pp['damagesDeposit'] ?? 0), 2);
-        }
-    }
     // The deposit ALREADY taken (charged with the first payment, or a captured/kept
     // legacy hold) — the other half of the deposit story from $damages above, which
     // is only the deposit still TO ride this payment. Without it a balance chase
@@ -3737,7 +3745,7 @@ function request_booking_payment($b, $kind, $reminder = false)
         // the confirmation and the hub quote, so the deposit ask states the plan
         // the owner agreed rather than leaving it in the back office. Read by
         // payment_plan_line; rail-agnostic (see its note).
-        'balance_due_date' => function_exists('booking_balance_due_date') ? booking_balance_due_date($b) : ($b['balance_due_date'] ?? ''),
+        'balance_due_date' => function_exists('booking_balance_due_shown') ? booking_balance_due_shown($b) : ($b['balance_due_date'] ?? ''),
         // THE MONTHLY OPTION IS MENTIONED BEFORE CHECKOUT — derived from the
         // same booking_instalment_offer the pay screen shows, so the email can
         // never promise a plan the checkout won't offer, and the owner's floor
@@ -3748,7 +3756,10 @@ function request_booking_payment($b, $kind, $reminder = false)
         'instalment_offer' => $kind === 'deposit' && function_exists('booking_instalment_offer') ? booking_instalment_offer($b) : null,
     ];
     $res = $reminder ? send_payment_reminder($payload, $payUrl) : send_payment_request($payload, $payUrl);
-    $res['amount'] = $amt['due'];
+    // What the guest was asked to send (the email's own headline), and the stage it
+    // was for, so the owner's confirmation can say both.
+    $res['amount'] = round($amt['due'] + $damages, 2);
+    $res['kind'] = $kind;
     return $res;
 }
 
@@ -3779,7 +3790,12 @@ function payment_money_facts($b, $whatLabel = 'balance')
     $paidRental = round((float) ($b['paid'] ?? 0), 2);
     $paid = round($paidRental + $depCharged, 2);
     $rentalTotal = round((float) ($b['total'] ?? 0), 2);
+    // THE RENTAL IS SETTLED AND ONLY THE REFUNDABLE DEPOSIT IS LEFT (paid by
+    // transfer, or a part payment that covered the rental): the ask is the deposit
+    // alone, and "£0.00 balance + £75.00 refundable deposit" says so badly.
+    $depositOnly = $due <= 0.005 && $damages > 0.005;
     return [
+        'depositOnly' => $depositOnly,
         'due' => $due,
         'damages' => $damages,
         'paid' => $paid,
@@ -3800,9 +3816,9 @@ function payment_money_facts($b, $whatLabel = 'balance')
         // (The transaction fee needs no line of its own: it is inside the
         // rental total, so it is already inside every figure here.)
         'payLabel' => $damages > 0 ? 'To pay now' : ucfirst($whatLabel) . ' due',
-        'paySub' => $damages > 0
-            ? $money($due) . ' ' . $whatLabel . ' + ' . $money($damages) . ' refundable deposit'
-            : '',
+        'paySub' => $depositOnly
+            ? 'Your refundable deposit'
+            : ($damages > 0 ? $money($due) . ' ' . $whatLabel . ' + ' . $money($damages) . ' refundable deposit' : ''),
         // The quiet context under the figure: what the stay costs in total and
         // what has already been settled.
         'contextLine' => 'Of ' . $money(round($rentalTotal + $damages + $depCharged, 2)) . ' total'
@@ -3811,13 +3827,15 @@ function payment_money_facts($b, $whatLabel = 'balance')
         // RAIL the guest is actually on: "charged to your card today" is a card
         // sentence, and the reminder was saying it to bank-transfer guests
         // (the request had its own rail-aware copy; this one did not).
-        'depositTail' => $damages > 0
+        'depositTail' => $depositOnly
+            ? 'This is your refundable security deposit, returned after checkout.'
+            : ($damages > 0
             ? 'This payment also includes a refundable security deposit of ' . $money($damages)
                 . ' (returned after checkout), '
                 . ($rail === 'bacs'
                     ? 'so please send ' . $money(round($due + $damages, 2)) . ' in total.'
                     : 'so ' . $money(round($due + $damages, 2)) . ' will be charged to your card today.')
-            : '',
+            : ''),
         // Stated only when there IS something already paid — "£0.00 already paid"
         // on a fresh request is noise, not information. When the refundable deposit
         // is inside the figure, say so, or £225 against a remembered £175 deposit
@@ -3884,6 +3902,9 @@ function payment_reminder_body($b, $payUrl, $accent, $bacs)
     // than the one the card will take — including in the CTA, which used to name
     // the rental half while the deposit sentence beneath added the rest.
     $f = payment_money_facts($b, $kind);
+    if ($f['depositOnly']) {
+        $noun = 'refundable deposit';
+    }
     $cta = payment_cta($rail, $payUrl, $bacs, 'Please pay ' . $money($f['chargedNow']));
     // The SAME deadline treatment the request now gets — this is the email that
     // chases it, so it is the last email that should leave the date unstated. A
@@ -4590,9 +4611,13 @@ function payment_receipt_body($b)
     // them), and, on the card rail, the pay link.
     $dueBy = substr((string) ($b['balance_due_date'] ?? ''), 0, 10);
     $byWhen = $dueBy !== '' ? ' by ' . email_date($dueBy) : ' before your stay';
+    // The refundable deposit a slice pushed to the next payment: named beside the
+    // balance, or the "Remaining balance" here is smaller than the next charge.
+    $depNext = round((float) ($b['deposit_due_next'] ?? 0), 2);
+    $plusDep = $depNext > 0.005 ? ' (plus your ' . $money($depNext) . ' refundable deposit)' : '';
     $restLine = $auto
-        ? 'Remaining balance: ' . $money($b['balance']) . '. We&rsquo;ll collect it automatically' . $byWhen . ' — nothing to do.'
-        : 'Remaining balance: ' . $money($b['balance']) . '. You can settle it any time' . $byWhen . '.';
+        ? 'Remaining balance: ' . $money($b['balance']) . $plusDep . '. We&rsquo;ll collect it automatically' . $byWhen . ' — nothing to do.'
+        : 'Remaining balance: ' . $money($b['balance']) . $plusDep . '. You can settle it any time' . $byWhen . '.';
     $statusLine = !empty($b['fully_paid'])
         ? "Your booking is now paid in full. We can't wait to welcome you."
         : ((float) $b['balance'] <= 0.005
@@ -4608,6 +4633,9 @@ function payment_receipt_body($b)
     $leftSteps = [];
     if ($owes) {
         $leftSteps[] = ['Balance of ' . $money($b['balance']), $auto ? 'Collected automatically' . $byWhen . ' — nothing to do' : 'Due' . $byWhen, false];
+    }
+    if ($owes && $depNext > 0.005) {
+        $leftSteps[] = ['Your ' . $money($depNext) . ' refundable deposit', 'Taken with your next payment, returned after checkout', false];
     }
     if ($dep > 0) {
         $leftSteps[] = ['Your ' . $money($dep) . ' deposit', 'Returned after checkout, provided there’s no damage', false];

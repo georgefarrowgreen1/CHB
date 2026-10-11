@@ -143,7 +143,7 @@ if ($action === 'summary') {
         // WHEN it falls due, from the booking's own plan (custom date wins,
         // else check-in minus the window) — the screen said how much and
         // never when.
-        'balanceDueDate' => booking_balance_due_date($b),
+        'balanceDueDate' => booking_balance_due_shown($b),
         // The EFFECTIVE share, derived from the booking's own deposit figure —
         // under a per-booking plan the global pct is not what this screen is
         // charging, and the itemised sub-line ("£267.00 deposit (30%)") must
@@ -636,6 +636,11 @@ if ($action === 'charge') {
         ->execute([$newStatus, $newPaid, 'Square card', date('Y-m-d'), $bookingId]);
 
     book_unlock($b['prop_key']);
+    // THE REFUNDABLE DEPOSIT STILL TO TAKE after this payment: none if it rode this
+    // charge, else what a slice displaced (booking_damages_due on the row as it now
+    // stands). The receipt and the owner's alert stated the RENTAL left alone —
+    // "£339.90 still to collect" — while the guest's next charge was £414.90.
+    $damNext = $damagesDue > 0 ? 0.0 : (float) booking_damages_due(array_merge($b, ['deposit_paid' => $newPaid, 'payment' => $newStatus]));
 
     log_activity(
         'payment',
@@ -654,7 +659,7 @@ if ($action === 'charge') {
     // handshakes and the pushes are external HTTP calls, and none of them
     // should keep the guest staring at the card-payment spinner.
     require_once __DIR__ . '/mailer.php';
-    mail_after_response(function () use ($b, $propName, $ref, $kind, $amountDue, $total, $newPaid, $newStatus, $damagesDue, $bookingId, $partial) {
+    mail_after_response(function () use ($b, $propName, $ref, $kind, $amountDue, $total, $newPaid, $newStatus, $damagesDue, $damNext, $bookingId, $partial) {
         // Receipt email (best-effort — never fails the payment).
         try {
             $receipt = send_payment_receipt([
@@ -676,7 +681,7 @@ if ($action === 'charge') {
                 // (booking_balance_due_date — custom date, else check-in minus
                 // the window), so the receipt cannot quote a different day from
                 // the chaser that follows it.
-                'balance_due_date' => booking_balance_due_date($b),
+                'balance_due_date' => booking_balance_due_shown($b),
                 'pay_url' => site_base_url() . 'index.html?pay=' . pay_token((int) $bookingId) . '&b=' . (int) $bookingId,
                 // A slice at the max bound settles the RENTAL while the
                 // refundable deposit it displaced is still to take — "paid in
@@ -685,6 +690,8 @@ if ($action === 'charge') {
                 'fully_paid' => $newStatus === 'paid' && !$partial,
                 // Refundable deposit taken with this payment (refunded after checkout).
                 'deposit_charged' => $damagesDue,
+                // …and the one still to take, which rides the next payment.
+                'deposit_due_next' => $damNext,
                 // Signed link to the guest invoice — reflects this payment.
                 'invoice_url' => site_base_url() . 'invoice.php?b=' . (int) $bookingId . '&token=' . invoice_token((int) $bookingId),
             ]);
@@ -713,8 +720,9 @@ if ($action === 'charge') {
                 'status' => $newStatus,
                 // What is LEFT after this payment — the owner's first question on
                 // seeing money land, and the notice could not answer it without
-                // this (see owner_payment_notice_body).
-                'balance' => round(max(0, $total - $newPaid), 2),
+                // this (see owner_payment_notice_body). The refundable deposit still
+                // to take is in it, as it is in every owner screen's "to collect".
+                'balance' => round(max(0, $total - $newPaid) + $damNext, 2),
             ]);
         } catch (\Throwable $e) {
         }

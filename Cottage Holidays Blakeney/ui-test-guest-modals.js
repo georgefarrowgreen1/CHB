@@ -75,7 +75,7 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
   // this, which is why eight of them could sit broken.
   console.log('\n4. Back closes the top sheet and stays put');
   const sheets = ['lightbox', 'faq-modal', 'amenities-modal', 'houserules-modal', 'reviews-modal', 'welcome-modal',
-    'exp-suggest-modal', 'photo-upload-modal'];
+    'exp-suggest-modal', 'photo-upload-modal', 'photo-lightbox', 'exp-detail-modal'];
   for (const id of sheets) {
     // A previous iteration's Back can still be settling, and app.js is re-evaluated
     // on any load — wait for the globals rather than guessing at a delay.
@@ -99,6 +99,10 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
       else if (i === 'welcome-modal') await openWelcomeBook('jollyboat');
       else if (i === 'exp-suggest-modal') openExperienceSuggest();
       else if (i === 'photo-upload-modal') openPhotoUpload('jollyboat');
+      // Round 8: a guest's photo on the wall and a place on Things to do
+      // pushed no entry / were not on Back's list.
+      else if (i === 'photo-lightbox') { openProperty('jollyboat'); openPhotoLightbox('https%3A%2F%2Fexample.test%2Fp.jpg|On%20the%20quay'); }
+      else if (i === 'exp-detail-modal') { __experiences = [{ id: 7, name: 'Seal trip', category: 'Boat trips', description: 'Out to Blakeney Point.' }]; expOpenDetail(7); }
     }, id);
     await page.waitForTimeout(450);
     const before = await page.evaluate((i) => ({
@@ -127,6 +131,34 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
     await page.evaluate(() => { try { closeTopOverlay(); } catch (e) {} });
     await page.waitForTimeout(250);
   }
+
+  // A PICKER OR A CONFIRM RAISED OVER A SHEET ANSWERS BACK FIRST. Back with the
+  // date picker up over the enquiry sheet closed the SHEET and left the calendar
+  // floating on the cottage page; a confirm stayed up over the page.
+  console.log('\n5. Back answers the picker or confirm on top, not the sheet beneath');
+  await page.evaluate(() => { try { sessionStorage.removeItem('chb-nav'); } catch (e) {} }).catch(() => {});
+  await page.goto(`${base}/index.html`, { waitUntil: 'domcontentloaded' });
+  await page.waitForFunction(() => typeof openProperty === 'function' && typeof openEnquireModal === 'function');
+  await page.waitForTimeout(500);
+  await page.evaluate(() => { openProperty('jollyboat'); openEnquireModal(); });
+  await page.waitForTimeout(450);
+  await page.evaluate(() => { const t = document.querySelector('#enquire-modal .date-range-trigger, #enq-date-display'); if (t) t.click(); else openDatePicker(); });
+  await page.waitForTimeout(450);
+  const stacked = await page.evaluate(() => ({ dp: document.getElementById('date-picker').classList.contains('open'), enq: document.getElementById('enquire-modal').classList.contains('open') }));
+  ok(stacked.dp && stacked.enq, `the picker is up over the enquiry sheet (picker ${stacked.dp}, sheet ${stacked.enq})`);
+  await page.evaluate(() => { window.__backProbe = 'alive'; });
+  await page.goBack();
+  await page.waitForTimeout(500);
+  const after5 = await page.evaluate(() => ({ dp: document.getElementById('date-picker').classList.contains('open'), enq: document.getElementById('enquire-modal').classList.contains('open'), same: window.__backProbe === 'alive' }));
+  ok(after5.same && !after5.dp && after5.enq, `Back closes the picker and leaves the enquiry sheet up (picker ${after5.dp}, sheet ${after5.enq})`);
+  await page.evaluate(() => { try { closeTopOverlay(); } catch (e) {} });
+  await page.waitForTimeout(300);
+  await page.evaluate(() => { history.pushState({ chbOverlay: true }, ''); window.__gdAns = 'pending'; glassConfirm('Sign out?', 'Sign out').then((v) => { window.__gdAns = v; }); });
+  await page.waitForTimeout(400);
+  await page.goBack();
+  await page.waitForTimeout(500);
+  const gd = await page.evaluate(() => ({ up: document.getElementById('glass-dialog').classList.contains('open'), ans: window.__gdAns }));
+  ok(!gd.up && gd.ans === false, `Back answers a confirm as backed out, never OK (open ${gd.up}, answered ${gd.ans})`);
 
   console.log(fails ? `GUEST-MODAL TEST FAILED ❌ (${fails})` : 'GUEST-MODAL TEST PASSED ✅');
   await done(fails);

@@ -39,7 +39,11 @@ const INV_ACCENT_INK = '#965C35'; // the accent as WORDS       (email_accent_ink
 const INV_WARN_INK = '#9C5300';   // a due date                (email_warn_ink)
 const INV_ALERT_INK = '#BC2626';  // a deposit retained        (email_alert_ink)
 const INV_OK_INK = '#1f6b3a';     // settled, a credit
-const INV_ON_ACCENT = '#3a2e1e';  // ink ON the accent fill
+// THE BUTTON IS THE HOUSE PAIR — the emails' own button (email_btn): it carries
+// WORDS, so it cannot take the cottage colour, which stays on the band where it
+// is a fill. Dark ink on Pimpernel's purple measured 2.10:1.
+const INV_BTN_FILL = '#C6885E';
+const INV_BTN_INK = '#1B1208';
 const INV_HAIR = '#e4dbc8';       // a stated edge (buttons, the action bar)
 const INV_HAIR_2 = '#eae6de';     // the one hairline between rows
 const INV_PAPER = '#ffffff';      // white, not linen: the ground is air now
@@ -283,8 +287,7 @@ function render_invoice_html($d)
         '.btn,.btn2{display:inline-flex;align-items:center;justify-content:center;min-height:46px;' .
         'padding:12px 22px;border-radius:10px;font-size:15px;font-weight:600;text-decoration:none;cursor:pointer;' .
         'font-family:inherit;flex:0 0 auto;letter-spacing:-.01em}' .
-        // ink ON the accent, never white: white on this fill measures 2.55:1
-        '.btn{background:' . $accent . ';color:' . INV_ON_ACCENT . ';border:0}' .
+        '.btn{background:' . INV_BTN_FILL . ';color:' . INV_BTN_INK . ';border:0}' .
         '.btn2{background:transparent;color:' . INV_ACCENT_INK . ';border:1px solid ' . INV_HAIR . '}' .
         'a:focus-visible,button:focus-visible{outline:2px solid ' . INV_ACCENT_INK . ';outline-offset:2px}' .
         // ── PRINT IS THE SAME DOCUMENT. There is no card chrome left to flatten, so
@@ -610,7 +613,7 @@ echo render_invoice_html([
     'payments' => $payments,
     // booking_balance_due_date is the ONE derivation (custom date, else check-in
     // minus the window) the confirmation and the deposit ask both read.
-    'balance_due_date' => $balance > 0.001 ? uk_date(booking_balance_due_date($b)) : '',
+    'balance_due_date' => $balance > 0.001 ? uk_date(booking_balance_due_shown($b)) : '',
     'balance' => $balance,
     // A guest on the CARD rail can settle from the document they are reading.
     // On the bank/cash rail there is nothing to link to — payment_rail is the

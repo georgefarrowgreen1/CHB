@@ -123,7 +123,7 @@ function my_bookings_payload(string $email, bool $preview = false): array
         // side reads it for (bookingPlanDueDate, the custom-plan filter, the edit
         // form's "pick a different day to make it custom" hint). Writing a derived
         // date into it would make every booking look like it carries a custom plan.
-        $bk['balance_due_by'] = booking_balance_due_date($bk);
+        $bk['balance_due_by'] = booking_balance_due_shown($bk);
         // WHAT THE CARD WOULD TAKE NEXT, and what to call it — the SAME derivation
         // pay.php makes when the guest arrives there. The account's Pay buttons
         // used to hardcode 'balance' and label themselves with the whole

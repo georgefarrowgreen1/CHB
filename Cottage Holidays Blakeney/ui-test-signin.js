@@ -52,6 +52,11 @@ const ok = (c, m) => { console.log((c ? '  ✓ ' : '  ✗ ') + m); if (!c) fails
     await page.waitForTimeout(300);
     ok(/Sign in or create an account/.test(await step()), `it opens on one email field (${await step()})`);
     ok(await page.evaluate(() => !document.getElementById('tab-register') && !document.getElementById('reg-password')), 'no separate "Create account" form or password to invent');
+    // The close (×) button's hit region reaches 3px out; flush to the box's edge it
+    // made the sheet 2px wider than itself, so it scrolled sideways and cut off the
+    // first letter of every line.
+    const sideways = await page.evaluate(() => { const b = document.querySelector('#guest-auth-modal .modal-box'); return b.scrollWidth - b.clientWidth; });
+    ok(sideways === 0, `the sheet is exactly as wide as itself — nothing to scroll sideways (${sideways}px over)`);
     await page.fill('#login-email', 'gwen@gmial.com');
     await page.click('#ga-auth [data-act="authContinue"]');
     await page.waitForTimeout(200);

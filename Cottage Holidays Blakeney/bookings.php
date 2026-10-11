@@ -476,9 +476,34 @@ function bookings_admin_payload()
             booking_ledger_warm();
         } catch (\Throwable $e) {
         }
+        // THE NEXT PAYMENT, AS THE SERVER WILL TAKE IT (booking_next_payment): the
+        // stage and what the card takes. The hub, the sticky bar, the duties and the
+        // request buttons derived the stage themselves and reached a different one —
+        // "£75.00 of the deposit still to come" over a server that had moved to the
+        // balance and refused the deposit ask. Only for a booking with a price (the
+        // rate-card fallback asks the database per row); the rates are read once.
+        $npRates = [];
+        try {
+            foreach (db()->query('SELECT * FROM properties') as $r) {
+                $npRates[(string) $r['prop_key']] = $r;
+            }
+        } catch (\Throwable $e) {
+        }
         foreach ($rows as &$bk) {
             [$st] = booking_autopay_state($bk);
             $bk['autopay_state'] = $st;
+            // The same field my-bookings.php sends the guest, so one mapper serves both.
+            // Left off a finished stay with nothing to take: years of settled history
+            // would only add bytes to every boot, and the client then derives as before.
+            if (booking_has_price($bk)) {
+                try {
+                    $np = booking_next_payment($bk, $npRates[(string) $bk['prop_key']] ?? null);
+                    if ($np['charge'] > 0.005 || (string) ($bk['check_out'] ?? '') >= date('Y-m-d')) {
+                        $bk['next_payment'] = $np;
+                    }
+                } catch (\Throwable $e) {
+                }
+            }
         }
         unset($bk);
     } catch (\Throwable $e) {
@@ -1504,7 +1529,7 @@ function reply_pay_facts($b)
             ? round((float) ($b['hold_amount'] ?? ($b['agreed_booking_fee'] ?? 0)), 2) : 0.0;
         $paid = round((float) $amt['alreadyPaid'] + $depCharged, 2);
         $due = round((float) $amt['due'] + $damDue, 2);
-        $by = ($paid > 0.005 && $due > 0.005) ? (string) booking_balance_due_date($b) : '';
+        $by = ($paid > 0.005 && $due > 0.005) ? (string) booking_balance_due_shown($b) : '';
         if ($by !== '' && $by < date('Y-m-d')) {
             $by = '';
         }
@@ -1618,7 +1643,6 @@ if ($action === 'request_payment') {
         json_out(['error' => 'Square payments are not switched on yet (see config.php / Manage).'], 400);
     }
     $id = (int) ($in['id'] ?? 0);
-    $asked = ($in['kind'] ?? 'deposit') === 'balance' ? 'balance' : 'deposit';
     $isReminder = !empty($in['reminder']);
     $b = booking_by_id($id);
     if (!$b) {
@@ -1630,15 +1654,14 @@ if ($action === 'request_payment') {
     if ($isReminder && empty($b['balance_requested_at']) && empty($b['deposit_requested_at'])) {
         json_out(['error' => 'Nothing has been asked for yet — email the deposit or balance link first, then remind.'], 400);
     }
-    // THE WINDOW DECIDES, NOT THE CALLER. `kind` arrived from the client and
-    // defaulted to 'deposit', so a booking made inside the balance window was
-    // emailed "Pay your deposit — £X" for 25% when the whole amount was already
-    // due — while the banner the owner tapped read "Nothing received yet — £Y
-    // due" with the full figure. Same rule enquiry-actions.php applies on
-    // approval; the amount was always server-derived, and now the KIND is too.
-    // (booking_within_balance_window reads the per-booking due date, so a custom
-    // plan moves this upgrade with it.)
-    $kind = booking_payment_kind($b, $asked);
+    // THE PLAN DECIDES, NOT THE CALLER — and not a hint from it either. The pay
+    // link carries no stage (pay.php derives one when it is opened), so a stage the
+    // button chose made the email and the link disagree: a reminder always said
+    // 'balance' and emailed "£528.20 due" over a link that took the £188.30
+    // deposit, and a 'deposit' ask for a booking whose deposit had been paid was
+    // refused with "Nothing left to pay" while £414.90 was owed. Whatever the
+    // client sends as `kind` is ignored; the derivation is the one pay.php makes.
+    $kind = booking_payment_kind($b);
 
     // DON'T ASK THE SAME GUEST TWICE IN THE SAME BREATH. The client disables the button
     // whose handler is still running, but that does not survive a reload mid-request or a
@@ -1665,7 +1688,7 @@ if ($action === 'request_payment') {
             }
         } catch (\Throwable $e) {
         }
-        json_out(['ok' => true, 'amount' => $res['amount'], 'kind' => $kind, 'reminder' => $isReminder]);
+        json_out(['ok' => true, 'amount' => $res['amount'], 'kind' => $res['kind'] ?? $kind, 'reminder' => $isReminder]);
     }
     json_out(['error' => $res['error'] ?? 'Email failed to send'], 500);
 }
@@ -2883,7 +2906,9 @@ if ($action === 'email_render') {
                 'address' => $prop['address'],
             ]);
         } elseif ($kind === 'payment.request') {
-            request_booking_payment($b, 'balance'); // no side effects — just builds a signed link
+            // The stage the real send would take (the plan's), or the preview shows a
+            // different email from the one that goes.
+            request_booking_payment($b, null); // no side effects — just builds a signed link
         } else {
             send_booking_confirmation($id); // email.confirmation (default)
         }
