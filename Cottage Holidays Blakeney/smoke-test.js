@@ -915,6 +915,15 @@ pendingChecks.push((async () => {
     const before = fetches;
     const c = await get('https://chb.test/logo.svg');
     check('an unpinned asset still answers from the cache and refreshes behind it', c && c.body === 'cached logo' && fetches === before + 1);
+    // An upload's name is never reused, so the image bucket is cache-first too: a
+    // gallery view re-wrote every photo into the phone's storage before.
+    const f0 = fetches, p0 = puts;
+    const u1 = await get('https://chb.test/uploads/abc123.jpg');
+    const u2 = await get('https://chb.test/uploads/abc123.jpg');
+    check('an upload is fetched once, then served from the cache with no network and no rewrite', fetches === f0 + 1 && puts === p0 + 1 && u2 && u2.body === u1.body);
+    const i1 = await get('https://chb.test/img.php?f=abc123.jpg&w=800');
+    const i2 = await get('https://chb.test/img.php?f=abc123.jpg&w=800');
+    check('…and so is a resized gallery image (img.php)', fetches === f0 + 2 && puts === p0 + 2 && i2 && i2.body === i1.body);
 })().catch((e) => check('the service worker fetch check ran (' + e.message + ')', false)));
 
 // 6c-iii. Migration naming convention: NEW migrations must be

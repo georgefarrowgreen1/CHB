@@ -363,6 +363,17 @@ ick('…and counts the old rule\'s alert (fails ≥ 2) as already sent', !ical_f
 $rs = substr($imp, (int) strpos($imp, 'function ical_record_status'), 3000);
 ick('THE WIRING: the status decides through ical_feed_alert, under one lock', strpos($rs, 'ical_feed_alert(') !== false && strpos($rs, 'content_locked($key') !== false && strpos($rs, '% 7 === 0') === false);
 
+echo "\n11. a sync that changed nothing is not news\n";
+$same = [['source' => 'airbnb', 'ok' => true, 'events' => 4, 'changed' => false], ['source' => 'vrbo', 'ok' => true, 'events' => 1, 'changed' => false]];
+ick('an unchanged sync, after today\'s row: no new row', !ical_sync_worth_logging($same, true));
+ick('…but the first of the day still logs (the Status trace keeps its mark)', ical_sync_worth_logging($same, false));
+ick('a source that changed is logged whatever the hour', ical_sync_worth_logging([['source' => 'airbnb', 'ok' => true, 'changed' => true]], true));
+ick('a source that failed is logged too', ical_sync_worth_logging([['source' => 'vrbo', 'ok' => false, 'error' => 'no']], true));
+ick('the all-cottages shape (a map of lists) is read the same way', ical_sync_worth_logging(['21a' => $same, 'jollyboat' => [['source' => 'airbnb', 'ok' => true, 'changed' => true]]], true) && !ical_sync_worth_logging(['21a' => $same, 'jollyboat' => $same], true));
+ick('a cottage with no feeds (an empty list) is not news', !ical_sync_worth_logging(['21a' => []], true));
+$syncSrc = substr($imp, (int) strpos($imp, "if (\$action === 'sync')"), 1400);
+ick('THE WIRING: both device syncs ask before logging', substr_count($syncSrc, 'ical_sync_worth_logging(') === 2 && substr_count($syncSrc, "log_activity('calendar', 'ical.sync'") === 2);
+
 echo "\n== Summary ==\n";
 if ($fails) {
     echo "  $fails CHECK(S) FAILED \xE2\x9D\x8C\n\n";

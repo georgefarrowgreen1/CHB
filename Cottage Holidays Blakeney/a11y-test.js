@@ -584,7 +584,10 @@ const stub = (page) => page.route(/\.php/, (r) => {
     const VIEWS = [
         ['home', null],
         ['cottage', "openProperty('21a')"],
-        ['enquire', "(async()=>{openEnquireModal();})()"],
+        // The WAITLIST sheet: its three fields had labels with no `for`, so none of
+        // them had a name, and nothing here had ever opened it.
+        ['waitlist', "(async()=>{openWaitlistModal({prop:'21a'});await new Promise(r=>setTimeout(r,500));})()"],
+        ['enquire', "(async()=>{closeWaitlistModal();await new Promise(r=>setTimeout(r,400));openEnquireModal();})()"],
         // TWO GUEST SCENES THIS GATE HAD NEVER WALKED, and both were carrying inks
         // under AA because of it. The PAY SCREEN is where a guest hands over a card:
         // its deposit sub-line, its step digits and its narrated steps were all muted

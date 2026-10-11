@@ -4114,7 +4114,10 @@ $rootDb->exec("USE `$DB_NAME`");
 $keys57 = function (string $sql, array $args = []) use ($rootDb) {
     $st = $rootDb->prepare('EXPLAIN ' . $sql);
     $st->execute($args);
-    return implode(',', array_map(fn($r) => (string) ($r['possible_keys'] ?? ''), $st->fetchAll(PDO::FETCH_ASSOC)));
+    // possible_keys, plus the plan's Extra: a MAX() an index answers outright reads
+    // "Select tables optimized away" with no possible_keys at all (and "Using where"
+    // over a full scan without it).
+    return implode(',', array_map(fn($r) => (string) ($r['possible_keys'] ?? '') . ' ' . (string) ($r['Extra'] ?? ''), $st->fetchAll(PDO::FETCH_ASSOC)));
 };
 foreach ([
     ['a booking page\'s feed', "SELECT action, summary, actor, created_at FROM activity_log WHERE entity = 'booking' AND entity_id = ? ORDER BY id DESC LIMIT 80", ['42'], 'idx_activity_entity'],
@@ -4122,9 +4125,15 @@ foreach ([
     ['the per-hour report caps', "SELECT SUM(ip = ?) AS mine, COUNT(*) AS allr FROM activity_log WHERE action = 'csp.violation' AND created_at > (NOW() - INTERVAL 1 HOUR)", ['1.2.3.4'], 'idx_activity_action'],
     ['the per-account limits', 'SELECT COUNT(*) FROM login_attempts WHERE identifier = ? AND attempted_at > (NOW() - INTERVAL 1 DAY)', ['mailto:x'], 'idx_attempt_ident'],
     ['a guest\'s own enquiries', 'SELECT * FROM enquiries WHERE email = ?', ['g@example.org'], 'idx_enq_email'],
+    // migration-144: the Status page's two warning reads walked the whole log.
+    ['the Status page\'s last warning', "SELECT MAX(created_at) m FROM activity_log WHERE severity = 'warn'", [], ['idx_activity_severity', 'Select tables optimized away']],
+    ['the Status page\'s week of warnings', "SELECT COUNT(*) c, MAX(created_at) m FROM activity_log WHERE severity = 'warn' AND created_at >= (NOW() - INTERVAL 7 DAY)", [], 'idx_activity_severity'],
+    // Quick search's activity source is bounded by date, so it can read a range.
+    ['quick search\'s activity source', "SELECT id, summary, category, created_at FROM activity_log WHERE created_at >= (NOW() - INTERVAL 13 MONTH) AND summary LIKE ? ORDER BY created_at DESC, id DESC LIMIT 6", ['%boiler%'], 'idx_activity_created'],
 ] as [$what, $sql, $args, $want]) {
     $have = $keys57($sql, $args);
-    it_check("§57 $what can use $want", strpos($have, $want) !== false, $have);
+    $wants = (array) $want;
+    it_check("§57 $what can use {$wants[0]}", (bool) array_filter($wants, fn($w) => strpos($have, $w) !== false), $have);
 }
 
 // ── §58 the booking sheet's money (the add/edit audit) ──
@@ -5325,7 +5334,10 @@ $R77 = $poll77();
 it_check('§77 the next poll reads nothing again and posts nothing again', ($R77['ok'] ?? false) === true && ($R77['handled'] ?? -1) === 0 && [$retr77(), count($rows77())] === $before77, json_encode([$R77, $retr77(), count($rows77())]));
 it_check('§77 the poll never deletes mail', preg_match('/^DELE /m', (string) @file_get_contents($log77)) === 0);
 // The Inbox's own mailbox, over HTTP as the owner.
+$tops77 = fn() => preg_match_all('/^TOP /m', (string) @file_get_contents($log77));
+$topsBefore77 = $tops77();
 $r = http($admin, 'POST', '/mailbox.php', ['action' => 'list']);
+it_check('§77 one page of the list is one TOP per message, headers and preview together', $tops77() - $topsBefore77 === 11, (string) ($tops77() - $topsBefore77));
 $listed77 = array_map(fn($m) => (string) $m['uid'], (array) ($r['json']['messages'] ?? []));
 sort($listed77);
 it_check('§77 the Inbox lists the customer\'s mail and what the poll left as mail', $r['code'] === 200 && $listed77 === ['it77-02-guest', 'it77-03-forged', 'it77-06-customer', 'it77-09-gone', 'it77-10-half'], json_encode([$r['code'], $listed77, substr($r['raw'], 0, 160)]));
@@ -6046,6 +6058,74 @@ $rootDb->exec("DELETE FROM push_subscriptions WHERE endpoint LIKE '%/it82-%'");
 $rootDb->exec("DELETE FROM admin_devices WHERE admin_id IN ($wren82, $ivy82)");
 $rootDb->exec("DELETE FROM admin_sessions WHERE admin_id IN ($wren82, $ivy82)");
 $rootDb->exec("DELETE FROM admins WHERE id IN ($wren82, $ivy82)");
+
+// ── §83 what every visitor's tick and every Today visit cost (round 8, performance) ──
+// availability.php?all=1 runs on each visible tab's 30-second tick: it made a pair of
+// statements per cottage and its body carried the server's time, so it changed every
+// second and could never answer 304. Today downloaded every chat thread ever, to count
+// how many needed a reply.
+echo "\n== §83 the tick and the count ==\n";
+$rootDb->exec("USE `$DB_NAME`");
+$availGet = function (array $extra = []) {
+    global $BASE;
+    $http_response_header = [];
+    $raw = @file_get_contents($BASE . '/availability.php?all=1', false, stream_context_create(['http' => ['method' => 'GET', 'header' => implode("\r\n", array_merge(['Accept: application/json'], $extra)), 'timeout' => 30, 'ignore_errors' => true]]));
+    $code = 0;
+    $hdr = [];
+    foreach ($http_response_header as $h) {
+        if (preg_match('#^HTTP/\S+ (\d+)#', $h, $m)) {
+            $code = (int) $m[1];
+        } elseif (strpos($h, ':') !== false) {
+            [$k, $v] = explode(':', $h, 2);
+            $hdr[strtolower(trim($k))] = trim($v);
+        }
+    }
+    return ['code' => $code, 'raw' => (string) $raw, 'hdr' => $hdr];
+};
+$q0 = $globalQueries();
+$a83 = $availGet();
+$used83 = $globalQueries() - $q0 - 1;
+$j83 = json_decode($a83['raw'], true);
+$live83 = $rootDb->query('SELECT prop_key FROM properties WHERE archived_at IS NULL AND unlisted = 0')->fetchAll(PDO::FETCH_COLUMN);
+it_check('§83 every live cottage is in the answer', is_array($j83['props'] ?? null) && count(array_intersect(array_keys($j83['props']), $live83)) === count($live83), substr($a83['raw'], 0, 160));
+it_check("§83 …from two grouped reads, not a pair per cottage (used $used83 for " . count($live83) . ' cottages)', $used83 > 0 && $used83 <= 5, (string) $used83);
+it_check('§83 the body carries no server time (a re-served copy would skew the clock)', is_array($j83) && !array_key_exists('srv', $j83), substr($a83['raw'], 0, 120));
+$etag83 = $a83['hdr']['etag'] ?? '';
+it_check('§83 a visitor gets an ETag and revalidates', $etag83 !== '' && stripos($a83['hdr']['cache-control'] ?? '', 'no-cache') !== false, json_encode($a83['hdr']));
+$b83 = $availGet(['If-None-Match: ' . $etag83]);
+it_check('§83 …and nothing changed answers 304', $b83['code'] === 304 && $b83['raw'] === '', (string) $b83['code']);
+$g83 = $availGet(['If-None-Match: ' . substr($etag83, 0, -1) . '-gzip"']);
+it_check('§83 …also behind Apache\'s deflate ("-gzip")', $g83['code'] === 304, (string) $g83['code']);
+// The count Today reads, against the same rule the list applies on the phone. §80
+// changed the owner's password and signed every older session out, so sign in again.
+$adm83 = [];
+$r = http($adm83, 'POST', '/auth.php', ['action' => 'admin_login', 'username' => 'owner', 'password' => 'it-pass-80-reset']);
+it_check('§83 the owner signs in again (§80 ended the old session)', $r['code'] === 200 && !empty($r['json']['ok']), $r['raw']);
+// One conversation of each shape: the guest spoke last (read), an unread guest
+// message the owner has since answered, answered and read, archived, and empty.
+$th83 = $rootDb->prepare('INSERT INTO chat_threads (guest_id, token, name, email, archived) VALUES (NULL, ?, ?, ?, ?)');
+$msg83 = $rootDb->prepare('INSERT INTO messages (guest_id, thread_id, sender_role, body, read_by_admin) VALUES (NULL, ?, ?, ?, ?)');
+$mk83 = function (string $name, int $archived, array $msgs) use ($rootDb, $th83, $msg83) {
+    $th83->execute(['it83-' . bin2hex(random_bytes(6)), $name, strtolower(str_replace(' ', '', $name)) . '@example.com', $archived]);
+    $tid = (int) $rootDb->lastInsertId();
+    foreach ($msgs as [$role, $read]) {
+        $msg83->execute([$tid, $role, $name . ' ' . $role, $read]);
+    }
+    return $tid;
+};
+$mk83('Last Guest', 0, [['admin', 1], ['guest', 1]]);
+$mk83('Unread Then Answered', 0, [['guest', 0], ['admin', 1]]);
+$mk83('All Answered', 0, [['guest', 1], ['admin', 1]]);
+$mk83('Archived Guest', 1, [['guest', 0]]);
+$mk83('Empty Thread', 0, []);
+$r = http($adm83, 'POST', '/messages.php', ['action' => 'threads']);
+$list83 = $r['json']['threads'] ?? [];
+$want83 = count(array_filter($list83, fn($t) => empty($t['archived']) && (($t['last_role'] ?? '') === 'guest' || (int) ($t['unread'] ?? 0) > 0)));
+it_check('§83 the list itself was read (and holds the two that need a reply)', is_array($r['json']['threads'] ?? null) && $want83 >= 2, substr($r['raw'], 0, 160));
+$r = http($adm83, 'POST', '/messages.php', ['action' => 'needs_reply_count']);
+it_check("§83 the server's count of chats needing a reply equals the list's own rule ($want83)", $r['code'] === 200 && ($r['json']['count'] ?? -1) === $want83, $r['raw']);
+$r = http($guest, 'POST', '/messages.php', ['action' => 'needs_reply_count']);
+it_check('§83 …and a guest is not told it', ($r['json']['count'] ?? null) === null, $r['raw']);
 
 echo "\n== Summary ==\n";
 if ($fail) {

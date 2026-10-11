@@ -57,7 +57,7 @@ if ($action === 'submit') {
     $g->execute([$guestId]);
     $guest = $g->fetch();
     if (!$guest) {
-        json_out(['error' => 'Please log in first'], 401);
+        json_out(['error' => 'Please sign in first'], 401);
     }
     // The stay must have at least STARTED — a future-only (or later-moved)
     // booking shouldn't unlock the public photo wall yet. In-stay sharing is

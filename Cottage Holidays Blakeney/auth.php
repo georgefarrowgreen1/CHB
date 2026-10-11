@@ -1347,18 +1347,21 @@ switch ($action) {
         if (empty($_SESSION['guest_id'])) {
             json_out(['guest' => null]);
         }
-        $stmt = db()->prepare('SELECT name, email, phone, address, postcode FROM guests WHERE id = ?');
+        $stmt = db()->prepare("SELECT name, email, phone, address, postcode, password_hash <> '' AS has_password FROM guests WHERE id = ?");
         $stmt->execute([$_SESSION['guest_id']]);
         $gRow = $stmt->fetch() ?: null;
         if ($gRow) {
             $gRow['avatar'] = guest_avatar_v((int) $_SESSION['guest_id']);
+            // Whether there is a password at all: an account made with an emailed
+            // code has none, so its security page offers to SET one, not change it.
+            $gRow['has_password'] = !empty($gRow['has_password']);
         }
         json_out(['guest' => $gRow]);
 
     // Logged-in guest updates their own contact details (NOT their email).
     case 'guest_update_profile':
         if (empty($_SESSION['guest_id'])) {
-            json_out(['error' => 'Please log in first'], 401);
+            json_out(['error' => 'Please sign in first'], 401);
         }
         $phone = clean($in['phone'] ?? '');
         $address = clean($in['address'] ?? '');
@@ -1417,7 +1420,7 @@ switch ($action) {
     // Logged-in guest changes their own password (must give the current one).
     case 'guest_change_password':
         if (empty($_SESSION['guest_id'])) {
-            json_out(['error' => 'Please log in first'], 401);
+            json_out(['error' => 'Please sign in first'], 401);
         }
         $current = field_text($in['current'] ?? '');
         $next = field_text($in['next'] ?? '');
@@ -1460,7 +1463,7 @@ switch ($action) {
     // GDPR: a logged-in guest downloads everything we hold about them (JSON).
     case 'guest_export_data':
         if (empty($_SESSION['guest_id'])) {
-            json_out(['error' => 'Please log in first'], 401);
+            json_out(['error' => 'Please sign in first'], 401);
         }
         $gid = (int) $_SESSION['guest_id'];
         $acc = db()->prepare('SELECT id, name, email, phone, address, postcode, created_at FROM guests WHERE id = ?');
@@ -1563,7 +1566,7 @@ switch ($action) {
     // push, etc.) is purged. Public photos are kept but de-identified.
     case 'guest_delete_account':
         if (empty($_SESSION['guest_id'])) {
-            json_out(['error' => 'Please log in first'], 401);
+            json_out(['error' => 'Please sign in first'], 401);
         }
         $gid = (int) $_SESSION['guest_id'];
         $r = db()->prepare('SELECT email FROM guests WHERE id = ?');

@@ -27,27 +27,56 @@ if (isset($_GET['all'])) {
     } catch (\Throwable $e) {
         $keys = ['21a', 'jollyboat', 'pimpernel'];
     } // pre-migration fallback
-    $out = [];
-    foreach ($keys as $k) {
-        $rs = [];
-        $s = db()->prepare('SELECT check_in, check_out FROM bookings WHERE prop_key = ? AND check_out >= CURDATE()');
-        $s->execute([$k]);
+    // TWO grouped reads for every cottage (it was a pair per cottage, 2N+1 statements
+    // on every visitor's 30-second tick). Each cottage keeps its bookings first,
+    // then its platform blocks, as before.
+    $out = array_fill_keys($keys, []);
+    if ($keys) {
+        $in = implode(',', array_fill(0, count($keys), '?'));
+        $blocks = [];
+        $s = db()->prepare("SELECT prop_key, check_in, check_out FROM bookings WHERE prop_key IN ($in) AND check_out >= CURDATE() ORDER BY prop_key, check_in, check_out");
+        $s->execute(array_values($keys));
         foreach ($s->fetchAll() as $r) {
-            $rs[] = ['start' => $r['check_in'], 'end' => $r['check_out']];
+            $out[$r['prop_key']][] = ['start' => $r['check_in'], 'end' => $r['check_out']];
         }
         try {
-            $s = db()->prepare(
-                'SELECT check_in, check_out FROM ical_blocks WHERE prop_key = ? AND check_out >= CURDATE()',
-            );
-            $s->execute([$k]);
+            $s = db()->prepare("SELECT prop_key, check_in, check_out FROM ical_blocks WHERE prop_key IN ($in) AND check_out >= CURDATE() ORDER BY prop_key, check_in, check_out");
+            $s->execute(array_values($keys));
             foreach ($s->fetchAll() as $r) {
-                $rs[] = ['start' => $r['check_in'], 'end' => $r['check_out']];
+                $blocks[$r['prop_key']][] = ['start' => $r['check_in'], 'end' => $r['check_out']];
             }
         } catch (\Throwable $e) {
         }
-        $out[$k] = $rs;
+        foreach ($blocks as $k => $rs) {
+            $out[$k] = array_merge($out[$k] ?? [], $rs);
+        }
     }
-    json_out(['props' => $out]);
+    $payload = ['props' => (object) $out];
+    // An owner's copy (private cottages included) is never stored.
+    if (!empty($_SESSION['admin_id'])) {
+        json_out($payload);
+    }
+    // A visitor's copy answers 304 when nothing changed — bootstrap.php's rule. No
+    // `srv` in the body: a copy the browser re-serves after a 304 would carry an
+    // old server time, and the clock sync would read it as the server's clock.
+    require_once __DIR__ . '/shell-etag.php';
+    $body = json_encode($payload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+    if ($body === false) {
+        json_out(['error' => 'Response encoding error'], 500);
+    }
+    $etag = '"' . md5($body) . '"';
+    header('Content-Type: application/json; charset=utf-8');
+    header_remove('Pragma');
+    header_remove('Expires');
+    header('Cache-Control: no-cache, private');
+    header('ETag: ' . $etag);
+    header('Vary: Accept-Encoding');
+    if (shell_etag_matches((string) ($_SERVER['HTTP_IF_NONE_MATCH'] ?? ''), $etag)) {
+        http_response_code(304);
+        exit();
+    }
+    echo $body;
+    exit();
 }
 
 $prop = isset($_GET['prop']) ? preg_replace('/[^a-z0-9_]/i', '', (string) $_GET['prop']) : '';

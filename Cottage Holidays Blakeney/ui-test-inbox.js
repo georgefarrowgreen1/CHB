@@ -127,6 +127,10 @@ const SHOTS = process.env.IB_SHOTS || '';
     ok(tags.includes('Reply now') && tags.includes('Decide'), `tags: ${[...new Set(tags)].join(', ')}`);
     const noFolders = await page.evaluate(() => !document.getElementById('inbox-folders') && !document.getElementById('inbox-landing') && document.getElementById('inbox-legacy').hidden);
     ok(noFolders, 'no folders: the old lists are hidden, the landing gone');
+    // The hidden list keeps its store (the rows above came from it) but draws
+    // nothing: every thread ever, into a container nobody sees, cost up to 2s.
+    const legacy = await page.evaluate(() => ({ rows: document.querySelectorAll('#inbox-legacy .msg-thread-row').length, store: (typeof __msgThreads !== 'undefined' ? __msgThreads : []).length }));
+    ok(legacy.rows === 0 && legacy.store > 0, `the hidden thread list draws no rows (${legacy.rows}) while its store holds ${legacy.store}`);
 
     console.log('2. a conversation on a phone');
     await page.click('#ib-rows .ib-rowwrap[data-key="e:sofia@example.fr"] .ib-row');

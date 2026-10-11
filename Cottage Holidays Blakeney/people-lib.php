@@ -359,7 +359,7 @@ const PEOPLE_POLICY = [
         'send' => 'gu.reply', 'delete' => 'gu.reply', 'delete_sent' => 'gu.reply',
     ],
     'messages.php' => [
-        '' => 'all', 'threads' => 'all', 'thread' => 'all', 'unread' => 'all', 'mark_all_read' => 'all', 'archive' => 'all', 'unarchive' => 'all',
+        '' => 'all', 'threads' => 'all', 'needs_reply_count' => 'all', 'thread' => 'all', 'unread' => 'all', 'mark_all_read' => 'all', 'archive' => 'all', 'unarchive' => 'all',
         'typing' => 'gu.reply', 'send' => 'gu.reply', 'delete' => 'gu.reply', 'send_arrival' => 'gu.reply',
         'send_balance' => 'mo.ask',
         // Who answers the guest chat: anyone may look; your own name and line are

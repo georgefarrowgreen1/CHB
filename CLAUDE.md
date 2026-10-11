@@ -10640,7 +10640,7 @@ permission given). Seven read-only audit lenses ran beside a full local gauntlet
 - **The guest audit's three high findings**:
   - **The sign-in sheet was 2px wider than itself on every phone**: the close (×) button's hit region (`::before`,
     3px out) sat flush with the box's right edge, so the box scrolled sideways and cut off the first letter of every
-    line. The guest shell's `.auth-close-row` carries `padding-right: 3px` (ui-test-signin §1 measures scrollWidth
+    line. The guest shell's `.auth-close-row` carries `padding-right: 4px` (ui-test-signin §1 measures scrollWidth
     against clientWidth).
   - **The invoice's Pay button took the cottage colour** with dark ink on it: 2.10:1 on Pimpernel's purple, 4.00:1
     on Jollyboat's green, while test-invoice only ever tried three soft fixture colours. It is the emails' house pair
@@ -10651,6 +10651,54 @@ permission given). Seven read-only audit lenses ran beside a full local gauntlet
     Back's list. `closeTopOverlay` answers the picker and a confirm first (a confirm as backed out, `null`, Escape's
     answer, never OK), and the photo lightbox pushes its own entry, is a `role="dialog"` and hands focus back to the
     photo (ui-test-guest-modals §4–§5).
+- **The guest audit's medium findings** (gated by **`ui-test-guestpolish.js`**, each fix break-tested on its own):
+  - **Words that were not true.** An empty price box said "Refundable deposit £0.00" for a cottage that takes none;
+    the estimate's caveat said "we will contact you to give an accurate price" under a price the home page promises
+    is the price you pay (it now says it is today's price, confirmed when we reply, nothing taken until you pay);
+    step 2 said "nothing more" above a required address; the privacy notice pointed at a Call button that only shows
+    with a configured number; "we'll send your arrival info (directions & key)" promised a key the email never
+    carries (the owner's twin said "key code" too); the host card showed a made-up "56 reviews · 4.95 ★" until the
+    script ran; three places quoted a reply time the owner's own `chat-reply-time` setting contradicted
+    (`chatReplyWhen()` is the one reader now); and a waitlist with no dates talked about "these dates".
+  - **One rating, one precision**: 4.67 on the stat row and the enquiry summary, 4.7 on the reviews heading, 96% on
+    the host card. All read one decimal on the stars' scale now.
+  - **Said as well as shown**: the waitlist's three fields have labels (a11y-test opens that sheet now); the guest
+    dock's lit button and the header link for the page on screen carry `aria-current="page"` (`chbNavCurrent`, a
+    cottage page belongs to Cottages), and on a computer the header's pill RESTS on the current page instead of
+    showing only under the pointer; the You pages move focus to their own heading (`gaGo`, the enquiry steps' rule);
+    the account button's `aria-label` follows sign-in.
+  - **An account made with an emailed code has no password**: `guest_status` sends `has_password`, and the security
+    page offers "Set a password" (no current-password box, no reset link for a password that does not exist).
+  - **The house vocabulary**: a stay's capsule is the You page's (sans, on its own tint, Past visible on the light
+    card); "Guest reviews" is a section `h2` like its siblings; the cottage calendar's month row spreads like the
+    picker's (`.avail-cal-head` had no rule at all); the desktop Enquire button is the accent; the chat's first quick
+    reply clears the edge (`scroll-padding-inline`); "Your list 0" is gone; the delete confirm has a title like Sign
+    out's; the pending card says its state once, in sentence case.
+- **What every visitor's tick and every Today visit cost** (the round-8 performance audit, measured on a five-year
+  seeded business; each change counted, not timed):
+  - **`availability.php?all=1`** runs on every visitor's 30-second tick and read two queries per cottage; it is two
+    grouped reads now, and the anonymous answer carries a strong ETag, `no-cache, private` and a 304 through
+    `shell_etag_matches` (the `-gzip` form included). **That copy carries no `srv`**: a 304 re-serves the stored body,
+    and `chbClockSync` reads `srv` from every answer, so a cached one would set the clock skew from a stale time. The
+    owner's copy stays `no-store` (test-integration §83).
+  - **Today counted chats by downloading every thread ever** (62KB gz a visit): `messages.php needs_reply_count` is
+    one COUNT with the list's own rule (`msgNeedsReply`), and an older server's refusal falls back to the list (§83
+    holds the two equal). And the Inbox stopped rebuilding the hidden legacy thread list on every load
+    (`renderMessagesList` returns inside a `[hidden]` host; the stores, badges and search still fill — ui-test-inbox).
+  - **A device's calendar sync wrote an activity row every run**, so 77% of the log was `ical.sync` and the Activity
+    page reached back twelve days. `ical_sync_worth_logging` (ical-lib, test-ical §11) logs a failure or a change
+    always and an unchanged sync once a day.
+  - **migration-144** `activity_log (severity, created_at)` for the Status page's warning reads; search's quick
+    activity source reads the last 13 months on `idx_activity_created` (deep search keeps everything; both plans in
+    §57).
+  - **The mailbox list is one `TOP n 40` per message** (headers and preview from one answer; it was two round trips
+    each — §77 counts them).
+  - **An uploaded image is served from the cache first** (sw.js): upload names never change content, and the
+    revalidating branch rewrote 100–160KB per image into the phone's storage on every view (smoke-test §6c-iv).
+  - **Not done, said plainly**: the owner's booking history still re-sends whole on every refresh (a per-part hash
+    would fix it); the email logs reload in full after each send and stop at 3,000 rows; every approved review rides
+    the visitor's boot payload; Today's render still forces layout (calendar rebuild, the now-line's measurements);
+    a chat poll returns the whole thread; and Manage still loads every thread for the Inbox's stores.
 - **ONE STAGE FOR EVERY PAYMENT ASK: THE SERVER'S** (the money audit's findings 1–5). The pay link carries no stage
   (pay.php derives one on open), and every back-office ask chose its own: the hub counted the refundable deposit into
   the first payment, a reminder always said `'balance'`, Payments' "Ask to pay" went by whether anything was paid, and

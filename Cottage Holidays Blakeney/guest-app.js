@@ -210,7 +210,11 @@
     // none when key is null, then animate the indicator(s).
     function applyCurrent(key) {
         document.querySelectorAll('.guest-dock-btn').forEach(function (b) {
-            b.classList.toggle('current', !!key && b.dataset.tab === key);
+            var on = !!key && b.dataset.tab === key;
+            b.classList.toggle('current', on);
+            // Said, not only shown: the lit button is the page you are on.
+            if (on) b.setAttribute('aria-current', 'page');
+            else b.removeAttribute('aria-current');
         });
         // In the header the dock's own Home button is hidden (the crown logo beside
         // it already goes Home), which would otherwise leave the Home page with NO

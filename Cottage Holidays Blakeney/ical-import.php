@@ -364,6 +364,17 @@ function ical_record_status($prop, $summary)
     }
 }
 
+// Whether today already has a calendar-sync row (any kind). Unknown reads as no,
+// so a log that cannot be read still gets its row rather than losing the day.
+function ical_sync_logged_today(): bool
+{
+    try {
+        return (bool) db()->query("SELECT 1 FROM activity_log WHERE action = 'ical.sync' AND created_at >= CURDATE() LIMIT 1")->fetchColumn();
+    } catch (\Throwable $e) {
+        return false;
+    }
+}
+
 // ---- cron entry (no login; protected by secret) ----
 if (isset($_GET['cron'])) {
     header('Content-Type: text/plain; charset=utf-8');
@@ -445,7 +456,9 @@ if ($action === 'sync') {
     $prop = preg_replace('/[^a-z0-9_]/i', '', $in['prop'] ?? '');
     if ($prop !== '') {
         $result = sync_property($prop);
-        log_activity('calendar', 'ical.sync', 'External calendar refreshed', ['prop_key' => $prop, 'entity' => 'ical']);
+        if (ical_sync_worth_logging($result, ical_sync_logged_today())) {
+            log_activity('calendar', 'ical.sync', 'External calendar refreshed', ['prop_key' => $prop, 'entity' => 'ical']);
+        }
         json_out(['ok' => true, 'result' => $result]);
     }
     $props = db()->query('SELECT prop_key FROM properties WHERE archived_at IS NULL')->fetchAll(PDO::FETCH_COLUMN);
@@ -453,7 +466,9 @@ if ($action === 'sync') {
     foreach ($props as $p) {
         $all[$p] = sync_property($p);
     }
-    log_activity('calendar', 'ical.sync', 'External calendars refreshed (' . count($props) . ' cottages)', ['entity' => 'ical']);
+    if (ical_sync_worth_logging($all, ical_sync_logged_today())) {
+        log_activity('calendar', 'ical.sync', 'External calendars refreshed (' . count($props) . ' cottages)', ['entity' => 'ical']);
+    }
     json_out(['ok' => true, 'result' => $all]);
 }
 

@@ -935,7 +935,8 @@ nav ul li a:not(.btn-glass) {
 nav a:hover {
   color: var(--text-light);
 }
-/* Hover-following glass pill behind the nav tabs (positioned by initNavIndicator). */
+/* The glass pill behind the nav tabs: rests on the current page, follows the
+   pointer (positioned by initNavIndicator). */
 .nav-indicator {
   position: absolute;
   top: 50%;
@@ -950,8 +951,8 @@ nav a:hover {
   pointer-events: none;
   z-index: 0;
   transition:
-    left 0.45s var(--spring),
-    width 0.45s var(--spring),
+    left 0.45s var(--sheet),
+    width 0.45s var(--sheet),
     opacity 0.3s var(--fluid-bezier);
 }
 .nav-indicator.show {
@@ -6292,6 +6293,9 @@ body.light-mode .tag-pimpernel {
   -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 28px), transparent);
   mask-image: linear-gradient(to right, #000 calc(100% - 28px), transparent);
   scroll-snap-type: x proximity;
+  /* Snapping lines a chip up with the padding edge, not the border edge: without
+     this the row rests scrolled by its own 14px and the first chip touches the edge. */
+  scroll-padding-inline: 14px;
 }
 .chat-chip {
   scroll-snap-align: start;
@@ -7211,6 +7215,15 @@ body.owner-mode .chat-widget {
 .avail-nav:active {
   transform: scale(var(--sc, 0.97));
   transition: transform 80ms var(--in), filter 80ms var(--in);}
+/* The month row is the date picker's (.dp-head): arrows at the edges, the month
+   between. It had no rule, so all three bunched at the left. */
+.avail-cal-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 8px;
+}
 .avail-cal-grid {
   display: grid;
   grid-template-columns: repeat(7, 1fr);
@@ -9974,12 +9987,27 @@ body.light-mode .feed-dot-bad {
 .guest-detail-grid .booking-detail-label {
   font-size: var(--fs-micro);
 }
+/* A stay's state is the You page's capsule (.ga-pill): sans (inside the serif
+   heading it inherited Playfair), a tint of its own ink, and Past readable on the
+   light card, where a 6% white fill painted nothing. */
 .guest-status-badge {
   display: inline-block;
+  vertical-align: middle;
+  font-family: var(--font-sans);
   font-size: var(--fs-caption);
-  padding: 4px 12px;
-  border-radius: 20px;
+  padding: 4px 8px;
+  border-radius: var(--r-pill);
   font-weight: 600;
+  color: var(--text-muted);
+  background: color-mix(in srgb, var(--text-muted) 12%, transparent);
+}
+.guest-status-badge.is-warn {
+  color: var(--warn-text);
+  background: color-mix(in srgb, var(--warn) 14%, transparent);
+}
+.guest-status-badge.is-ok {
+  color: var(--ok-text);
+  background: color-mix(in srgb, var(--ok) 14%, transparent);
 }
 .guest-price-box {
   background: var(--well-bg);

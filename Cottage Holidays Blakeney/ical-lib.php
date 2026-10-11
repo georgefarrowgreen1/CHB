@@ -523,3 +523,30 @@ function ical_block_sig(array $rows)
     sort($out, SORT_STRING);
     return $out;
 }
+
+/**
+ * Whether a sync a DEVICE asked for earns a row in the activity log. Every open
+ * back office syncs every few minutes, and a row per sync was 77% of a five-year
+ * log: it pushed real events out of the Activity page's window and every scan of
+ * the log paid for them. A sync that changed or failed something is news; one
+ * that changed nothing is logged once a day, so the Status page's seven-day trace
+ * keeps its mark. `$results` is one cottage's source list, or a map of them.
+ */
+function ical_sync_worth_logging(array $results, bool $loggedToday): bool
+{
+    $news = function ($x) use (&$news): bool {
+        if (!is_array($x)) {
+            return false;
+        }
+        if (array_key_exists('source', $x)) {
+            return empty($x['ok']) || !empty($x['changed']);
+        }
+        foreach ($x as $y) {
+            if ($news($y)) {
+                return true;
+            }
+        }
+        return false;
+    };
+    return $news($results) || !$loggedToday;
+}
