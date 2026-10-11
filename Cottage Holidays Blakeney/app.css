@@ -4801,22 +4801,25 @@ body.light-mode #view-pay {
   min-height: 56px;
   padding: 4px 0;
 }
-/* Apple Pay and Google Pay side by side, the demo's pair; one alone takes the
-   row (auto-fit drops the empty track). */
+/* Apple Pay and Google Pay side by side at ONE size; one alone takes the row
+   (auto-fit drops the empty track). Google's fill-mode button takes `height:
+   inherit` from its box, so the box needs a real height: a min-height left it at
+   Google's own 40px beside Apple's 48. */
 .sq-wallets {
+  --wallet-h: 48px;
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(132px, 1fr));
   gap: 12px;
 }
 .sq-wallets > div {
-  min-height: 48px;
+  height: var(--wallet-h);
 }
 .sq-apple-btn {
   -webkit-appearance: -apple-pay-button;
   appearance: -apple-pay-button;
   -apple-pay-button-type: plain;
   -apple-pay-button-style: white;
-  height: 48px;
+  height: var(--wallet-h);
   width: 100%;
   border-radius: var(--r-sm);
   cursor: pointer;

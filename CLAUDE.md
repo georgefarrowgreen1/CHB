@@ -4407,6 +4407,11 @@ and the pay block in app.js (`payFig`, `payRender`, `payStoryHtml`, `paySegHtml`
   superseded destroys its form. **No suite saw it: ui-test-pay's Square stub REPLACES `#sq-card` on attach, where the
   real SDK APPENDS an iframe.** Shipped without tests at the owner's ask; the stub still replaces, so nothing gates a
   recurrence yet.
+- **APPLE PAY AND GOOGLE PAY ARE ONE SIZE** (`--wallet-h`, 48px; reported from a phone: Google at 40px with 4px
+  corners and a grey outline beside Apple's 48px and 12px). Google's fill-mode button takes `height: inherit` from
+  `#sq-gpay`, so its box needs a real `height`; a `min-height` leaves Google at its own 40px. Square passes
+  `buttonRadius` (read off `--r-sm`) and `buttonBorderType: 'no_border'` through to Google's `createButton`.
+  Measured with Google's real `pay.js` in Chromium, old CSS and new, both themes; the suites stub both buttons.
 - Sticky Pay bar on the phone (`.pp-bar`, a 14px gutter at ≤480 so it cannot overflow), two columns from 900px, and
   calm screens for armed (nothing to pay today: no card box, no bar), repair (Update card), hold, loading, expired and
   settled. The receipt says what is next and which card paid.
