@@ -370,6 +370,12 @@ function upload_delete($rel): bool
     if (!preg_match('#^uploads/(pending/)?([A-Za-z0-9._-]+\.(?:jpe?g|png|gif|webp))$#i', trim((string) $rel), $m)) {
         return false;
     }
+    // Only what a GUEST sent is deleted with their records: a chat photo, a wall
+    // photo, a suggestion's picture. The owner's own uploads (galleries, the hero,
+    // the host photo) are never reachable from here, whatever path reaches it.
+    if (!preg_match('/^(chat|guest|experience)-/', $m[2])) {
+        return false;
+    }
     $p = __DIR__ . '/uploads/' . $m[1] . $m[2];
     $gone = false;
     foreach ([$p, $p . '.webp'] as $f) {

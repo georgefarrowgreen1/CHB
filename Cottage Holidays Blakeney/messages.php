@@ -93,11 +93,15 @@ function chat_valid_attachment($v)
     // A photo uploaded for this message has waited, private, in the staging folder:
     // sending it is what makes it public. A retry of a send that published it but
     // lost its answer finds it already published.
-    if (preg_match('#^uploads/pending/([A-Za-z0-9._-]+\.(?:jpe?g|png|gif|webp))$#i', $v, $pm)) {
+    // ONLY A CHAT PHOTO (chat-upload.php names every one chat-…). Any other file in
+    // uploads/ (a cottage's gallery, the hero, a wall photo: their paths are public)
+    // named here would ride the message, and deleting the conversation or the
+    // account deletes a message's photo, so it would vanish from the site.
+    if (preg_match('#^uploads/pending/(chat-[A-Za-z0-9._-]+\.(?:jpe?g|png|gif|webp))$#i', $v, $pm)) {
         $pub = upload_publish($v);
         return $pub !== '' ? $pub : (is_file(__DIR__ . '/uploads/' . $pm[1]) ? 'uploads/' . $pm[1] : '');
     }
-    if (!preg_match('#^uploads/[A-Za-z0-9._-]+\.(jpe?g|png|gif|webp)$#i', $v)) {
+    if (!preg_match('#^uploads/chat-[A-Za-z0-9._-]+\.(jpe?g|png|gif|webp)$#i', $v)) {
         return '';
     }
     return is_file(__DIR__ . '/' . $v) ? $v : '';

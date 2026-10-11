@@ -5756,6 +5756,14 @@ async function guestLogout() {
         localStorage.removeItem('chb-chat-token');
         localStorage.removeItem(ENQ_DRAFT_KEY);
     } catch (e) {}
+    // …and the photos they were shown, their chat's among them, leave the service
+    // worker's image cache (sw.js IMG_CACHE, matched by its prefix so a version bump
+    // there cannot leave this behind).
+    try {
+        if (window.caches) {
+            caches.keys().then((ks) => ks.filter((k) => /^chb-img/.test(k)).forEach((k) => caches.delete(k))).catch(() => {});
+        }
+    } catch (e) {}
     guestBookingsCache = [];
     myGuestReviews = {};
     __wbStays = null;

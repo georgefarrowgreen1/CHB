@@ -5062,9 +5062,16 @@ $exPubId75 = (int) $rootDb->lastInsertId();
 $rootDb->prepare("INSERT INTO content (item_key, item_value) VALUES (?, ?) ON DUPLICATE KEY UPDATE item_value = VALUES(item_value)")->execute(['guest-ping-' . $gid75, json_encode(['title' => 'IT75-PING', 'body' => 'Your balance is due', 'at' => time()])]);
 clearstatcache();
 it_check('§75 (fixture) a sent chat photo, a photo waiting, one approved, two suggestions', $gFile75 !== '' && is_file($work . '/' . $gFile75) && is_file($work . '/' . $pend75), $gFile75 . ' ' . $gStaged75);
+// A SITE PHOTO IS NOT A CHAT ATTACHMENT. Naming a cottage's gallery image (its path is
+// in the public content feed) as one put it on the guest's message, and deleting the
+// account then deleted it from the cottage page, resized copies and all.
+$site75 = $mk75('gallery');
+$r = http($gj75, 'POST', '/messages.php', ['action' => 'send', 'body' => 'Not mine to send', 'attachment' => $site75]);
+it_check('§75 a site photo named as a chat attachment is not attached', (int) $rootDb->query('SELECT COUNT(*) FROM messages WHERE attachment = ' . $rootDb->quote($site75))->fetchColumn() === 0, $r['raw']);
 $r = http($gj75, 'POST', '/auth.php', ['action' => 'guest_delete_account']);
 clearstatcache();
 it_check('§75 deleting the account deletes its chat photos', $r['code'] === 200 && !is_file($work . '/' . $gFile75), $r['raw']);
+it_check('§75 …and leaves a site photo where it is', is_file($work . '/' . $site75), $site75);
 it_check('§75 …and a photo never shown, row and file, while an approved one stays on the wall without a name',
     !is_file($work . '/' . $pend75) && (int) $rootDb->query('SELECT COUNT(*) FROM guest_photos WHERE url = ' . $rootDb->quote($pend75))->fetchColumn() === 0
     && is_file($work . '/' . $appr75) && $rootDb->query('SELECT guest_name FROM guest_photos WHERE url = ' . $rootDb->quote($appr75))->fetchColumn() === 'Former guest', '');
