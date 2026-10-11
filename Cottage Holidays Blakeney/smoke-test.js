@@ -2525,6 +2525,30 @@ console.log('\n§13 The activity log declares its own cap');
     );
 }
 
+// ============================================================
+//  §14 — A FRONT-END CHANGE RUNS THE BROWSER TESTS.
+//  ci.yml skips the browser and layout jobs when a PR touches no front-end file,
+//  judged by a hand-written pattern. admin-views.html (all of the back office's
+//  markup), sw.js and manifest.json were never in it, so a PR changing only those
+//  went green with no browser suite run. The files are DERIVED here: the code in
+//  sw.js's own precache list, the owner bundle beside it, and the test harness.
+// ============================================================
+console.log('\n§14 A front-end change runs the browser tests');
+{
+    const ci = fs.readFileSync(path.join(__dirname, '..', '.github', 'workflows', 'ci.yml'), 'utf8');
+    const pats = [...ci.matchAll(/grep -qE '([^']+)'/g)].map((m) => m[1]);
+    check('ci.yml decides both browser jobs with one pattern (vacuity guard)', pats.length >= 2 && pats.every((p) => p === pats[0]), `${pats.length} found`);
+    const runs = new RegExp(pats[0] || '(?!)');
+    const swSrc = fs.readFileSync(path.join(__dirname, 'sw.js'), 'utf8');
+    const core = (((swSrc.match(/const CORE\s*=\s*\[([\s\S]*?)\]/) || [])[1] || '').match(/'([^']+)'/g) || [])
+        .map((s) => s.slice(1, -1).replace(/\?.*$/, ''))
+        .filter((f) => /\.(html|js|css)$/.test(f) || f === 'manifest.json');
+    const harness = fs.readdirSync(__dirname).filter((f) => /^(ui-tests?|ui-test-.+|layout-test|e2e-test|a11y-test)\.js$/.test(f));
+    const files = [...new Set([...core, 'sw.js', 'admin.js', 'admin.css', 'admin-views.html', ...harness])];
+    const missed = files.filter((f) => !runs.test('Cottage Holidays Blakeney/' + f));
+    check(`every front-end file triggers the browser jobs (${files.length} files)`, core.length >= 5 && harness.length >= 20 && missed.length === 0, missed.join(', '));
+}
+
 Promise.all(pendingChecks).then(() => {
     console.log('\n== Summary ==');
     if (failures === 0) { console.log('  ALL CHECKS PASSED ✅\n'); process.exit(0); }

@@ -21846,7 +21846,7 @@ const CHB_SK_CARD = '<div class="card glass-panel sk-card"><div class="skeleton 
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'r8night7';
+    const BUILD = 'r8night8';
     /** @type {any} */ (window).__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;

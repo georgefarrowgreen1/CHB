@@ -9131,6 +9131,11 @@ deleting — both now FIXED, and they are worth keeping here as the pattern to e
   overflow, no content cut off, key content rendered — on the public views at
   390/768/1280 AND the six back-office screens at phone width; screenshots
   uploaded as the `layout-shots` CI artifact) on each PR — merge only on green.
+  **The browser and layout jobs run only when a front-end file changed**, judged by one
+  `grep -qE` pattern in ci.yml. `admin-views.html`, `sw.js` and `manifest.json` were missing
+  from it for months, so a PR touching only the back office's markup went green with no
+  browser suite run. smoke-test §14 now derives the files (the code in sw.js's precache, the
+  owner bundle, every test harness) and fails on any the pattern does not match.
   Plus the convention gates: `check-versions.js` (changed cached asset → bumped
   version, vs the PR base — `node bump.js <stamp>` satisfies it), the migration
   naming rule (smoke-test §6c-iii), **`typecheck.js`** — a tsc `--checkJs`
