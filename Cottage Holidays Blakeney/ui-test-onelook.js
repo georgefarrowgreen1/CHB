@@ -628,6 +628,20 @@ async function open(browser, base, width) {
       dbBookings['21a'] = [bk];
       nav('view-backoffice');
       await wait(300);
+      // A window is measured AT REST: on a loaded runner a fixed wait caught the
+      // composer still rising, so its bottom read short of the screen's edge.
+      const rest = async (sel) => {
+        for (let i = 0; i < 60; i++) {
+          const el = document.querySelector(sel);
+          const ov = el && (el.closest('.modal-overlay') || el);
+          const moving = ov && document.getAnimations().some((a) => {
+            const t = a.effect && a.effect.target;
+            return t && ov.contains(t) && a.playState === 'running';
+          });
+          if (el && !moving) return;
+          await wait(50);
+        }
+      };
       const read = (boxSel, titleSel, fieldSel) => {
         const box = document.querySelector(boxSel), r = box.getBoundingClientRect(), c = getComputedStyle(box);
         const t = getComputedStyle(document.querySelector(titleSel)), f = document.querySelector(fieldSel), fc = getComputedStyle(f);
@@ -647,6 +661,7 @@ async function open(browser, base, width) {
       await wait(350);
       openAddBooking();
       await wait(600);
+      await rest('#edit-modal .modal-box');
       const book = read('#edit-modal .modal-box', '#modal-title', '#modal-name');
       const xs = (sel) => { const x = document.querySelector(sel); if (!x) return ''; const c = getComputedStyle(x), r = x.getBoundingClientRect(); return Math.round(r.width) + ' ' + c.backgroundColor + ' ' + c.borderTopWidth; };
       book.x = xs('#edit-modal .modal-x');
@@ -662,6 +677,7 @@ async function open(browser, base, width) {
       dbBookings['21a'] = [bk]; // a refresh may have landed since
       openBookingEmail(bk.id);
       await wait(600);
+      await rest('#enq-email-modal .cmp-sheet');
       // The composer is its own sheet now ("Email a guest"): the same edge, ground, title and close,
       // but its Subject is a label-value row with no box, so it has no field to compare.
       const mail = read('#enq-email-modal .cmp-sheet', '#enq-email-title', '#enq-email-subject');

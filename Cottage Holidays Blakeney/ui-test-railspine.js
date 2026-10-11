@@ -23,7 +23,7 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
 
 (async () => {
     const { page, base, done } = await boot({ viewport: { width: 1000, height: 900 } });
-    const d = (n) => { const t = new Date(); const x = new Date(t.getFullYear(), t.getMonth(), t.getDate() + n); return `${x.getFullYear()}-${String(x.getMonth() + 1).padStart(2, '0')}-${String(x.getDate()).padStart(2, '0')}`; };
+    const d = require('./ui-test-lib').d; // the harness's day (keeps the page's clock near midnight)
     const errs = [];
     page.on('pageerror', (e) => errs.push(e.message));
 
@@ -276,6 +276,12 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
     // …and LANDS ON IT, to the pixel. The first version of this section only
     // asserted the pill MOVED, which passed while it sat 16px low against
     // every row — the rail's top padding counted twice (reported from a Mac).
+    // Measured once its glide has FINISHED: on a loaded runner a fixed wait read
+    // it mid-travel (dy -92).
+    await page.waitForFunction(() => {
+        const i = document.querySelector('#admin-rail .rail-ind');
+        return !!i && i.getAnimations().every((a) => a.playState !== 'running');
+    }, null, { timeout: 5000 }).catch(() => {});
     const fit = await page.evaluate(() => {
         const i = document.querySelector('#admin-rail .rail-ind');
         const c = document.querySelector('#admin-rail .rail-row[aria-current="page"]');

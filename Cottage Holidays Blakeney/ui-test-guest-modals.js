@@ -81,6 +81,11 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
     // on any load — wait for the globals rather than guessing at a delay.
     // Reload to a known state each time: Back has just moved history, and app.js
     // is re-evaluated on load, so wait for its globals rather than guessing.
+    // FORGET THE REMEMBERED SCREEN first: the lightbox iteration opened a cottage
+    // page, the reload restores it asynchronously (chb-nav), and on a loaded runner
+    // that restore landed AFTER the "before" snapshot below — so the check read
+    // view-main before and the restored cottage page after, a move Back never made.
+    await page.evaluate(() => { try { sessionStorage.removeItem('chb-nav'); } catch (e) {} }).catch(() => {});
     await page.goto(`${base}/index.html`, { waitUntil: 'domcontentloaded' });
     await page.waitForFunction(() => typeof openProperty === 'function' && typeof nav === 'function');
     await page.waitForTimeout(500);

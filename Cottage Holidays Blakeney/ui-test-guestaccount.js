@@ -18,7 +18,7 @@ const ok = (c, m) => { console.log((c ? '  ✓ ' : '  ✗ ') + m); if (!c) fails
 
 (async () => {
     const { browser, base, done } = await bootBrowser();
-    const d = (n) => { const t = new Date(); const x = new Date(t.getFullYear(), t.getMonth(), t.getDate() + n); return `${x.getFullYear()}-${String(x.getMonth() + 1).padStart(2, '0')}-${String(x.getDate()).padStart(2, '0')}`; };
+    const d = require('./ui-test-lib').d; // the harness's day (keeps the page's clock near midnight)
     const priced = { agreed_total: 400, agreed_per_night: 133.33, agreed_nights: 3, agreed_nightly: 400, agreed_txn_fee: 0, agreed_txn_pct: 0, agreed_booking_fee: 0 };
     const mk = (pk, i, o, x) => Object.assign({ prop_key: pk, check_in: i, check_out: o, adults: 2, children: 0, id: Math.floor(Math.random() * 1e6) }, priced, x || {});
     const guest = { name: 'Gwen Rowe', email: 'gwen@example.com', phone: '07700 900123', address: '1 Quay Street, Blakeney', postcode: 'NR25 7ND' };

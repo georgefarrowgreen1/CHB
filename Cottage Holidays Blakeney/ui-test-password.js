@@ -267,8 +267,13 @@ const ok = (b, m) => {
         const range = document.createRange();
         if (words) range.selectNodeContents(words);
         const wr = words ? range.getBoundingClientRect() : null;
+        // The spinner ROTATES, and a rotated box's bounding rect grows with the
+        // angle (7px short of the gap at 45°, which is what a loaded runner
+        // caught). Rotation is about the centre, so its resting right edge is the
+        // centre plus half its layout width.
+        const spinRight = sr ? (sr.left + sr.right) / 2 + s.offsetWidth / 2 : 0;
         return {
-            words: words ? words.textContent : '', gap: sr && wr ? wr.left - sr.right : null,
+            words: words ? words.textContent : '', gap: sr && wr ? wr.left - spinRight : null,
             ro: document.getElementById('oa-pw-cur').readOnly && document.getElementById('oa-pw-new').readOnly,
             types: [document.getElementById('oa-pw-cur').type, document.getElementById('oa-pw-new').type].join(),
             dim: getComputedStyle(b).opacity,

@@ -799,6 +799,15 @@ let approveWill409 = false;
   // label injected, since the short ones fit on their own.
   await page.setViewportSize({ width: 390, height: 844 });
   await page.waitForTimeout(200);
+  // Let the sheet come to rest first: on a loaded runner it was still in its
+  // entrance, and a scaled box's rect is narrower than its layout width.
+  await page.waitForFunction(() => {
+    const ov = document.getElementById('send-confirm-overlay');
+    return !ov || document.getAnimations().every((a) => {
+      const t = a.effect && /** @type {any} */ (a.effect).target;
+      return !(t && ov.contains(t)) || a.playState !== 'running';
+    });
+  }, null, { timeout: 5000 }).catch(() => {});
   const sendFit = await page.evaluate(() => {
     const ov = document.getElementById('send-confirm-overlay');
     if (!ov || !ov.classList.contains('open')) return null;
@@ -809,7 +818,9 @@ let approveWill409 = false;
     const r = btn.getBoundingClientRect();
     return {
       inside: r.right <= br.right + 0.5 && r.left >= br.left - 0.5,
-      noOverflow: btn.scrollWidth <= Math.ceil(r.width) + 1,
+      // Layout against layout (both ignore transforms): the label overflows its
+      // button only if its scroll width passes the button's own client width.
+      noOverflow: btn.scrollWidth <= btn.clientWidth + 1,
     };
   });
   ok(sendFit && sendFit.inside && sendFit.noOverflow,

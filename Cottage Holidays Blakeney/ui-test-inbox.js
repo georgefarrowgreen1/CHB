@@ -19,7 +19,7 @@ const SHOTS = process.env.IB_SHOTS || '';
 
 (async () => {
     const { page, browser, base, done } = await boot({ viewport: { width: 390, height: 844 } });
-    const d = (n) => { const t = new Date(); const x = new Date(t.getFullYear(), t.getMonth(), t.getDate() + n); return `${x.getFullYear()}-${String(x.getMonth() + 1).padStart(2, '0')}-${String(x.getDate()).padStart(2, '0')}`; };
+    const d = require('./ui-test-lib').d; // the harness's day (keeps the page's clock near midnight)
     const at = (n, hm) => `${d(n)} ${hm}:00`;
     const bk = (o) => Object.assign({
         phone: '', address: '1 Lane', postcode: 'NR25 7AB', check_in_time: '15:00', check_out_time: '10:00', adults: 2, children: 0,
