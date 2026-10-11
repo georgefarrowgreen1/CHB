@@ -4115,8 +4115,9 @@ $keys57 = function (string $sql, array $args = []) use ($rootDb) {
     $st = $rootDb->prepare('EXPLAIN ' . $sql);
     $st->execute($args);
     // possible_keys, plus the plan's Extra: a MAX() an index answers outright reads
-    // "Select tables optimized away" with no possible_keys at all (and "Using where"
-    // over a full scan without it).
+    // "Select tables optimized away" with no possible_keys at all, or "No matching
+    // min/max row" when the index holds no match (a log with no warnings yet), and
+    // "Using where" over a full scan without it.
     return implode(',', array_map(fn($r) => (string) ($r['possible_keys'] ?? '') . ' ' . (string) ($r['Extra'] ?? ''), $st->fetchAll(PDO::FETCH_ASSOC)));
 };
 foreach ([
@@ -4126,8 +4127,8 @@ foreach ([
     ['the per-account limits', 'SELECT COUNT(*) FROM login_attempts WHERE identifier = ? AND attempted_at > (NOW() - INTERVAL 1 DAY)', ['mailto:x'], 'idx_attempt_ident'],
     ['a guest\'s own enquiries', 'SELECT * FROM enquiries WHERE email = ?', ['g@example.org'], 'idx_enq_email'],
     // migration-144: the Status page's two warning reads walked the whole log.
-    ['the Status page\'s last warning', "SELECT MAX(created_at) m FROM activity_log WHERE severity = 'warn'", [], ['idx_activity_severity', 'Select tables optimized away']],
-    ['the Status page\'s week of warnings', "SELECT COUNT(*) c, MAX(created_at) m FROM activity_log WHERE severity = 'warn' AND created_at >= (NOW() - INTERVAL 7 DAY)", [], 'idx_activity_severity'],
+    ['the Status page\'s last warning', "SELECT MAX(created_at) m FROM activity_log WHERE severity = 'warn'", [], ['idx_activity_severity', 'Select tables optimized away', 'No matching min/max row']],
+    ['the Status page\'s week of warnings', "SELECT COUNT(*) c, MAX(created_at) m FROM activity_log WHERE severity = 'warn' AND created_at >= (NOW() - INTERVAL 7 DAY)", [], ['idx_activity_severity', 'Select tables optimized away', 'No matching min/max row']],
     // Quick search's activity source is bounded by date, so it can read a range.
     ['quick search\'s activity source', "SELECT id, summary, category, created_at FROM activity_log WHERE created_at >= (NOW() - INTERVAL 13 MONTH) AND summary LIKE ? ORDER BY created_at DESC, id DESC LIMIT 6", ['%boiler%'], 'idx_activity_created'],
 ] as [$what, $sql, $args, $want]) {

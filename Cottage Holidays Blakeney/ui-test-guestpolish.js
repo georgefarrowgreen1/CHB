@@ -198,10 +198,13 @@ const REVIEWS = [
     await page.waitForSelector('#glass-dialog.open');
     const form = await page.evaluate(() => ({ title: document.getElementById('glass-dialog-title').textContent, fields: [...document.querySelectorAll('#glass-dialog-fields input')].map((i) => i.getAttribute('autocomplete')) }));
     ok(form.title === 'Set a password' && !form.fields.includes('current-password'), `the form asks for no current password (${form.title}: ${form.fields.join(', ')})`);
+    // The dialog focuses its first field on a 60ms timer; typed before that fires, the
+    // second box's text lands in the first (CI read "Set a password" still showing).
+    await page.waitForFunction(() => !!document.activeElement && !!document.activeElement.closest('#glass-dialog-fields'), null, { timeout: 5000 }).catch(() => {});
     await page.fill('#glass-dialog-fields input >> nth=0', 'longenough1');
     await page.fill('#glass-dialog-fields input >> nth=1', 'longenough1');
     await page.click('#glass-dialog-ok');
-    await page.waitForTimeout(500);
+    await page.waitForFunction(() => [...document.querySelectorAll('#guest-account-body .ga-row .ga-t')].some((e) => e.textContent === 'Change password'), null, { timeout: 8000 }).catch(() => {});
     const sec2 = await page.evaluate(() => [...document.querySelectorAll('#guest-account-body .ga-row .ga-t')].map((e) => e.textContent));
     ok(sec2.includes('Change password') && sec2.includes('Email me a reset link'), `once saved, it is a password to change (${sec2.join(' · ')})`);
 
@@ -233,7 +236,7 @@ const REVIEWS = [
     // ------------------------------------------------------------------
     console.log('§11 small honest copy');
     await page.evaluate(() => { deleteGuestAccount(); });
-    await page.waitForSelector('#glass-dialog.open');
+    await page.waitForFunction(() => document.getElementById('glass-dialog').classList.contains('open') && document.getElementById('glass-dialog-title').textContent !== 'Set a password', null, { timeout: 5000 }).catch(() => {});
     const del = await page.evaluate(() => ({ t: document.getElementById('glass-dialog-title').textContent, shown: getComputedStyle(document.getElementById('glass-dialog-title')).display !== 'none', msg: document.getElementById('glass-dialog-msg').textContent }));
     ok(del.shown && del.t === 'Delete your account?' && !/^Delete your account/.test(del.msg), `the delete confirm has its title, like Sign out (${del.t})`);
     await page.click('#glass-dialog-cancel');
