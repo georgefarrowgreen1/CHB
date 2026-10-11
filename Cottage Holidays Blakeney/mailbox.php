@@ -155,23 +155,14 @@ function mbx_parse_attachments($body, $ctype)
     return $out;
 }
 // Fetch one raw message by UIDL (shared by read / attachment).
-// The first words of a message, for the Inbox row: TOP fetches the headers and a
-// few dozen body lines, the tested MIME parser decodes them, and the reply's own
-// words are kept (quoted history and signatures dropped). Never fatal: a
-// message that does not parse this way simply has no preview.
-function mbx_preview($fp, $no)
+// The first words of a message, for the Inbox row, from the same TOP the list
+// read its headers from (one round trip per message, not two): the tested MIME
+// parser decodes the head and the first dozens of body lines, and the reply's own
+// words are kept (quoted history and signatures dropped). Never fatal: a message
+// that does not parse this way simply has no preview.
+function mbx_preview($raw)
 {
     try {
-        fwrite($fp, "TOP {$no} 40\r\n");
-        $first = fgets($fp, 1024);
-        if (!is_string($first) || $first === '' || $first[0] !== '+') {
-            return '';
-        }
-        $clean = false;
-        $raw = pop3_multiline($fp, $clean, 96 * 1024);
-        if (!$clean) {
-            return '';
-        }
         $parsed = parse_email_message($raw);
         $body = str_replace("\r\n", "\n", (string) ($parsed['body'] ?? ''));
         $keep = [];
@@ -240,16 +231,25 @@ if ($action === 'list') {
     $robotHidden = 0;
     $mbxSenders = null;
     foreach ($nos as $no) {
-        fwrite($fp, "TOP {$no} 0\r\n");
+        // ONE command per message: the headers and the first 40 body lines for the
+        // preview together (it was TOP n 0, then TOP n 40 again for the preview).
+        fwrite($fp, "TOP {$no} 40\r\n");
         $first = fgets($fp, 1024);
         if (!is_string($first) || $first === '' || $first[0] !== '+') {
             continue; // TOP unsupported for this message — skip it, keep going
         }
         $clean = false;
-        $head = pop3_multiline($fp, $clean, 64 * 1024);
+        $raw = pop3_multiline($fp, $clean, 96 * 1024);
         if (!$clean) {
             break; // stream desynced — return what we have
         }
+        // The header block alone, so a body line that starts "From:" is never
+        // read as the sender.
+        $cut = strpos($raw, "\r\n\r\n");
+        if ($cut === false) {
+            $cut = strpos($raw, "\n\n");
+        }
+        $head = $cut === false ? $raw : substr($raw, 0, $cut);
         $fromAddr = mailbox_from_addr(mbx_header($head, 'From'));
         // ONLY CUSTOMER MAIL. The owner reads the same inbox the site sends
         // from, so every alert the site raises lands here too — the list was
@@ -301,7 +301,7 @@ if ($action === 'list') {
         }
         $out[] = [
             'uid' => $uidl[$no],
-            'preview' => mbx_preview($fp, $no),
+            'preview' => mbx_preview($raw),
             'from' => $fromAddr,
             'fromRaw' => mailbox_decode_subject(mbx_header($head, 'From')),
             'subject' => mailbox_decode_subject(mbx_header($head, 'Subject')) ?: '(no subject)',

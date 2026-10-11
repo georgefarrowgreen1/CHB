@@ -1,0 +1,13 @@
+-- ============================================================
+--  migration-144-activity-severity-index.sql — the Status page's warning reads.
+--
+--  diagnostics.php asks the activity log for its warnings twice per check
+--  (the last seven days, and the last warning ever) as
+--  `severity = 'warn' AND created_at …`, and severity was in no index, so each
+--  read walked the whole log (35k rows in a five-year business, up to the
+--  200,000-row ceiling). The Activity page's summary reads warnings the same way.
+--
+--  One plain ALTER: migrate.php reads "Duplicate key name" as already applied,
+--  so this is safe to run again.
+-- ============================================================
+ALTER TABLE activity_log ADD INDEX idx_activity_severity (severity, created_at);

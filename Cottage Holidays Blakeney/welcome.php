@@ -33,7 +33,7 @@ $g = db()->prepare('SELECT email FROM guests WHERE id = ?');
 $g->execute([$guestId]);
 $email = $g->fetchColumn();
 if (!$email) {
-    json_out(['error' => 'Please log in first'], 401);
+    json_out(['error' => 'Please sign in first'], 401);
 }
 
 // Only a guest who has booked this cottage may read its welcome book — AND the

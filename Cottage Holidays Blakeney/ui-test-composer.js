@@ -239,14 +239,24 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
   ok(await page.evaluate(() => !document.getElementById('enq-email-modal').classList.contains('open')), 'dragging the top down closes it');
   // Wait for the sheet to come to rest (the rise is an animation; under load it
   // outlasts any fixed sleep), then find the grabber where it now is.
-  const atRest = () => page.waitForFunction(() => {
-    const m = document.getElementById('enq-email-modal');
-    const sh = document.getElementById('cmp-sheet');
-    return !!m && m.classList.contains('open') && !!sh && sh.getAnimations().length === 0;
-  }, null, { timeout: 8000 }).catch(() => {});
+  // A sheet that never comes to rest is a FAILURE, not a state to measure: the old
+  // wait swallowed its own timeout, so a check read whatever the sheet was doing (CI
+  // measured the card 821px below the screen) and "Escape closes it" could pass on a
+  // sheet that never opened. Open, nothing moving, and on screen.
+  const atRest = async (what) => {
+    const rested = await page.waitForFunction(() => {
+      const m = document.getElementById('enq-email-modal');
+      const sh = document.getElementById('cmp-sheet');
+      if (!m || !m.classList.contains('open') || !sh || sh.getAnimations().length) return false;
+      const r = sh.getBoundingClientRect();
+      return r.height > 0 && r.top >= -1 && r.bottom <= innerHeight + 1;
+    }, null, { timeout: 15000 }).then(() => true, () => false);
+    ok(rested, `the sheet came to rest on screen (${what})`);
+    return rested;
+  };
   const grabAt = () => page.evaluate(() => { const r = document.querySelector('.cmp-grab').getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + 2 }; });
   await page.evaluate(() => openBookingEmail('b50'));
-  await atRest();
+  await atRest('opened for a drag');
   const top2 = await grabAt();
   await page.mouse.move(top2.x, top2.y);
   await page.mouse.down();
@@ -258,7 +268,7 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
   // A BUSY PHONE hands a slow drag's moves over all at once. Judged by the handler's
   // clock they were a flick (10px in no time) and the sheet closed; judged by when
   // the finger moved, it is the same slow drag as above.
-  await atRest();
+  await atRest('after springing back');
   const batched = await page.evaluate(async () => {
     const t = document.getElementById('cmp-top');
     const g = document.querySelector('.cmp-grab').getBoundingClientRect();
@@ -280,7 +290,7 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
   console.log('11. a computer: a card in the middle');
   await page.setViewportSize({ width: 1280, height: 900 });
   await page.evaluate(() => openBookingEmail('b51'));
-  await atRest();
+  await atRest('a computer');
   const card = await page.evaluate(() => { const r = document.getElementById('cmp-sheet').getBoundingClientRect(); return { w: Math.round(r.width), l: Math.round(r.left), r: Math.round(innerWidth - r.right), b: Math.round(innerHeight - r.bottom), grab: getComputedStyle(document.querySelector('.cmp-grab')).display }; });
   ok(card.w <= 600 && Math.abs(card.l - card.r) <= 2 && card.b > 8 && card.grab === 'none', `centred, ≤600 wide, no grabber (${JSON.stringify(card)})`);
   await page.keyboard.press('Escape');

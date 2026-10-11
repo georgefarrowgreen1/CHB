@@ -348,9 +348,11 @@ $src(function () use (&$results, $like, $PER) {
     }
 });
 
-// 8) Activity log — anything that happened.
+// 8) Activity log — anything that happened in the last 13 months. The quick path
+// runs on keystrokes, and a rare word walked the whole log (three years, up to
+// 200,000 rows); "search everything" (deep) still reads all of it.
 $src(function () use (&$results, $like, $PER, $snip) {
-    $st = db()->prepare('SELECT id, summary, category, created_at FROM activity_log WHERE summary LIKE ? ORDER BY id DESC LIMIT ' . $PER);
+    $st = db()->prepare('SELECT id, summary, category, created_at FROM activity_log WHERE created_at >= (NOW() - INTERVAL 13 MONTH) AND summary LIKE ? ORDER BY created_at DESC, id DESC LIMIT ' . $PER);
     $st->execute([$like]);
     foreach ($st->fetchAll() as $a) {
         $results[] = ['type' => 'activity', 'id' => (int) $a['id'], 'title' => $snip($a['summary']), 'sub' => 'Activity · ' . uk_date(substr((string) $a['created_at'], 0, 10))];

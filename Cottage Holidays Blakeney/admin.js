@@ -11307,7 +11307,7 @@ function hubPipelineHtml(propKey, b, gt, dh, ps) {
         // Only while it is still ARRIVAL info: mid-stay it is too late, and two
         // months out it is not yet a job (the daily run sends it a week before).
         next = {
-            text: 'Paid up — the arrival info (directions, key code) hasn’t gone out yet.',
+            text: 'Paid up — the arrival email hasn’t gone out yet.',
             onclick: chbAttrs('sendArrivalInfo', String(b.id)),
             btn: 'Send arrival info',
             capLabel: 'Arrival info', // not a flow stage — the cap names the job itself
@@ -26326,12 +26326,17 @@ async function initBackOfficeRun() {
     try {
         renderNeedsYou();
     } catch (e) {}
-    // Guest chats for the Needs-you strip — one fire-and-forget fetch; the
-    // strip repaints when the count lands.
+    // Guest chats for the Needs-you strip: the server's count (one COUNT, not every
+    // thread ever). An older server without the action answers 400 — then the list.
     try {
-        apiPost('messages.php', { action: 'threads' })
+        apiPost('messages.php', { action: 'needs_reply_count' })
             .then((r) => {
-                __nyChats = (((r || {}).threads) || []).filter(msgNeedsReply).length;
+                if (r && typeof r.count === 'number') return r.count;
+                throw new Error('no count');
+            })
+            .catch(() => apiPost('messages.php', { action: 'threads' }).then((r) => (((r || {}).threads) || []).filter(msgNeedsReply).length))
+            .then((n) => {
+                __nyChats = n;
                 renderNeedsYou();
             })
             .catch(() => {});
@@ -26634,6 +26639,13 @@ function msgNeedsReply(t) {
 function renderMessagesList() {
     const list = document.getElementById('messages-list');
     if (!list) return;
+    // The old list lives in the hidden #inbox-legacy (its store, __msgThreads, is
+    // what the one Inbox and the badges read). Drawing every thread ever into a
+    // container nobody sees cost up to 2s of a phone's main thread per Inbox open.
+    if (list.closest('[hidden]')) {
+        list.textContent = '';
+        return;
+    }
     // Until the FIRST fetch lands (loadAdminMessages stamps data-loaded), an
     // empty list means "still loading" — show the shimmer, not "No messages".
     if (!list.dataset.loaded && !__msgThreads.length) {

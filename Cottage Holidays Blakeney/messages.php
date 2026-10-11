@@ -12,6 +12,7 @@
 //    POST {action:'thread'} / {action:'send', body}
 //  ADMIN:
 //    POST {action:'threads'}                    -> all threads (latest + unread + context)
+//    POST {action:'needs_reply_count'}          -> {count}: conversations waiting on a reply
 //    POST {action:'thread', thread_id}          -> one thread + context + bookings
 //    POST {action:'send', thread_id, body}      -> reply
 //    POST {action:'unread'}                     -> { count }
@@ -681,6 +682,23 @@ if ($isAdmin && empty($in['token'])) {
             } catch (\Throwable $e) {
             }
             json_out(op_finish($opTok, ['ok' => true]));
+        }
+        // How many conversations need a reply — the ONE number Today's strip and the
+        // dock read. It used to download every thread there has ever been to count
+        // it on the phone (283 KB raw for a five-year business, every Today visit).
+        // The same rule as the client's msgNeedsReply: not archived, and the guest
+        // spoke last or something they sent is unread.
+        if ($action === 'needs_reply_count') {
+            $needs = "EXISTS (SELECT 1 FROM messages m WHERE m.thread_id = t.id)
+                AND ((SELECT mr.sender_role FROM messages mr WHERE mr.thread_id = t.id ORDER BY mr.id DESC LIMIT 1) = 'guest'
+                     OR EXISTS (SELECT 1 FROM messages mu WHERE mu.thread_id = t.id AND mu.sender_role = 'guest' AND mu.read_by_admin = 0))";
+            try {
+                $c = (int) db()->query("SELECT COUNT(*) FROM chat_threads t WHERE t.archived = 0 AND $needs")->fetchColumn();
+            } catch (\Throwable $e3) {
+                // archived column not migrated yet — there are no archived threads.
+                $c = (int) db()->query("SELECT COUNT(*) FROM chat_threads t WHERE $needs")->fetchColumn();
+            }
+            json_out(['ok' => true, 'count' => $c]);
         }
         if ($action === 'unread') {
             // Only count unread in NON-archived threads — the thread list hides

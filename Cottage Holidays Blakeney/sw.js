@@ -14,7 +14,7 @@
 //  show (push.php?action=sw_notify) and relays release reloads to open pages.
 //  Keep this file in the SAME folder as index.html.
 // ============================================================
-const CACHE = 'chb-cache-v1252';
+const CACHE = 'chb-cache-v1253';
 // admin.js is deliberately NOT precached — it's the owner-only bundle, fetched on
 // demand by loadAdminBundle() (app.js); the fetch handler caches it on first use
 // (keyed on its ?v= pin), so the offline day sheet can still load it.
@@ -23,7 +23,7 @@ const CACHE = 'chb-cache-v1252';
 // Icons are precached BOTH bare (in-page <img>/notification icons) and with the
 // ?v=3 pins the <link rel=icon> tags actually request — cache.match keys include
 // the query string, so a bare entry never satisfies a pinned request.
-const CORE = ['index.html', 'logo.svg', 'logo.svg?v=3', 'favicon.png', 'favicon.png?v=3', 'apple-touch-icon.png', 'apple-touch-icon.png?v=3', 'manifest.json', 'app.css?v=385', 'app.js?v=1201', 'guest-app.css?v=69', 'guest-app.js?v=38'];
+const CORE = ['index.html', 'logo.svg', 'logo.svg?v=3', 'favicon.png', 'favicon.png?v=3', 'apple-touch-icon.png', 'apple-touch-icon.png?v=3', 'manifest.json', 'app.css?v=386', 'app.js?v=1202', 'guest-app.css?v=69', 'guest-app.js?v=39'];
 // uploads/ images live in their own size-capped bucket so galleries stay fast and
 // available offline WITHOUT growing the main cache without bound (every image ever
 // viewed used to accumulate forever in CACHE).
@@ -67,9 +67,9 @@ self.addEventListener('fetch', (/** @type {any} */ event) => {
     let url;
     try { url = new URL(req.url); } catch (e) { return; }
     if (url.origin !== self.location.origin) return;   // let cross-origin (Square, fonts, tiles) pass through
-    // img.php-RESIZED gallery images are images, not APIs: same capped
-    // stale-while-revalidate bucket as uploads/ (offline galleries + fast
-    // repeat views). Checked BEFORE the generic .php bypass below.
+    // img.php-RESIZED gallery images are images, not APIs: the same capped
+    // cache-first bucket as uploads/ (offline galleries + fast repeat views).
+    // Checked BEFORE the generic .php bypass below.
     const isImgPhp = /(^|\/)img\.php$/.test(url.pathname);
     // Dynamic JSON APIs are network-only — never serve stale prices/availability,
     // never write credentialed (admin/guest) responses to the shared cache, and
@@ -115,19 +115,20 @@ self.addEventListener('fetch', (/** @type {any} */ event) => {
         return;
     }
 
-    // uploads/ images: stale-while-revalidate into the capped image bucket (trimmed
-    // to IMG_CACHE_MAX so it can't grow forever).
+    // uploads/ images: CACHE-FIRST into the capped image bucket (trimmed to
+    // IMG_CACHE_MAX so it can't grow forever). An upload's name is random and never
+    // reused — a replaced photo is a new upload, the hero optimiser's included — and
+    // img.php's URL names its source and size, so a cached copy cannot be stale.
+    // Revalidating re-wrote 100–160 KB per image into the phone's storage on every
+    // view for nothing (the ?v= lesson, for pictures).
     if (url.pathname.includes('/uploads/') || isImgPhp) {
         event.respondWith((async () => {
             const c = await caches.open(IMG_CACHE);
             const cached = await c.match(req);
-            const network = fetch(req).then(async res => { if (res && res.ok) { await c.put(req, res.clone()).catch(() => {}); trimCache(IMG_CACHE, IMG_CACHE_MAX); } return res; }).catch(() => null);
-            // Keep the worker alive until the background revalidation commits —
-            // without this the browser may kill the SW as soon as the cached
-            // response is returned, so "refreshes silently" never actually held
-            // on quick open-close visits.
-            if (cached) event.waitUntil(network);
-            return cached || (await network) || Response.error();
+            if (cached) return cached;
+            const res = await fetch(req).catch(() => null);
+            if (res && res.ok) event.waitUntil(c.put(req, res.clone()).then(() => trimCache(IMG_CACHE, IMG_CACHE_MAX)).catch(() => {}));
+            return res || Response.error();
         })());
         return;
     }
