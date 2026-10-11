@@ -5546,7 +5546,13 @@ section".** The "Your details" and "Account & security" pop-ups are GONE (markup
 - **Details are FACTS, edited one at a time** (`gaEdit` → glassForm → the same
   `guest_update_profile`). The server saves phone + address + postcode TOGETHER and refuses a
   missing address or bad postcode, so a guest with no address yet is asked for all three at
-  once. The email is a locked row, never an input.
+  once. The email is a locked row, never an input. **The NAME is a row of its own** (round 8,
+  guest audit #20: a guest who typed their name wrong had no way to fix it): a name sent
+  WITHOUT phone/address/postcode is saved alone, so correcting a typo never asks for an
+  address first, and every check runs before any write, so a refused address never leaves a
+  half-saved name. It changes the ACCOUNT only: a booking keeps the name it was made under,
+  because that is the record of who booked. Gated by test-integration §84 and
+  ui-test-guestaccount §2b, both break-tested.
 - **The password is two rows** (`gaPassword` — a glassForm that stays open on a mismatch and
   says why; `gaResetLink`). **`guest_send_reset` now also serves a signed-in GUEST**, to their
   OWN address only — the body's email is ignored for a guest (test-integration §45).
@@ -9125,6 +9131,11 @@ deleting — both now FIXED, and they are worth keeping here as the pattern to e
   overflow, no content cut off, key content rendered — on the public views at
   390/768/1280 AND the six back-office screens at phone width; screenshots
   uploaded as the `layout-shots` CI artifact) on each PR — merge only on green.
+  **The browser and layout jobs run only when a front-end file changed**, judged by one
+  `grep -qE` pattern in ci.yml. `admin-views.html`, `sw.js` and `manifest.json` were missing
+  from it for months, so a PR touching only the back office's markup went green with no
+  browser suite run. smoke-test §14 now derives the files (the code in sw.js's precache, the
+  owner bundle, every test harness) and fails on any the pattern does not match.
   Plus the convention gates: `check-versions.js` (changed cached asset → bumped
   version, vs the PR base — `node bump.js <stamp>` satisfies it), the migration
   naming rule (smoke-test §6c-iii), **`typecheck.js`** — a tsc `--checkJs`
