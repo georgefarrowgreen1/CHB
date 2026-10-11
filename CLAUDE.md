@@ -1105,8 +1105,8 @@ Found by the guest-endpoint and scheduled-jobs reviews; each was reproduced firs
   is its own person (`t:<id>`) until the owner links THAT thread (`links['t:<id>']`, accepted by `ibStateClean`);
   if its email belongs to a guest it is an `unlinked` row with `claimed: true`, "email not confirmed" on its line
   and a card saying anyone can type an email there. Linking an unconfirmed chat stores the thread, never the
-  address, so a later chat typing the same email asks again. The floating thread sheet says "email not
-  confirmed" too. A `verified` that is absent (an older server) keeps the old joining.
+  address, so a later chat typing the same email asks again. The floating thread sheet said "email not
+  confirmed" too (that sheet was removed in round 8). A `verified` that is absent (an older server) keeps the old joining.
 - **A SQUATTER'S PHONE STOPS GETTING THE GUEST'S ALERTS.** `guest_id_for_email` (every guest push: the booking
   confirmation with cottage and dates, payment figures) matches only a proven account, and push `subscribe` needs
   one. When the real guest proves the address from another browser, `guest_prove_address` also deletes the
@@ -1732,6 +1732,40 @@ From the guest audit; gated by ui-test-guestpolish §12, each change break-teste
   first ~150ms the sheet is wider than itself by design, and a loaded runner read 1–2px. It waits for the sheet's
   animations to end and asserts scrollLeft too; it still fails at 2px on the original close-button defect.
 
+## What every guest downloads, trimmed (round 8)
+
+The dead-code audit's guest-facing findings, re-derived against the current tree before anything was cut.
+- **UNUSED CSS, FOUND BY A TOKEN SCAN AND CHECKED BY HAND.** A rule is dead when every selector in its list needs a
+  class or id that no production JS, HTML or PHP contains as a word (comments stripped) and that no dynamic prefix
+  can build. A prefix built with `+` or `${}` shields every class that starts with it, so the shields were read
+  one by one. Most named ids or keys, not classes: `act-`/`exp-`/`wl-`/`help-`/`feed-` (search result ids),
+  `ana-`/`cal-`/`exp-` (fold keys), `ops-` (a content key) and `messages-` (a push tag). The classes they appeared
+  to protect were dead.
+  - Removed: 129 rules in app.css, 132 in admin.css, `.gt-stays` in guest-app.css, the dead selectors inside live
+    lists, four keyframes nothing named any more, and the comments that described them.
+  - A selector inside `:where()`/`:has()` is not "required", so the scan keeps it: the last two references to
+    the removed chat sheet were cut by hand.
+- **THE OWNER'S FLOATING CHAT SHEET IS GONE** (`#messages-modal`, `openMessageThread` and twelve helpers,
+  ~12.7KB of app.js every guest downloaded). Its only opener was a row in the always-hidden `#inbox-legacy`
+  list; a chat opens in the one Inbox's conversation. The hidden row keeps a `data-thread` and no action
+  (smoke-test 6a-iii fails on an action that resolves to nothing). Its checks in ui-test-dialogs/-onelook/-command
+  went with it; the server's resend guard is still gated by test-integration §80(e).
+- **NINE UNCALLED FUNCTIONS** (`scrollToAvailability`, `toggleBackofficeMode`, `requestMagicLink`, `persistDB`,
+  `persistEnquiries`, `rangesOverlap`, `loadBookingPayments`, `openBookingDatePicker`, `paymentMeta`) and a boot
+  block that showed passkey elements that no longer exist.
+- **THE REMOVED INLINE EDITOR'S STORAGE STILL WON.** Three boot paths replayed what it wrote to localStorage: the
+  loop over `[data-edit-*]`, `applySavedEdits` on the cottage page, and `loadPropContentOverrides`
+  (`nn-property-content`). On a device that once used the editor, an old title beat the owner's saved one, on
+  that device only. `renderSeoText` reads `siteContent` now. Gated by **ui-test-guestpolish §13**, break-tested
+  (the old app.js fails all four checks).
+- **Shipped** (comments stripped, gz): app.js −3.8KB, app.css −2.5KB, index.html −0.6KB, admin.css −2.8KB.
+  Budgets lowered to lock it in; tsc app 599.
+- ui-test-searchpage's waiting check holds the stubbed search answer until it has measured. Two animation frames
+  on a loaded machine outlasted the fixed 1.2s delay, so the answer landed first.
+- **Not done**: the owner-only windows still in index.html (the email composer and the booking sheet, ~5KB gz),
+  owner-only rules still in app.css (~3.5KB gz), and admin.js's unreachable code (the legacy mailbox reader, the
+  old Payments sub-pages).
+
 ## Email delivery is at-least-once now — the OUTBOX (migration-113)
 
 **Two retry regimes, and a flow must be in exactly ONE.** The stamp-on-success
@@ -2222,8 +2256,9 @@ guard removed, the window scope removed — each fails its own checks).
   hides rows by `display` and `:has(+ …)` corners would square the wrong ends of a filtered run. Under ONE search:
   the filters are chips ("Needs reply · N", "Archived" with `aria-pressed`) and "Mark all read" is the small
   outlined pill after them; the heading slot carries the archive toggle only when the list is EMPTY (the way back out
-  of an empty archive). The thread sheet names its own entry point (`data-focus=".modal-box"`): focusInto's
-  first-field heuristic landed on the Quick-replies `<select>`, painting a focus ring on a picker nobody chose.
+  of an empty archive). The thread sheet named its own entry point (`data-focus=".modal-box"`): focusInto's
+  first-field heuristic landed on the Quick-replies `<select>`, painting a focus ring on a picker nobody chose
+  (the sheet itself was removed in round 8, unreachable since the one Inbox).
 - **TWO INBOX VERDICTS CLAIMED MORE THAN THEY KNEW.** A mailbox load that FAILED read "✓ Nothing new" (the fetched-
   once branch never asked whether the fetch worked) — `__mbxFailed` makes it "couldn't check · the mailbox didn't
   answer". And the Messages folder read "✓ All read" over a conversation still waiting on a reply: read is not
@@ -5964,9 +5999,9 @@ APPLE-MAIL three-pane client: the folder switch becomes a left sidebar rail, the
 active folder's list is the middle column, and `#inbox-detail-pane` is a reading
 pane serving EVERY folder — the enquiry hub docks as before, emails open in the
 pane (`mbxPaneDock()`; row highlight `.is-open`; below 1200px they open as an
-in-row accordion, `mbxSlotFor()`), and guest chats dock the `#messages-modal`
-node into the pane as a static panel (undocked on folder switch; app.js
-`openMessageThread` self-heals the dock via DOM checks only — never admin
+in-row accordion, `mbxSlotFor()`), and guest chats docked the `#messages-modal`
+node into the pane as a static panel (that sheet and `openMessageThread` were removed in round 8; the one
+Inbox's conversation replaced them; the dock self-healed via DOM checks only — never admin
 globals). Email is the full mailbox client (`loadMailbox()`/`mailbox.php`, lazy
 on first open — moved from Manage, and `settingsOpen('mailbox')` redirects
 here) with its own Inbox|Sent switch in the toolbar; the folder switch itself is the
@@ -6524,7 +6559,7 @@ at once instead of card by card. The old Emails card (`#hub-email-log`) and the
 separate history/payments/email-log fetches are GONE from the hub — the
 **Activity card** (`#hub-history` — id kept so the ledger gates keep firing)
 renders `hubActivityHtml`: ledger rows via the shared `hubLedgerRowHtml`
-(extracted from `loadBookingPayments`, which still serves the Payments screen)
+(extracted from the old `loadBookingPayments`, removed in round 8 with no caller left)
 interleaved with events newest-first; `payment.card` events are FILTERED because
 the ledger row is the same fact said better (ui-test-hub §C pins the twin
 dropped), and a logged email's subject/body expands in place
@@ -8942,7 +8977,7 @@ no money by design — chasing is the payments-due cron's job, not its.
   with no config.php edit. Owner UI: Manage → Payments → "Connect" (`connectSquareWebhook`);
   read-only pill in diagnostics. Payment STATUS everywhere shows a traffic-light
   dot (`paymentStatusMeta`, green/amber/red) — the Payments feed AND the booking
-  hub's per-payment ledger (`loadBookingPayments`); an issued refund reads
+  hub's per-payment ledger (`hubLedgerRowHtml`); an issued refund reads
   Completed (see `paymentStatusLabel`). Both helpers live in **app.js** (the hub
   ledger renders from app.js, which must not reach admin globals). Gated by
   `test-webhook.php` (signature) + smoke (dot/label mapping).
@@ -10391,8 +10426,8 @@ guest UX in a browser, owner UX in a browser). What it set:
 - **Owner logout reloads the page** (memory + hidden views held the whole back
   office); guest logout clears the chat token, the enquiry draft and the
   rendered stays.
-- **Back closes the owner's sheets too** (edit form, floating thread, email
-  composer push overlay history); `adminHistPush` waits for an in-flight
+- **Back closes the owner's sheets too** (edit form, email composer push
+  overlay history); `adminHistPush` waits for an in-flight
   overlay `history.back()`. **Escape answers the HIGHEST z-index** open
   overlay (the privacy window over the enquiry sheet sits earlier in the DOM),
   and closes the chat.

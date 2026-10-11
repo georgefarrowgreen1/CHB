@@ -622,7 +622,9 @@ const NEST = (rootSel) => {
     for (const sh of document.styleSheets) { let rs; try { rs = sh.cssRules; } catch (e) { continue; } [...rs].forEach(walk); }
     return hit;
   });
-  ok(greenRule === '', `.toggle-btn.active-mode declares no glow either (${JSON.stringify(greenRule)})`);
+  // null: the variant went with the dead-CSS sweep (no markup or script names it). A rule
+  // that comes back must still declare no glow.
+  ok(greenRule === '' || greenRule === null, `.toggle-btn.active-mode declares no glow either (${JSON.stringify(greenRule)})`);
 
   console.log('§2 The toast says its outcome ONCE');
   await open(page, "toast('Saved that for you', 'ok', { label: 'Undo', fn: () => {} })", 900);

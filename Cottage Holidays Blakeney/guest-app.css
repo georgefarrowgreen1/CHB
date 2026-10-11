@@ -298,8 +298,6 @@ body.guest-app:not(.owner-mode) #guest-tabbar.gt-show-cta #guest-book-cta {
     transform: none;
   }
 }
-@media (hover: hover) {
-}
 body.guest-app:not(.owner-mode) #guest-book-cta:active {
   transform: scale(0.96);
 }
@@ -345,11 +343,7 @@ body.guest-app:not(.owner-mode) #prop-book-bar {
   display: block;
   transition: transform 0.4s var(--spring);
 }
-/* Gate the hover tint to real pointers — on a touch device a tap applies
-   sticky :hover, leaving the tint (and the label below) stuck until the next
-   tap elsewhere. :focus-visible below keeps keyboard access unconditional. */
-@media (hover: hover) {
-}
+/* Keyboard focus shows on every device (hover changes no ground). */
 .guest-dock-btn:focus-visible {
   background: rgba(255, 255, 255, 0.16);
   outline: 2px solid var(--accent-soft, #d6a785);
@@ -396,14 +390,6 @@ body.guest-app:not(.owner-mode) #prop-book-bar {
 .guest-dock-btn.gt-home.current img {
   filter: brightness(0);
   transform: scale(1.08);
-}
-
-/* My Stays and Experiences only appear for a signed-in guest. */
-.gt-stays {
-  display: none;
-}
-body.guest-app:not(.owner-mode).guest-signed-in .gt-stays {
-  display: inline-flex;
 }
 
 /* Instagram-style white selection pill; JS sizes/positions it under .current. */

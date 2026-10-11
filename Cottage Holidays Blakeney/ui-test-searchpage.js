@@ -1656,7 +1656,10 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
   {
     const ctx = await browser.newContext({ viewport: { width: 1280, height: 900 } });
     const p2 = await ctx.newPage();
-    let failNext = false, slow = 1200;
+    // `gate` holds the search answer until the check has looked: two animation frames
+    // on a loaded runner can take longer than any fixed delay (CI and a local run both
+    // saw the answer land first, and the waiting state was never there to measure).
+    let failNext = false, slow = 1200, gate = null;
     await p2.route(/\.php/, async (route) => {
       const url = route.request().url();
       const json = (o) => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(o) });
@@ -1666,7 +1669,8 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
       ], seasons: {}, occupancy: {} });
       if (url.includes('search.php')) {
         if (failNext) return route.fulfill({ status: 500, contentType: 'application/json', body: '{"error":"boom"}' });
-        await new Promise((r) => setTimeout(r, slow));
+        if (gate) await gate;
+        else await new Promise((r) => setTimeout(r, slow));
         // A REAL row, and one that survives the merge's SCOPE filter — this suite
         // opens search from view-backoffice, so the snapshot scope is 'bookings'
         // and a message-typed row is scoped away INSIDE cmdkArrangeWide before it
@@ -1685,6 +1689,8 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
     await p2.waitForTimeout(500);
     const put = async (q, w = 700) => { await p2.evaluate((s) => { const i = document.getElementById('cmdk-input'); i.value = s; cmdkSearchCore(s, false); }, q); await p2.waitForTimeout(w); };
 
+    let release = () => {};
+    gate = new Promise((r) => { release = r; });
     await put('bob');
     const pend = await p2.evaluate(async () => {
       cmdkDeepOpen();
@@ -1700,7 +1706,8 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
     ok(!!pend && pend.shown, 'DEEPWAIT: the results area says it is searching, within two frames');
     ok(!!pend && pend.role === 'status', `DEEPWAIT: …and ANNOUNCES it — the sweep bar is aria-hidden decoration (role=${pend && pend.role})`);
     ok(!!pend && pend.frame && pend.stale === 0, `DEEPWAIT: the frame is up and the stale rows are gone (${pend && pend.stale} rows)`);
-    await p2.waitForTimeout(1600);
+    gate = null; release();
+    await p2.waitForFunction(() => !document.querySelector('#cmdk .cmdk-none-wait') && !!__cmdkDeep, null, { timeout: 5000 }).catch(() => {});
     const done1 = await p2.evaluate(() => ({ wait: !!document.querySelector('#cmdk .cmdk-none-wait'), deep: !!__cmdkDeep }));
     ok(done1.deep && !done1.wait, 'DEEPWAIT: and it hands over to the real result when that lands');
 

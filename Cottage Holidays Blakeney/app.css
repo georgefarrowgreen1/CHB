@@ -433,14 +433,8 @@ body.light-mode .prop-book-bar {
   border-top-color: var(--glass-border);
   box-shadow: 0 -10px 40px rgba(30, 54, 72, 0.14);
 }
-html.theme-light-boot body .exp-cat-tag,
-body.light-mode .exp-cat-tag {
-  background: rgba(255, 255, 255, 0.9);
-  border: 1px solid var(--glass-border);
-}
 body.light-mode .input-glass,
 body.light-mode .date-range-trigger,
-body.light-mode .rate-field input,
 body.light-mode .day-check,
 body.light-mode .price-box,
 body.light-mode .guest-price-box,
@@ -1152,8 +1146,6 @@ nav a:focus-visible,
 .admin-dock-btn:focus-visible,
 .tl-bar:focus-visible,
 .tl-cell:focus-visible,
-.mo-kpi[data-act]:focus-visible,
-.ops-owed:focus-visible,
 .menu-toggle:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
@@ -1206,8 +1198,6 @@ body.light-mode input[type="time"] {
   color-scheme: light;
 }
 /* Hide number spinners in the compact editors (type the number instead) */
-.rate-field input::-webkit-outer-spin-button,
-.rate-field input::-webkit-inner-spin-button,
 .field-sm::-webkit-outer-spin-button,
 .field-sm::-webkit-inner-spin-button {
   -webkit-appearance: none;
@@ -1949,41 +1939,6 @@ body.light-mode ::-webkit-scrollbar-thumb {
      browser, not to us. Degrades to today's wrap where balance is unsupported. */
   text-wrap: balance;
 }
-.hero-scroll-cue {
-  position: absolute;
-  left: 50%;
-  bottom: 18px;
-  transform: translateX(-50%);
-  z-index: 3;
-  background: none;
-  border: 0;
-  color: rgba(255, 255, 255, 0.75);
-  cursor: pointer;
-  padding: 10px;
-  /* On a house curve, and on `translate` rather than `transform`: the button is
-     centred with transform: translateX(-50%), and an animation on transform wins
-     outright over a transitioned one, so a press on the cue could never paint. */
-  animation: cueBob 2.6s var(--settle) infinite;
-  display: none;
-}
-.hero-scroll-cue:hover,
-.hero-scroll-cue:focus-visible {
-  color: #fff;
-}
-@keyframes cueBob {
-  0%,
-  100% {
-    translate: 0 0;
-  }
-  50% {
-    translate: 0 7px;
-  }
-}
-@media (min-width: 900px) and (min-height: 700px) {
-  .hero-scroll-cue {
-    display: block;
-  }
-}
 /* Gradient + vignette scrim so the headline panel and CTA stay legible now
            that the photo is shown brighter — adds depth without dimming the image flat. */
 .hero::after {
@@ -2033,54 +1988,11 @@ html.js-reveal .reveal.in-view {
 .home-cottages {
   order: 1;
 }
-.home-trust {
-  order: 2;
-}
 .home-availability {
   order: 3;
 }
 .home-guestwords {
   order: 4;
-}
-/* Trust strip — slim, factual reassurance band under the hero. */
-/* Same 1200px cap as .home-cottages so the strip's edges line up with the
-           card grid above it. */
-.home-trust {
-  max-width: 1200px;
-  width: 100%;
-  margin: 0 auto;
-  padding: clamp(var(--space-1), 2vw, var(--space-2)) clamp(var(--space-2), 4vw, 20px) 0;
-  box-sizing: border-box;
-}
-.trust-strip {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: center;
-  align-items: center;
-  gap: 12px 28px;
-  padding: 16px 24px;
-}
-.trust-item {
-  display: flex;
-  align-items: center;
-  gap: 9px;
-  font-size: var(--fs-sub);
-  color: var(--text-light);
-}
-.trust-item .ic {
-  width: 18px;
-  height: 18px;
-  color: var(--accent);
-  flex-shrink: 0;
-}
-@media (max-width: 640px) {
-  .trust-strip {
-    gap: 11px 18px;
-    padding: 14px 16px;
-  }
-  .trust-item {
-    font-size: var(--fs-sub);
-  }
 }
 /* Homepage sections below the hero: the cottage cards and the relocated
            "Check availability" panel. */
@@ -3587,28 +3499,6 @@ a.card {
 /* The narration opened flush against the button it narrates. */
 #enq-steps.is-open {
   margin-bottom: 12px;
-}
-/* THE ACCOUNT SCREENS' STATUS LINE — same block, same tokens. #login-error,
-   #reg-error, #magic-link-msg, #pw-msg and #profile-msg each set a raw --danger /
-   --ok as INK, and those are FILL tokens: pixel-sampled on the light ground the
-   login refusal read 2.46:1 and the magic-link confirmation 2.33:1 (dark passed,
-   which is how they survived). Deliberately the TINT shape, because that is what
-   a11y-test §1b discovers — no list for anyone to maintain. */
-.auth-msg {
-  font-size: var(--fs-sub);
-  line-height: 1.4;
-  padding: 9px 12px;
-  border-radius: var(--r-sm);
-}
-.auth-msg.is-ok {
-  color: var(--ok-text);
-  background: color-mix(in srgb, var(--ok) 12%, transparent);
-  border: 1px solid color-mix(in srgb, var(--ok) 30%, transparent);
-}
-.auth-msg.is-bad {
-  color: var(--danger-text);
-  background: color-mix(in srgb, var(--danger) 12%, transparent);
-  border: 1px solid color-mix(in srgb, var(--danger) 30%, transparent);
 }
 /* Guest online-payment view (Square) */
 .pay-wrap {
@@ -5515,13 +5405,6 @@ body.modal-open {
   color: var(--text-muted);
   letter-spacing: 0.01em;
 }
-.cal-updated {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  font-size: var(--fs-caption);
-  color: var(--text-muted);
-}
 .cal-refresh-btn {
   position: relative; /* the hit region below */
   background: transparent;
@@ -5539,11 +5422,6 @@ body.modal-open {
 .cal-refresh-btn .ic {
   width: 15px;
   height: 15px;
-}
-/* When there's nothing to say (recent sync) the text is empty — don't let the
-   flex gap leave a phantom offset; the lone refresh icon just centres. */
-.cal-updated:has(#cal-updated-text:empty) {
-  gap: 0;
 }
 .cal-refresh-btn:hover {
   color: var(--text-light);
@@ -5589,29 +5467,6 @@ body.modal-open {
 
 .cal-panel {
   padding: 25px;
-}
-/* iOS-Calendar-style month grid: borderless cells, thin week separators,
-           dimmed weekend numbers, a filled "today" circle, clean event pills. */
-
-/* Stacked booking pills inside each day */
-
-/* Calendar pills are a read-only overview (no click affordance) — bookings
-   are opened from the Bookings dashboard / search, external blocks from the
-   Bookings page's External section. */
-
-
-
-
-
-
-/* External (Airbnb/Vrbo) imported blocks: keep the property colour but add
-           diagonal stripes + a dashed edge so they read as "taken elsewhere". */
-
-.detail-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-  gap: 0 30px;
-  margin-top: 5px;
 }
 
 /* --- PRICE BREAKDOWN --- */
@@ -6127,28 +5982,6 @@ body.light-mode .tag-pimpernel {
   margin: 0;
   border-radius: var(--r-lg);
 }
-/* Owner reply modal: keep it inside the screen. The box is a flex column capped to
-   the *visible* viewport (dvh excludes the iOS toolbar so the composer isn't cut
-   off); only the thread scrolls, the composer stays pinned, and nothing can push
-   the layout sideways. */
-#messages-modal .modal-box {
-  display: flex;
-  flex-direction: column;
-  max-height: 90dvh;
-  overflow: hidden;
-}
-#messages-modal .modal-box > * {
-  flex-shrink: 0;
-}
-#messages-modal .msg-ctx {
-  max-height: 34vh;
-  overflow-y: auto;
-}
-#messages-modal .chat-thread {
-  flex: 1 1 auto;
-  max-height: none;
-  min-height: 90px;
-}
 /* Round accent send button (matches the chat bubble FAB language) */
 .chat-send {
   width: 46px;
@@ -6363,31 +6196,6 @@ body.light-mode .tag-pimpernel {
   padding: 7px 14px;
   width: auto;
 }
-/* Trip-planner interest chips (toggle) */
-.trip-interests {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-}
-.trip-chip {
-  font-size: var(--fs-sub);
-  padding: 7px 14px;
-  border-radius: var(--r-pill);
-  cursor: pointer;
-  color: var(--text-light);
-  background: var(--glass-bg);
-  border: 1px solid var(--glass-border);
-  transition:
-    background 200ms var(--out),
-    border-color 200ms var(--out),
-    color 200ms var(--out);
-}
-.trip-chip.on {
-  background: var(--accent);
-  border-color: var(--accent);
-  color: var(--accent-ink);
-  font-weight: 600;
-}
 .msg-thread-row {
   display: flex;
   align-items: center;
@@ -6564,54 +6372,6 @@ body.light-mode .chat-widget { --chat-ground: rgb(248, 248, 250); }
 .chat-guide-l { display: flex; align-items: center; gap: 4px; margin-bottom: 4px; font-size: var(--fs-caption); font-weight: 600; color: var(--accent-text); }
 .chat-guide-l svg { width: 14px; height: 14px; flex: none; }
 .chat-typingrow { display: flex; flex-direction: column; }
-/* Collapsible "who is this" details in the reply modal */
-.msg-ctx-d {
-  font-size: var(--fs-sub);
-}
-.msg-ctx-sum {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  cursor: pointer;
-  list-style: none;
-  color: var(--text-light);
-}
-.msg-ctx-sum::-webkit-details-marker {
-  display: none;
-}
-.msg-ctx-sum-txt {
-  flex: 1;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.msg-ctx-pill {
-  flex-shrink: 0;
-  font-size: var(--fs-micro);
-  font-weight: 600;
-  color: var(--accent-text);
-  background: rgba(214, 167, 133, 0.14);
-  padding: 2px 9px;
-  border-radius: var(--r-pill);
-}
-/* The summary's paid-state verdict — status ink on its own tint (the pairs
-   a11y-test §1b already measures). */
-.msg-ctx-pill.is-ok { color: var(--ok-text); background: color-mix(in srgb, var(--ok) 14%, transparent); }
-.msg-ctx-pill.is-due { color: var(--warn-text); background: color-mix(in srgb, var(--warn) 14%, transparent); }
-.msg-ctx-caret {
-  flex-shrink: 0;
-  color: var(--text-muted);
-  transition: transform 0.2s var(--fluid-bezier);
-}
-.msg-ctx-d[open] .msg-ctx-caret {
-  transform: rotate(180deg);
-}
-.msg-ctx-body {
-  margin-top: 10px;
-  padding-top: 10px;
-  border-top: 1px solid var(--glass-border);
-}
 /* Inbox search + "Needs reply" filter chip */
 .msg-inbox-controls {
   display: flex;
@@ -6685,41 +6445,6 @@ body.light-mode .chat-widget { --chat-ground: rgb(248, 248, 250); }
   color: var(--text-muted);
   text-align: center;
   padding: 14px 0;
-}
-/* Admin reply-modal context block (where they came from, location, bookings) */
-.msg-ctx {
-  background: rgba(255, 255, 255, 0.03);
-  border: 1px solid var(--glass-border);
-  border-radius: var(--r-sm);
-  padding: 10px 14px;
-  margin-bottom: 14px;
-}
-.msg-ctx:empty {
-  display: none;
-}
-.mc-row {
-  display: flex;
-  gap: 10px;
-  font-size: var(--fs-sub);
-  padding: 3px 0;
-}
-.mc-row .mc-k {
-  color: var(--text-muted);
-  min-width: 84px;
-  flex-shrink: 0;
-}
-.mc-row .mc-v {
-  color: var(--text-light);
-}
-/* One-tap booking actions (arrival info / balance link) under a booking row */
-.mc-actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-  margin-top: 5px;
-}
-.mc-actions .btn-sm {
-  font-size: var(--fs-caption);
 }
 
 /* Floating chat bubble + widget (public site) */
@@ -6847,36 +6572,16 @@ body.owner-mode .chat-widget {
 
 /* Glanceable booking status strip (details modal): payment / deposit / arrival. */
 
-
-
-
-
-
 /* Per-booking "Emails sent" log (Bookings page). */
 
-
-
-
-
-
-
 /* Expandable free-text message: reveals the subject + body that was sent. */
-
-
 
 /* Explicit "Show email" / "Hide email" button (clearer than a bare chevron).
    Native <details> toggles it; the label swaps via [open]. */
 
-
-
-
 /* Chosen-attachment chips in the email composer. */
 
-
-
 /* "Show email" button on templated log rows (opens a regenerated preview). */
-
-
 
 /* Email preview overlay: subject bar + a sandboxed iframe of the email. */
 /* ============================================================
@@ -6998,7 +6703,6 @@ body.owner-mode .chat-widget {
   }
 }
 
-
 /* Inbox sort control (soonest stay / newest / cottage). */
 .inbox-sort {
   display: flex;
@@ -7050,40 +6754,6 @@ body.owner-mode .chat-widget {
 }
 .ifold-count:empty {
   display: none;
-}
-/* The Inbox folder switch is the view's hero control — the same segmented
-   pill as the Today filters, sized up a step, with the site's line icons.
-   On phones it stretches edge to edge with equal segments. */
-#inbox-folders {
-  margin-bottom: 20px;
-}
-#inbox-folders .inbox-sort-btn {
-  display: inline-flex;
-  align-items: center;
-  gap: 7px;
-  padding: 9px 18px;
-  font-size: var(--fs-sub);
-}
-#inbox-folders .ic {
-  width: 15px;
-  height: 15px;
-  flex: none;
-}
-@media (max-width: 640px) {
-  #inbox-folders {
-    display: flex;
-    width: 100%;
-  }
-  #inbox-folders .inbox-sort-btn {
-    flex: 1;
-    justify-content: center;
-    padding: 9px 6px;
-  }
-}
-@media (max-width: 480px) {
-  #inbox-folders .ic {
-    display: none;
-  }
 }
 /* The Bookings list filters span the SAME width as the search box and the
    booking rows below them (segments sharing the width in proportion, so
@@ -7145,8 +6815,6 @@ body.owner-mode .chat-widget {
   width: 12px;
   height: 12px;
 }
-
-
 
 .btn-sm {
   padding: 8px 14px;
@@ -7356,22 +7024,7 @@ body.owner-mode .chat-widget {
   color: var(--text-muted);
   opacity: 0.8;
 }
-/* Owner summary stat bar (back office) */
-/* "Today / needs doing" panel (back office) */
 
-.today-card {
-  background: var(--glass-bg);
-  border: 1px solid var(--glass-border);
-  border-radius: var(--r-md);
-  padding: 14px 16px;
-}
-.today-card-value {
-  font-family: var(--font-serif);
-  font-size: var(--fs-display);
-  color: var(--text-light);
-  line-height: 1.1;
-  margin: 2px 0 6px;
-}
 /* Back-office booking search */
 .bo-search {
   position: relative;
@@ -7394,40 +7047,7 @@ body.owner-mode .chat-widget {
 .bo-search .input-glass {
   padding-left: 40px;
 }
-/* Collapsed to a slim pill; the full input appears when .open (toggleBoSearch). */
 
-/* Waitlist modal date pair: date inputs have an intrinsic min-width and flex
-   items default to min-width:auto, so without these the check-out field
-   punches out of the modal on phones. min-width:0 lets them shrink; the
-   1 1 140px basis wraps them into a stack on ultra-narrow screens. */
-.wl-dates {
-  display: flex;
-  gap: 10px;
-  flex-wrap: wrap;
-}
-.wl-dates > div {
-  flex: 1 1 140px;
-  min-width: 0;
-}
-.wl-dates input[type="date"] {
-  width: 100%;
-  min-width: 0;
-  /* iOS Safari sizes date inputs from their shadow DOM and ignores
-     min-width:0 — strip the native appearance so the box obeys the layout,
-     and keep the tap-target height that appearance:none would collapse. */
-  -webkit-appearance: none;
-  appearance: none;
-  min-height: 50px;
-  max-width: 100%;
-}
-/* Phones: two side-by-side native date pickers never fit comfortably — stack
-   them like the name/email fields below. */
-@media (max-width: 480px) {
-  .wl-dates {
-    flex-direction: column;
-    gap: 0;
-  }
-}
 /* Manage header: the one status pill sits to the RIGHT of the title,
    centred on the title's line (owner-asked: "perfectly in line"). */
 .dashboard-header.settings-head {
@@ -7508,42 +7128,6 @@ body.owner-mode .chat-widget {
 .act-row:last-child {
   border-bottom: none;
 }
-.act-ic {
-  width: 30px;
-  height: 30px;
-  border-radius: 50%;
-  flex-shrink: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: rgba(255, 255, 255, 0.05);
-  border: 1px solid var(--glass-border);
-}
-.act-ic .ic {
-  width: 15px;
-  height: 15px;
-  color: var(--text-muted);
-}
-.act-label {
-  color: var(--text-light);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-.act-when {
-  color: var(--text-muted);
-  font-size: var(--fs-caption);
-  margin-left: auto;
-  flex-shrink: 0;
-}
-
-/* (The season grid's .sg-table CSS lived here for years — the editor is season
-   CARDS now, admin-only, styled in admin.css so guests stop paying for it.) */
-.bo-search-empty {
-  font-size: var(--fs-sub);
-  color: var(--text-muted);
-  padding: 10px 2px;
-}
 
 /* Apple-style grouped Settings index */
 .settings-index {
@@ -7551,8 +7135,6 @@ body.owner-mode .chat-widget {
 }
 /* Area overview — the "important parts first" summary that leads Cottages &
    Marketing (occupancy / key numbers) before the detail sub-folders. */
-
-
 
 /* "Recent" chips + empty-search note above the index */
 .settings-noresults {
@@ -7731,29 +7313,21 @@ body.owner-mode .chat-widget {
 
 /* Money & income — per-booking payments manager */
 
-
-
-
-
-
 /* ---- Bookings dashboard: master–detail split (≥1200px) ----
    Left: the compact bookings index. Right: the SELECTED booking's hub, docked
    (the shared #booking-hub-content node re-parents in). Below 1200px the pane
    hides and the hub opens as its own screen — the phone flow is unchanged. */
-#bookings-detail-pane,
-#inbox-detail-pane {
+#bookings-detail-pane {
   display: none;
 }
 @media (min-width: 1200px) {
-  .bk-split,
-  .enq-split {
+  .bk-split {
     display: grid;
     grid-template-columns: minmax(340px, 420px) minmax(0, 1fr);
     gap: 22px;
     align-items: start;
   }
-  #bookings-detail-pane,
-  #inbox-detail-pane {
+  #bookings-detail-pane {
     display: block;
     position: sticky;
     top: 16px;
@@ -7763,55 +7337,17 @@ body.owner-mode .chat-widget {
     padding-right: 2px;
   }
   /* Inside the pane the hub reads as one column of cards. */
-  
-  
+
   /* The docked hub's top edge aligns with the section header beside it. */
   #bookings-detail-pane {
     margin-top: 34px;
   }
-  /* Messages/Email folders: the docked enquiry pane doesn't apply — give the
-     folder the full width until the owner switches back to Enquiries. */
-  .enq-split.no-pane {
-    grid-template-columns: minmax(0, 1fr);
-  }
-  .enq-split.no-pane #inbox-detail-pane {
-    display: none;
-  }
   /* ---- Apple-Mail Inbox (desktop): folders rail | list | reading pane ---- */
-  #view-inbox .enq-split {
-    grid-template-columns: minmax(540px, 640px) minmax(0, 1fr);
-  }
   #inbox-main {
     display: grid;
     grid-template-columns: 185px minmax(0, 1fr);
     column-gap: 20px;
     align-items: start;
-  }
-  /* The folder switch becomes a Mail-style sidebar rail. */
-  #inbox-folders {
-    grid-column: 1;
-    position: sticky;
-    top: 16px;
-    display: flex;
-    flex-direction: column;
-    align-items: stretch;
-    gap: 4px;
-    border: 0;
-    background: none;
-    padding: 0;
-    overflow: visible;
-  }
-  #inbox-folders .inbox-sort-btn {
-    display: inline-flex;
-    align-items: center;
-    justify-content: flex-start;
-    gap: 8px;
-    padding: 10px 12px;
-    border-radius: var(--r-sm);
-    font-size: var(--fs-sub);
-  }
-  #inbox-folders .inbox-sort-btn .ifold-count {
-    margin-left: auto;
   }
   #inbox-folder-enquiries,
   #inbox-folder-messages,
@@ -7823,31 +7359,6 @@ body.owner-mode .chat-widget {
   #inbox-main > .settings-group {
     grid-column: 2;
   }
-  /* The docked chat window: the messages modal renders INSIDE the pane as a
-     static panel (no overlay, no veil) while the Messages folder is open. */
-  #inbox-detail-pane #messages-modal {
-    position: static;
-    inset: auto;
-    display: none;
-    padding: 0;
-    background: none;
-    -webkit-backdrop-filter: none;
-    backdrop-filter: none;
-  }
-  #inbox-detail-pane #messages-modal.open {
-    display: block;
-  }
-  #inbox-detail-pane #messages-modal .modal-box {
-    width: 100%;
-    max-width: none;
-    margin: 0;
-    max-height: none;
-  }
-  /* The pane's hint steps aside once real content is docked. */
-  #inbox-detail-pane:has(#messages-modal.open) #inbox-detail-empty,
-  #inbox-detail-pane:has(#mbx-pane-dock:not(:empty)) #inbox-detail-empty {
-    display: none;
-  }
 }
 #bookings-detail-empty,
 #inbox-detail-empty {
@@ -7858,35 +7369,12 @@ body.owner-mode .chat-widget {
   font-size: var(--fs-body);
   text-align: center;
 }
-/* Guest My-Stays header: keep Account & settings + Call to Discuss together
-   as one action group (they were separate flex children pushed apart). */
-.guest-head-actions {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  flex-wrap: wrap;
-}
 
 /* Compact index row — the whole row opens the booking hub. Fixed three-line
    anatomy (tag + status chip / name / dates · party) so every row is the same
    shape at every width; each line ellipsises rather than wrapping. */
 
 /* Traffic-light payment edge on every row: red unpaid · amber part · green paid. */
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 /* ---- Timeline calendar (Today): rows = cottages, days flow across ---- */
 /* The timeline's intrinsic width (187 × 38px) must scroll INSIDE its panel,
@@ -7905,19 +7393,6 @@ body.owner-mode .chat-widget {
   -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 40px), transparent);
   mask-image: linear-gradient(to right, #000 calc(100% - 40px), transparent);
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 /* Bars invite the tap that opens the booking hub. */
 
@@ -7942,43 +7417,17 @@ body.admin-screen .site-footer {
   margin-top: 10px;
 }
 
-
-
-
-
-
-
-
-
 .ny-ic .ic {
   width: 16px;
   height: 16px;
 }
 
-
-
-
-
-
-
 /* ---- Booking hub: header overflow menu (⋯ More) + settled-money fold ---- */
-
-
-
-
 
 /* The breakdown opener under a folded price box — a proper button in the
    hub's family, full-width on phones like every other lone hub button. */
 
-
-
-
-
-
-
-
 /* A bar cut off by the timeline window keeps a hard edge on that side. */
-
 
 /* Phone: denser timeline — slimmer sticky label column + narrower days so more
    of the strip fits on screen, keeping the 44px lane for comfortable taps. */
@@ -7986,21 +7435,15 @@ body.admin-screen .site-footer {
   .tl-wrap {
     --tl-day-w: 32px;
   }
-  
-  
+
 }
 
 /* ---- Manage → Email: the admin mailbox client ---- */
 /* The opened email reads like a hub card and arrives with the same entrance. */
 
-
-
 /* Accordion: the email opens INSIDE its row — the arrow turns to point down
    and the reader card slots directly beneath, collapsible from the row or
    its Collapse button. */
-
-
-
 
 .mbx-meta .booking-detail-label {
   margin-right: 4px;
@@ -8013,10 +7456,7 @@ body.admin-screen .site-footer {
 }
 /* Guest-match card: who this sender is, with hub links */
 
-
 /* Attachment pills */
-
-
 
 .mbx-att .ic {
   width: 13px;
@@ -8035,45 +7475,13 @@ body.admin-screen .site-footer {
   }
 }
 
-
-
-
-
-
-
-
-
-
-
-
-
 /* (The journey pill strips — pipe3 cols and pipe-step pills — are GONE:
    the booking hub states the stage as a caption on its next-action card.) */
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 /* Phone: the hub reads top-to-bottom in one clean column — even two-up button
    grids instead of ragged pills, and tighter card padding. */
 @media (max-width: 640px) {
-  
-  
-  
-  
+
   .bhub-btn-row .btn-sm {
     width: 100%;
     text-align: center;
@@ -8092,98 +7500,10 @@ body.admin-screen .site-footer {
     grid-column: 1 / -1;
   }
   /* The header only ever holds ⋯ More (the menu is its absolute sibling). */
-  
+
   /* Keep the Done › Now › Next window on ONE line (scrolls if ever tight). */
-  
-  
-  
-  
-  
-}
 
-/* ---- Live availability strip in the Add/Edit Booking modal ---- */
-#modal-availability {
-  margin: 0 0 18px;
 }
-.mav-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-  flex-wrap: wrap;
-  margin-bottom: 8px;
-}
-.mav-legend {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  font-size: var(--fs-micro);
-  color: var(--text-muted);
-}
-.mav-key {
-  width: 10px;
-  height: 10px;
-  border-radius: 3px;
-  display: inline-block;
-  margin-left: 8px;
-}
-.mav-key.is-booked,
-.mav-day.is-booked {
-  background: rgba(229, 115, 115, 0.28);
-}
-.mav-key.is-external,
-.mav-day.is-external {
-  background: rgba(255, 167, 38, 0.26);
-}
-.mav-key.is-sel {
-  background: rgba(76, 175, 80, 0.3);
-}
-.mav-grid {
-  display: grid;
-  grid-template-columns: repeat(7, 1fr);
-  gap: 3px;
-}
-.mav-dow {
-  text-align: center;
-  font-size: var(--fs-micro);
-  color: var(--text-muted);
-  padding: 2px 0;
-}
-.mav-day {
-  text-align: center;
-  font-size: var(--fs-micro);
-  padding: 5px 1px;
-  border-radius: 5px;
-  background: rgba(255, 255, 255, 0.04);
-  border: 1px solid transparent;
-  color: var(--text-muted);
-  white-space: nowrap;
-  overflow: hidden;
-}
-.mav-day.is-sel {
-  border-color: rgba(76, 175, 80, 0.55);
-  color: var(--text-light);
-  background: rgba(76, 175, 80, 0.16);
-}
-.mav-day.is-sel.is-booked {
-  background: rgba(229, 115, 115, 0.45);
-  border-color: var(--danger);
-  color: #fff;
-}
-.mav-day.is-sel.is-external {
-  background: rgba(255, 167, 38, 0.42);
-  border-color: var(--warn);
-  color: #fff;
-}
-.mav-clash {
-  margin-top: 8px;
-  font-size: var(--fs-caption);
-  color: var(--warn-text);
-}
-
-
-
-
 
 /* Recent payments feed */
 .feed-list {
@@ -8202,31 +7522,15 @@ body.admin-screen .site-footer {
 .feed-row:first-child {
   border-top: none;
 }
-.feed-date {
-  color: var(--text-muted);
-  font-size: var(--fs-sub);
-}
 .feed-who {
   color: var(--text-light);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.feed-kind {
-  color: var(--text-muted);
-}
 .feed-amt {
   font-weight: 600;
   text-align: right;
-}
-.feed-status {
-  color: var(--text-muted);
-  font-size: var(--fs-caption);
-  text-transform: capitalize;
-  display: inline-flex;
-  align-items: center;
-  justify-content: flex-end;
-  min-width: 14px;
 }
 /* Traffic-light status dot: green = done, amber = in-progress, red = problem.
    The word is carried on the cell's title/aria-label so it's never colour-only.
@@ -8285,8 +7589,7 @@ body.light-mode .feed-dot-bad {
     grid-template-columns: auto 1fr auto auto;
     row-gap: 3px;
   }
-  .feed-row .prop-tag,
-  .feed-row .feed-kind {
+  .feed-row .prop-tag {
     display: none;
   }
   /* (The recent-payments feed keeps its kind as a second LINE — admin.css, so
@@ -8297,20 +7600,6 @@ body.light-mode .feed-dot-bad {
   color: var(--text-muted);
   margin-top: 4px;
 }
-.today-card.clickable {
-  cursor: pointer;
-  transition:
-    transform 0.2s var(--fluid-bezier),
-    border-color 0.2s var(--fluid-bezier),
-    background 0.2s var(--fluid-bezier);
-}.today-card.clickable:focus-visible{
-  transform: translateY(-2px);
-  border-color: var(--glass-highlight);
-  background: var(--glass-hover);
-}
-.today-card.clickable:hover{
-  transform: translateY(-2px);
-  border-color: var(--glass-highlight);}
 .os-donut {
   width: 62px;
   height: 62px;
@@ -8322,16 +7611,12 @@ body.light-mode .feed-dot-bad {
            proportions, and spread the per-cottage occupancy bars across three columns
            (so the card fills the row instead of floating in the middle). */
 @media (min-width: 1024px) {
-  
-  
-  
+
   .os-donut {
     width: 72px;
     height: 72px;
   }
-  
-  
-  
+
 }
 /* Tidy action row on guest booking cards */
 .card-actions {
@@ -8363,8 +7648,7 @@ body.light-mode .feed-dot-bad {
   .settings-row:active,
   .bk-row:active,
   .admin-dock-btn:active,
-  .ny-row:active,
-  .mo-kpi[data-act]:active {
+  .ny-row:active {
     transform: scale(var(--sc, 0.97));
   transition: transform 80ms var(--in), filter 80ms var(--in);}
 }
@@ -8389,69 +7673,11 @@ body.light-mode .feed-dot-bad {
   font-weight: 600;
 }
 
-/* The income headline's green stripe is gone: its figure already carries the
-   state, and a stripe on a 20px card bent into a tab at the corners. */
-
-
-
-
-
-
-/* Admin mobile polish: let wide tables scroll instead of overflowing, and
-           keep money-row controls comfortably tappable. */
-@media (max-width: 640px) {
-  
-  
-  .today-card-value {
-    font-size: var(--fs-display);
-  }
-}
-/* ---- Money overview dashboard (graphical landing) ---- */
-.money-overview {
-  margin-bottom: 22px;
-}
-
-
-
-
-
-
-
-
-
-/* Year-on-year card */
-.yoy-grid {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 14px;
-  margin-top: 8px;
-}
-.yoy-metric {
-  min-width: 0;
-}
-.yoy-label {
-  font-size: var(--fs-caption);
-  color: var(--text-muted);
-}
-.yoy-now {
-  font-family: var(--font-serif);
-  font-size: var(--fs-title);
-  line-height: 1.15;
-  margin: 2px 0;
-}
-.yoy-cmp {
-  font-size: var(--fs-sub);
-  color: var(--text-muted);
-}
-
-
 /* The lead KPI (Outstanding) carries a subtle accent + its own chase CTA. */
-
 
 /* Retrospective charts tuck under a disclosure so the landing leads with the
    actionable KPIs, not a wall of history. */
 
-.mo-trends > summary,
 .exp-add-details > summary {
   cursor: pointer;
   list-style: none;
@@ -8463,17 +7689,14 @@ body.light-mode .feed-dot-bad {
   padding: 6px 0;
   -webkit-tap-highlight-color: transparent;
 }
-.mo-trends > summary::-webkit-details-marker,
 .exp-add-details > summary::-webkit-details-marker {
   display: none;
 }
-.mo-trends > summary::after,
 .exp-add-details > summary::after {
   content: "▾";
   font-size: var(--fs-micro);
   transition: transform 0.2s var(--fluid-bezier);
 }
-.mo-trends[open] > summary::after,
 .exp-add-details[open] > summary::after {
   transform: rotate(180deg);
 }
@@ -8544,48 +7767,6 @@ body.light-mode .feed-dot-bad {
 .ana-export .ic {
   opacity: 0.8;
 }
-.ana-group-title {
-  font-family: var(--font-serif);
-  font-size: var(--fs-headline);
-  color: var(--text-light);
-  margin: 24px 0 2px;
-}
-.ana-group-title:first-of-type {
-  margin-top: 14px;
-}
-.ana-insights {
-  background: rgba(214, 167, 133, 0.08);
-  border: 1px solid rgba(214, 167, 133, 0.3);
-  border-left: 3px solid var(--accent);
-  border-radius: var(--r-md);
-  padding: 12px 16px 12px 18px;
-  margin: 12px 0 4px;
-}
-.ana-insights li {
-  font-size: var(--fs-sub);
-  color: var(--text-light);
-  margin: 3px 0;
-  line-height: 1.5;
-}
-.exp-tag {
-  display: inline-block;
-  font-size: var(--fs-micro);
-  padding: 1px 7px;
-  border-radius: var(--r-sm);
-  background: rgba(214, 167, 133, 0.18);
-  color: var(--accent-text);
-  margin-left: 6px;
-  vertical-align: middle;
-  font-weight: 600;
-}
-.exp-receipt img {
-  height: 30px;
-  width: 30px;
-  object-fit: cover;
-  border-radius: 6px;
-  border: 1px solid var(--glass-border);
-  display: block;
-}
 /* Add-an-expense form: stack the fields full-width on phones so they don't
            cram together in the wrap row, with Scan photo + Add as equal-size buttons. */
 @media (max-width: 640px) {
@@ -8627,10 +7808,6 @@ body.light-mode .feed-dot-bad {
 }
 .exp-clear-btn:hover{
   color: var(--text-light);}
-
-
-
-
 
 /* Editorial kickers: the small-caps accent line above section titles. */
 /* THE HOUSE PRIMARY — seven guest controls used the class with no rule behind it
@@ -8920,8 +8097,7 @@ body.light-mode .feed-dot-bad {
   .avail-lead {
     max-width: calc(100% - 80px);
   }
-  .home-guestwords,
-  .home-trust {
+  .home-guestwords {
     /* 80, not 72: these two are full-bleed sections (0–390 on a phone), so the
        inset is off the VIEWPORT edge and 72 left the quote 3px under the pill. */
     padding-inline: 80px;
@@ -8940,14 +8116,6 @@ body.light-mode .feed-dot-bad {
   font-size: var(--fs-body);
   color: var(--text-light);
   text-align: center;
-}
-/* Guest "My Bookings" cards */
-.guest-tab {
-  background: transparent;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  min-height: 40px; /* comfortable touch target (tabs were 30px) */
 }
 /* Comfortable targets on the one admin-family button guests meet — ABOVE the phone
    breakpoint, which is the only place this was ever meant to act. It out-specified
@@ -9121,12 +8289,6 @@ body.light-mode .feed-dot-bad {
 .gtj.is-dim .gtj-f {
   font-weight: 500;
   color: var(--text-muted);
-}
-.gtj-code {
-  font-family: var(--font-serif);
-  font-size: var(--fs-headline);
-  letter-spacing: 0.2em;
-  color: var(--accent-text);
 }
 /* Weather strip — the stay's own days, absent beyond the forecast horizon. */
 .gwx-row {
@@ -9758,24 +8920,6 @@ body.light-mode .feed-dot-bad {
   display: block;
   background: rgba(255, 255, 255, 0.04);
 }
-.exp-card .exp-noimg {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background:
-    linear-gradient(
-      150deg,
-      hsl(var(--exp-h, 30) 40% 58% / 0.32),
-      hsl(var(--exp-h, 30) 30% 40% / 0.1)
-    ),
-    rgba(255, 255, 255, 0.04);
-}
-.exp-card .exp-noimg .exp-art {
-  width: 46px;
-  height: 46px;
-  color: var(--text-light);
-  opacity: 0.5;
-}
 .exp-card .card-title {
   margin: 14px 18px 0;
 }
@@ -9808,21 +8952,6 @@ body.light-mode .feed-dot-bad {
   width: 15px;
   height: 15px;
   flex-shrink: 0;
-}
-.exp-cat-tag {
-  position: absolute;
-  top: 12px;
-  left: 12px;
-  background: rgba(18, 19, 22, 0.78);
-  -webkit-backdrop-filter: blur(8px);
-  backdrop-filter: blur(8px);
-  color: var(--text-light);
-  font-size: var(--fs-micro);
-  font-weight: 600;
-  letter-spacing: 0.3px;
-  padding: 4px 10px;
-  border-radius: var(--r-pill);
-  border: 1px solid var(--glass-border);
 }
 .exp-actions {
   display: flex;
@@ -10077,31 +9206,6 @@ body.light-mode .feed-dot-bad {
   align-items: center;
   gap: 10px;
 }
-.rate-field {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 10px;
-  margin-bottom: 14px;
-}
-.rate-field label {
-  font-size: var(--fs-sub);
-  color: var(--text-muted);
-}
-.rate-field input {
-  width: 110px;
-  background: rgba(0, 0, 0, 0.25);
-  border: 1px solid var(--glass-border);
-  color: var(--text-light);
-  padding: 9px 12px;
-  border-radius: var(--r-sm);
-  font-family: var(--font-sans);
-  text-align: right;
-}
-.rate-field input:focus {
-  outline: none;
-  border-color: var(--text-light);
-}
 .rule-divider {
   font-size: var(--fs-caption);
   color: var(--text-muted);
@@ -10196,7 +9300,7 @@ body.light-mode .feed-dot-bad {
 :where(#waitlist-modal, #photo-upload-modal) .modal-box {
   max-width: 460px;
 }
-:where(#welcome-modal, #messages-modal) .modal-box {
+:where(#welcome-modal) .modal-box {
   max-width: 520px;
 }
 @media (max-width: 640px) {
@@ -10251,22 +9355,6 @@ body.light-mode .feed-dot-bad {
   display: block;
   margin-bottom: 5px;
   font-weight: 600;
-}
-/* Paired fields in the Add/Edit Booking modal (email+phone, date+time, adults+
-   children). Replaces fixed 130px inline columns that cramped narrow phones:
-   columns shrink gracefully and the narrow (time) column keeps a sane minimum. */
-.modal-2col {
-  display: flex;
-  gap: 15px;
-}
-.modal-2col > div {
-  flex: 1 1 0;
-  min-width: 0;
-}
-@media (max-width: 480px) {
-  .modal-2col {
-    gap: 10px;
-  }
 }
 
 /* --- FOOTER ---
@@ -10781,20 +9869,6 @@ body.light-mode .theme-switch .ts-i-sun {
     display: inline-block;
   }
 }
-/* NO FILLED-BUTTON GLOWS — the pass that retired .btn-accent's 24px rose halo
-   to a 2px lift stopped at these two: the segment measured a 15px accent glow
-   on "Log in", the owner/green variant the same defect in raw rgba. */
-.toggle-btn.active-mode {
-  background: var(--ok);
-  color: white;
-  border-color: var(--ok);
-}
-/* Guest Log In / Create Account tabs use the site's rose-gold accent, not green. */
-.toggle-btn.guest-tab.active-mode {
-  background: var(--accent);
-  color: var(--accent-ink);
-  border-color: var(--accent);
-}
 
 /* data-edit-* elements are the content render targets; keep their text in the
            element's own font. */
@@ -11037,7 +10111,6 @@ p.lead[data-edit-text] {
   letter-spacing: inherit !important;
 }
 
-
 /* ---------- TABLET & BELOW (≤900px) ---------- */
 @media (max-width: 899px) {
   .prop-layout {
@@ -11102,15 +10175,7 @@ p.lead[data-edit-text] {
   .cron-pill {
     margin-bottom: 14px;
   }
-  
-  .today-card {
-    padding: 12px 12px;
-  }
-  .today-card-value {
-    font-size: var(--fs-title);
-    margin: 1px 0 5px;
-  }
-  
+
   .cal-panel {
     padding: 12px 8px;
   }
@@ -11135,7 +10200,6 @@ p.lead[data-edit-text] {
   /* Refresh hugs the right edge — both on the calendar (icon rides inside
      .cal-updated with its "updated…" text) and on the mailbox toolbar
      (bare icon), whatever else wraps. */
-  .cal-actions .cal-updated,
   .cal-actions > .cal-refresh-btn:last-child {
     margin-left: auto;
   }
@@ -11152,11 +10216,7 @@ p.lead[data-edit-text] {
   .cal-month-title {
     font-size: var(--fs-headline);
   }
-  
-  
-  
-  
-  
+
   .modal-box {
     padding: 24px 24px;
   }
@@ -11205,17 +10265,7 @@ p.lead[data-edit-text] {
   .cal-panel {
     padding: 10px 7px;
   }
-  
-  
-  
-  
-  
-  
-  /* Back-office at-a-glance cards: a touch tighter still */
-  
-  .today-card {
-    padding: 11px 11px;
-  }
+
   .price-row {
     font-size: var(--fs-sub);
   }
@@ -11260,8 +10310,7 @@ p.lead[data-edit-text] {
 
 /* ---------- VERY SMALL / NARROW (≤360px) ---------- */
 @media (max-width: 360px) {
-  
-  
+
   .hero p {
     letter-spacing: 1px;
   }
@@ -12300,7 +11349,6 @@ textarea.input-glass:not(.field-sm) {
   }
 }
 
-
 /* Settings → Website content: image rows */
 /* Settings index: small section headers that group related folders. Also used
    INSIDE drill-down panels (.settings-sec — e.g. Manage → Pricing / Search
@@ -12330,10 +11378,6 @@ textarea.input-glass:not(.field-sm) {
   .settings-index .settings-section-label {
     break-after: avoid;
     margin-top: 4px;
-  }
-  .settings-index .money-overview {
-    column-span: all;
-    margin-bottom: 26px;
   }
   /* The staging test centre is a short sub-list: ONE column — two just split a
        3-row list from its action row. */
@@ -12471,7 +11515,6 @@ body.has-staging-banner {
 body.has-staging-banner header {
   margin-top: 38px;
 }
-
 
 /* Full-page guest Sign-in / Account / Security screens on DESKTOP too (match the
    mobile shell). On mobile, body.guest-app already does this; the :not(.guest-app)
@@ -12803,9 +11846,6 @@ body.light-mode .card-img-wrap,
 body.light-mode .card-img {
   border-radius: max(6px, calc(var(--r-lg) - 16px));
 }
-body.light-mode .trust-strip {
-  background: rgba(255, 255, 255, 0.66);
-}
 /* Warm sand dividers instead of the dark theme's faint white lines. */
 body.light-mode .prop-divider {
   opacity: 0.9;
@@ -12841,9 +11881,6 @@ html.js-reveal .reveal {
            Falls back to the rose-gold accent where the var isn't set. */
 h2.section-title.text-center::after {
   background: linear-gradient(90deg, transparent, var(--season-accent, var(--accent)), transparent);
-}
-body.light-mode .hero-scroll-cue {
-  color: var(--season-accent, var(--sea));
 }
 
 /* THE MOTION SYSTEM — shared keyframes + late assignments. Distances on the 4pt
@@ -13096,16 +12133,6 @@ nav ul li a:not(.btn-glass)::before { content: ''; position: absolute; inset: -3
 /* THE FOOTER NEWSLETTER WAS FOUR INLINE STYLES — a 36px field and a 36px button
    at 13px with a 10px radius, none of which the rawRadii / rawType ratchets can
    see. Stated here instead, on the tokens, at the floor. */
-/* Sign-in: the password-less route was a 200×16 inline <a> — the ONLY way in for
-   a guest who has no password — and the Log in / Create account segments were
-   170×40 at 11px, the screen's primary control. */
-#magic-link-cta { display: inline-flex; align-items: center; justify-content: center; min-height: 44px; padding: 0 12px; }
-.guest-tab { min-height: 44px; }
-@media (max-width: 480px) {
-  /* the ≤480 --fs-micro override is right for the admin toggles it was written
-     for and wrong for these two: 11px on the screen's own primary control. */
-  .toggle-btn.guest-tab { font-size: var(--fs-sub); }
-}
 .hub-code-copy { min-height: 44px; display: inline-flex; align-items: center; justify-content: center; }
 /* Experiences: six 31px chips wrapping to THREE rows at 390 (109px between the
    lead and the first card). One nowrap scrolling row, with the padding /
@@ -13217,21 +12244,12 @@ header.glass-panel {
     transform: scale(var(--sc, 0.97));
     transition: transform 80ms var(--in);
   }
-  /* The cue is centred with transform: translateX(-50%), so the press must
-     COMPOSE with it or the chevron jumps half its width to the right. Its bob
-     moved onto the independent `translate` property for the same reason —
-     an animation on `transform` wins outright over a transitioned one, so
-     while cueBob ran the press could not paint at all. */
-  .hero-scroll-cue:active {
-    transform: translateX(-50%) scale(var(--sc, 0.97));
-    transition: transform 80ms var(--in), filter 80ms var(--in);}
 }
 /* The release is the base rule's transition, so each of these needs one — a
    press with no way back snaps out of the compress. */
 .gallery-slide,
 .gg-cell,
-.toast-close,
-.hero-scroll-cue {
+.toast-close {
   transition: transform 320ms var(--settle), filter 320ms var(--settle);
 }
 
@@ -13742,10 +12760,6 @@ div.ga-row {
   height: 16px;
   color: var(--text-muted);
 }
-.ga-prof {
-  min-height: 80px;
-  gap: 16px;
-}
 .ga-ava {
   flex: 0 0 auto;
   width: 56px;
@@ -13931,24 +12945,6 @@ div.ga-row {
 
 /* ---- The profile photo (approved demo): a circle with a camera badge, a sheet
    to choose, and a cropper that saves exactly what sits in the circle. ---- */
-.ga-prof {
-  gap: 16px;
-}
-.ga-profbtn {
-  flex: 1;
-  min-width: 0;
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  min-height: 56px;
-  padding: 0;
-  background: none;
-  border: 0;
-  color: inherit;
-  font: inherit;
-  text-align: left;
-  cursor: pointer;
-}
 .ga-avabtn {
   position: relative;
   flex: 0 0 auto;

@@ -226,33 +226,6 @@ body.light-mode {
 #inbox-folder-enquiries.showing-declined #inbox-badge {
   display: none;
 }
-.area-ov-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
-  gap: 12px;
-  margin-bottom: var(--space-3);
-}
-/* AN ODD LAST CARD SPANS THE ROW (DESIGN.md's grid rule). With three cottages
-   in two tracks, 21A and Jollyboat shared a row and Pimpernel sat alone at
-   247px with 258px of empty grid beside it — which reads as a card that failed
-   to load. The max-width is what makes `:nth-child(odd)` HONEST: auto-fit would
-   otherwise open a third track past 594px and the rule would span a card that
-   already had two neighbours. Two tracks at every width the grid ever gets, so
-   "odd" and "alone on its row" are the same statement. */
-.area-ov-grid { max-width: 592px; }
-.area-ov-grid > :last-child:nth-child(odd) { grid-column: 1 / -1; }
-.area-ov-card {
-  display: block;
-  width: 100%;
-  /* A CARD, not a sheet: --r-panel is 28/40 on a 190px tile. */
-  border-radius: var(--r-lg);
-  color: var(--text-light);
-  transition:
-    background 200ms var(--out),
-    transform 320ms var(--settle),
-    filter 320ms var(--settle);
-}@media (hover: hover) {.area-ov-card:hover {
-    transform: translateY(-2px);}}
 /* A queue of deposits is a LIST, not a stack of islands: the cell radius and no
    drop shadow (they keep their 12px of air — each row carries two buttons, so
    they are action cards rather than one-line cells). NB `body.light-mode
@@ -294,11 +267,9 @@ body.light-mode {
   border: 1px solid var(--glass-border);
   font-size: var(--fs-sub);
   color: var(--text-muted);
-}@media (min-width: 1200px) {#bookings-detail-pane .bhub-grid,
-  #inbox-detail-pane .bhub-grid {
+}@media (min-width: 1200px) {#bookings-detail-pane .bhub-grid {
     grid-template-columns: 1fr;
-  }#bookings-detail-pane .bhub-head,
-  #inbox-detail-pane .bhub-head {
+  }#bookings-detail-pane .bhub-head {
     margin-top: 0;
   }}
 /* ONE MATERIAL FOR LISTS, on the five surfaces that wear this class (Today,
@@ -624,8 +595,6 @@ body.light-mode .tl-cell {
   border-color: var(--accent);
   color: var(--accent-ink);
   font-weight: 700;
-}
-@media (hover: hover) {
 }
 
 .ny-row {
@@ -1065,16 +1034,6 @@ body.light-mode .ny-act {
   font-size: var(--fs-sub);
   color: var(--text-muted);
 }
-/* One caption style for every group in this card. */
-.mbx-cap {
-  display: block;
-  font-size: var(--fs-micro);
-  font-weight: 600;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: var(--text-muted);
-  margin-bottom: 6px;
-}
 .mbx-text {
   white-space: pre-wrap;
   word-break: break-word;
@@ -1234,28 +1193,22 @@ body.light-mode .ny-act {
    NB #mbx-reader .bhub-card keeps its own rule (above) — the mail reading pane
    docks in place below 1200px too, where it is a row accordion rather than a
    pane. */
-#bookings-detail-pane .bhub-head,
-#inbox-detail-pane .bhub-head {
+#bookings-detail-pane .bhub-head {
   animation: bhubIn 0.35s var(--fluid-bezier) both;
 }
-#bookings-detail-pane .bhub-card,
-#inbox-detail-pane .bhub-card {
+#bookings-detail-pane .bhub-card {
   animation: bhubIn 0.4s var(--fluid-bezier) both;
 }
-#bookings-detail-pane .bhub-card:nth-of-type(2),
-#inbox-detail-pane .bhub-card:nth-of-type(2) {
+#bookings-detail-pane .bhub-card:nth-of-type(2) {
   animation-delay: 0.04s;
 }
-#bookings-detail-pane .bhub-card:nth-of-type(3),
-#inbox-detail-pane .bhub-card:nth-of-type(3) {
+#bookings-detail-pane .bhub-card:nth-of-type(3) {
   animation-delay: 0.08s;
 }
-#bookings-detail-pane .bhub-card:nth-of-type(4),
-#inbox-detail-pane .bhub-card:nth-of-type(4) {
+#bookings-detail-pane .bhub-card:nth-of-type(4) {
   animation-delay: 0.12s;
 }
-#bookings-detail-pane .bhub-card:nth-of-type(5),
-#inbox-detail-pane .bhub-card:nth-of-type(5) {
+#bookings-detail-pane .bhub-card:nth-of-type(5) {
   animation-delay: 0.16s;
 }.bhub-head {
   /* Identity on the PAGE GROUND (the only-what-needs-seeing demo): the
@@ -1299,11 +1252,6 @@ body.light-mode .ny-act {
   font-weight: 400;
   font-size: var(--fs-display);
   margin: 8px 0 4px;
-}.bhub-ref {
-  margin-left: 8px;
-  font-size: var(--fs-caption);
-  color: var(--text-muted);
-  letter-spacing: 0.06em;
 }.bhub-sub {
   color: var(--text-muted);
   font-size: var(--fs-body);
@@ -1361,47 +1309,7 @@ body.light-mode .ny-act {
   font-family: var(--font-sans);
   font-size: var(--fs-sub);
   color: var(--text-muted);
-}/* Quiet text-link button — information (the breakdown opener), never competing
-   with the real action buttons below it. */
-.bhub-linklike {
-  display: inline-flex;
-  align-items: center;
-  /* A standalone control, so it has to clear WCAG 2.2's 24x24 target minimum —
-     it measured 167x21. The height comes from padding here, not a box. */
-  min-height: 24px;
-  background: none;
-  border: none;
-  padding: 6px 0 2px;
-  font-size: var(--fs-sub);
-  color: var(--text-muted);
-  cursor: pointer;
-  font-family: inherit;
-}.bhub-linklike:hover {
-  color: var(--text-light);
-  text-decoration: underline;
-}/* Interactive KPI tiles read as tappable. */
-.mo-kpi[data-act] {
-  cursor: pointer;
-}/* The header's tappable "£X to collect" — inherits the ops line's look, just
-   underlined enough to read as a link. */
-.ops-owed {
-  background: none;
-  border: none;
-  padding: 0;
-  font: inherit;
-  color: inherit;
-  cursor: pointer;
-  text-decoration: underline;
-  text-decoration-color: color-mix(in srgb, currentColor 45%, transparent);
-  text-underline-offset: 3px;
-}
-/* THE SEPARATOR TRAVELS WITH THE THING IT SEPARATES. The money unit is
-   "· £2,230 to collect" as ONE unbreakable run, so a wrap can only happen
-   BEFORE the "·" — never leaving it stranded at the end of the line above. */
-.ops-unit {
-  white-space: nowrap;
-}
-/* The stage caption ("Next · 2 of 6 · Deposit") — the pipeline folded to
+}/* The stage caption ("Next · 2 of 6 · Deposit") — the pipeline folded to
    one line of words. Full-width inside the card's wrap. */
 /* A caption INSIDE a tinted card is sentence case: tracked uppercase is the
    grouped-list section header, which sits outside a container. Inside one it
@@ -1511,10 +1419,6 @@ body.light-mode .ny-act {
   gap: 8px;
   flex-wrap: wrap;
   margin-top: 14px;
-}.bhub-btn-row-center {
-  /* When the row carries a single action (e.g. only "Write an email" once the
-     guest has arrived), centre it rather than leaving it hugging the left. */
-  justify-content: center;
 }.bhub-sent-tag {
   /* A settled "already done" status that replaces a send button once its email
      has gone out — reads as confirmation, not another action to take. */
@@ -1648,34 +1552,7 @@ body.light-mode .ny-act {
   color: var(--danger-text);
 }@media (max-width: 640px) {.money-row-head {
     gap: 6px;
-  }}.mo-kpis {
-  display: grid;
-  grid-template-columns: repeat(2, 1fr);
-  gap: 12px;
-}.mo-kpi {
-  background: var(--glass-bg);
-  border: 1px solid var(--glass-border);
-  border-radius: var(--r-lg);
-  padding: 16px 18px;
-}.mo-kpi .mo-label {
-  font-size: var(--fs-micro);
-  text-transform: uppercase;
-  letter-spacing: 1px;
-  color: var(--text-muted);
-}.mo-kpi .mo-value {
-  font-family: var(--font-serif);
-  font-size: var(--fs-title);
-  line-height: 1.1;
-  margin-top: 4px;
-}.mo-kpi .mo-sub {
-  font-size: var(--fs-caption);
-  color: var(--text-muted);
-  margin-top: 3px;
-}.mo-value.mo-good {
-  color: var(--ok-text);
-}.mo-value.mo-warn {
-  color: var(--warn-text);
-}.mo-card {
+  }}.mo-card {
   background: var(--glass-bg);
   border: 1px solid var(--glass-border);
   border-radius: var(--r-lg);
@@ -1688,29 +1565,7 @@ body.light-mode .ny-act {
   letter-spacing: 0;
   color: var(--text-muted);
   margin-bottom: 6px;
-}.yoy-cmp .mo-good {
-  color: var(--ok-text);
-  font-weight: 600;
-}.yoy-cmp .mo-warn {
-  color: var(--warn-text);
-  font-weight: 600;
-}.mo-kpi-lead {
-  border-color: rgba(255, 167, 38, 0.35);
-  background: rgba(255, 167, 38, 0.06);
-}.mo-kpi-cta {
-  margin-top: 10px;
-}.mo-trends {
-  margin-top: 14px;
-}@media (min-width: 769px) {.mo-kpis {
-    grid-template-columns: repeat(4, 1fr);
-  }.mo-grid2 {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 12px;
-    align-items: start;
-  }.mo-grid2 .mo-card {
-    margin-top: 12px;
-  }}.accounts-section-title {
+}.accounts-section-title {
   font-family: var(--font-serif);
   font-size: var(--fs-h3);
   margin: 36px 0 6px;
@@ -1802,8 +1657,6 @@ body.owner-mode header .admin-dock-btn::after {
    stay dark against the white pill whatever the theme. */
 body.owner-mode header .admin-dock-btn:not(.current) {
   color: var(--text-light);
-}
-@media (hover: hover) {
 }
 body.owner-mode header .admin-dock-btn:focus-visible {
   background: color-mix(in srgb, var(--text-light) 12%, transparent);
@@ -3090,7 +2943,6 @@ body.light-mode .cmdk-editor-input {
 @keyframes spPop { 0% { transform: scale(0.4); opacity: 0; } 70% { transform: scale(1.08); opacity: 1; } 100% { transform: scale(1); } }
 @keyframes spDraw { from { stroke-dashoffset: 30; } to { stroke-dashoffset: 0; } }
 @keyframes spBreathe { 0%, 100% { opacity: 0.35; transform: scale(1); } 50% { opacity: 0.1; transform: scale(1.25); } }
-@keyframes spSweep { to { transform: rotate(270deg); } }
 
 /* ---- the hero: the ring IS the verdict ---- */
 .sp-hero { --sp-tone: var(--ok); --sp-ink: var(--ok-text); position: relative; overflow: hidden; display: flex; flex-direction: column; gap: 16px; padding: 20px; border-radius: var(--r-lg); border: 1px solid color-mix(in srgb, var(--sp-tone) 24%, transparent); background: radial-gradient(120% 90% at 0% 0%, color-mix(in srgb, var(--sp-tone) 14%, transparent), var(--glass-bg) 60%); animation: spRise 500ms var(--out) both; }
@@ -3251,66 +3103,6 @@ svg.sp-rmark path { stroke-dasharray: 30; animation: spDraw 380ms var(--out) 320
   #diagnostics-body .sp-hero.is-checking .sp-arc, #diagnostics-body .sp-spin, #diagnostics-body .sp-again.is-busy svg { animation: chbSpin 1s linear infinite !important; }
 }
 
-/* Guest typeahead in Add Booking — a dropdown of past guests under the name
-   field, so a repeat guest is one tap. Glass surface to match the modal. */
-/* The 20px lives on the WRAPPER, not the input: `top: calc(100% + 4px)` is
-   measured from the wrapper, so with the margin on the field it floated 24px
-   down — over the Email and Phone labels rather than under Name. */
-.modal-name-wrap {
-  position: relative;
-  margin-bottom: 20px;
-}
-.modal-name-wrap .input-glass {
-  margin-bottom: 0;
-}
-.modal-suggest {
-  position: absolute;
-  left: 0;
-  right: 0;
-  top: calc(100% + 4px);
-  z-index: 60;
-  /* OPAQUE. It was --glass-bg (0.02 alpha in dark) + a backdrop-filter that
-     cannot blur inside the box's own backdrop root (the .modal-foot comment
-     records the same finding) — so a guest's name painted over the placeholder.
-     --sheet-surface is already registered in a11y SURFACES. */
-  background: var(--sheet-surface);
-  border: 1px solid var(--glass-border);
-  /* A 64–88px popover wearing the 28–40px panel radius read as a shape, not a
-     list. The CELL radius is the tier a list of rows belongs to. */
-  border-radius: var(--r-sm);
-  box-shadow: var(--shadow-panel, 0 10px 34px rgba(0, 0, 0, 0.28));
-  overflow-y: auto;
-  max-height: 232px;
-}
-.modal-suggest-row {
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
-  gap: 1px;
-  width: 100%;
-  min-height: 44px;
-  text-align: left;
-  padding: 9px 13px;
-  background: none;
-  border: 0;
-  border-bottom: 1px solid var(--glass-border);
-  cursor: pointer;
-  color: inherit;
-  font: inherit;
-}
-.modal-suggest-row:last-child {
-  border-bottom: 0;
-}.modal-suggest-row:focus-visible{
-  background: var(--glass-hover);
-}
-.modal-suggest-nm {
-  font-weight: 600;
-  font-size: var(--fs-body);
-}
-.modal-suggest-sub {
-  font-size: var(--fs-caption);
-  color: var(--text-muted);
-}
 /* ONE chip language — refine/pivot/ask suggestion pills (.cmdk-chip). Primary
    ACTIONS (verbs) stay as rows; these pills are "run another search / narrow it". */
 .cmdk-chips {
@@ -5013,12 +4805,9 @@ button.bhub-icbtn { font-family: inherit; cursor: pointer; padding: 0; }
   text-align: left;
   cursor: pointer;
 }
-@media (hover: hover) { }
 .bhub-fold-lbl { font-weight: 600; font-size: var(--fs-body); min-width: 0; }
 .bhub-fold-sub { display: block; font-weight: 400; font-size: var(--fs-caption); color: var(--text-muted); margin-top: 2px; }
 .bhub-fold-right { display: flex; align-items: center; gap: 10px; flex-shrink: 0; }
-.bhub-sum-ok { color: var(--ok-text); font-size: var(--fs-sub); }
-.bhub-sum-warn { color: var(--warn-text); font-size: var(--fs-sub); }
 /* The settled payline's ONE green mark (serif = money, colour = the mark). */
 .bhub-payok { color: var(--ok-text); }
 .bhub-sum-val { color: var(--text-muted); font-size: var(--fs-sub); }
@@ -5117,16 +4906,13 @@ button.bhub-icbtn { font-family: inherit; cursor: pointer; padding: 0; }
 #manage-verdicts { display: flex; flex-direction: column; --fold-gap: 12px; gap: var(--fold-gap); margin: 0; }
 #manage-verdicts:empty, #manage-verdicts[hidden] { display: none; }
 #manage-verdicts .bhub-grpcap { margin-top: 6px; margin-bottom: -4px; }
-#manage-verdicts .mo-pulse { margin: 2px 0 0; }
 #manage-verdicts .bhub-fold-grp { width: 100%; }
 @media (min-width: 900px) {
   .settings-index #manage-verdicts { column-span: all; max-width: 640px; }
 }
 /* Pricing coach + Recent payments wear the unified anatomy (owner-asked).
-   pc-well/mf-recon reuse the .acr-well ink-mix ground; the feed keeps its
+   mf-recon reuses the .acr-well ink-mix ground; the feed keeps its
    gated row classes and takes the well framing by CSS alone. */
-.pc-well { padding: 14px 16px; }
-.pc-well .acw-acts { border-top: 1px solid color-mix(in srgb, var(--text-light) 7%, transparent); padding-top: 12px; }
 .mf-recon { max-width: 640px; padding: 4px 16px; margin: 0 0 16px; }
 .mf-line { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 9px 0; font-size: var(--fs-body); color: var(--text-muted); }
 .mf-line + .mf-line { border-top: 1px solid color-mix(in srgb, var(--text-light) 7%, transparent); }
@@ -5230,15 +5016,14 @@ button.bhub-icbtn { font-family: inherit; cursor: pointer; padding: 0; }
    welcomeRowHtml each spelled out — and an inline style OUTRANKS a stylesheet,
    so the flattening rule below could never apply: measured, every FAQ and
    welcome row painted as a raised 14px card inside the well meant to flatten it. */
-.review-row, .faq-row, .welcome-row {
+.faq-row, .welcome-row {
   border: 1px solid var(--glass-border);
   border-radius: var(--r-sm);
   padding: 12px;
   margin-bottom: 8px;
   background: var(--glass-bg);
 }
-/* A plain owner-side card and its row, once rather than inline twice. */
-.adm-card { border: 1px solid var(--glass-border); border-radius: var(--r-lg); padding: 16px; margin: 0 0 20px; background: var(--glass-bg); }
+/* A plain owner-side row, once rather than inline twice. */
 .adm-row { border: 1px solid var(--glass-border); border-radius: var(--r-sm); padding: 12px; margin-bottom: 12px; background: var(--glass-bg); }
 .acr-well .faq-row, .acr-well .welcome-row { border: 0; background: none; border-radius: 0; padding: 11px 14px; margin: 0; box-shadow: none; }
 /* the photo GRID: 3-up cells, MAIN badged on the first, the four actions as
@@ -5309,7 +5094,6 @@ button.bhub-icbtn { font-family: inherit; cursor: pointer; padding: 0; }
 .acw-modacts button { border: 1px solid color-mix(in srgb, var(--text-light) 12%, transparent); background: none; border-radius: 999px; min-height: 44px; padding: 8px 16px; font-size: var(--fs-sub); font-weight: 600; cursor: pointer; }
 .acw-modacts .mod-ok { color: var(--ok-text); border-color: color-mix(in srgb, var(--ok) 40%, transparent); }
 .acw-modacts .mod-no { color: var(--danger-text); border-color: color-mix(in srgb, var(--danger) 35%, transparent); }
-.acw-modacts .mod-mut { color: var(--text-muted); }
 /* Batch 3 — the data pages join the anatomy by framing, not rebuild: the
    all-cottages seasons grid sits in a well with hairline rows; the pricing
    lead + analytics/diagnostics cards were converted by the .accounts-stat
@@ -5323,11 +5107,8 @@ button.bhub-icbtn { font-family: inherit; cursor: pointer; padding: 0; }
 .sg-cards { display: grid; grid-template-columns: 1fr; gap: 14px; }
 @media (min-width: 901px) { .sg-cards { grid-template-columns: repeat(2, 1fr); align-items: start; } }
 .sg-band { background: color-mix(in srgb, var(--text-light) 4%, transparent); border: 1px solid color-mix(in srgb, var(--text-light) 8%, transparent); border-radius: var(--r-lg); overflow: hidden; }
-.sg-head { display: flex; align-items: center; gap: 8px; padding: 8px 8px 2px 16px; }
 .sg-name { flex: 1 1 auto; min-width: 0; border: 0; background: none; font-family: var(--font-serif); font-size: var(--fs-headline); color: var(--text-light); padding: 6px 0; }
 .sg-name::placeholder { color: var(--text-muted); font-style: italic; }
-.sg-del { flex: 0 0 auto; width: 40px; height: 40px; display: grid; place-items: center; border: 0; border-radius: 50%; background: none; color: var(--danger-text); cursor: pointer; }
-.sg-del .ic { width: 15px; height: 15px; }
 .sg-dates { display: flex; align-items: center; gap: 8px; width: calc(100% - 32px); margin: 0 16px 2px; min-height: 44px; padding: 0; border: 0; background: none; font: inherit; color: var(--text-light); cursor: pointer; }
 /* The ink-MIX fill the Rates editor's identical pills use, not a raw
    rgba(0,0,0,.18) — a dark-first value never added to the light-mode fix list,
@@ -5346,7 +5127,6 @@ button.bhub-icbtn { font-family: inherit; cursor: pointer; padding: 0; }
 .sg-price input { width: 100%; min-width: 0; min-height: 40px; border: 0; background: none; color: var(--text-light); font-family: var(--font-serif); font-size: var(--fs-headline); text-align: right; font-variant-numeric: tabular-nums; }
 .sg-price input::placeholder { color: var(--text-muted); font-family: var(--font-sans); font-size: var(--fs-sub); }
 .sg-foot { border-top: 1px solid color-mix(in srgb, var(--text-light) 7%, transparent); padding: 8px 16px 10px; font-size: var(--fs-caption); color: var(--text-muted); }
-.sg-actions { margin-top: 14px; }
 #sg-savebar { position: sticky; bottom: calc(10px + var(--safe-b)); z-index: 5; display: flex; align-items: center; gap: 10px; margin-top: 10px; padding: 8px 8px 8px 16px; background: var(--glass-bg); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); border: 1px solid var(--glass-border); border-radius: 999px; box-shadow: var(--shadow-soft); }
 #season-grid-msg { flex: 1 1 auto; min-width: 0; font-size: var(--fs-sub); color: var(--text-muted); }
 .sg-save { flex: 0 0 auto; border: 0; border-radius: 999px; background: var(--accent); color: var(--accent-ink); font-size: var(--fs-body); font-weight: 600; padding: 12px 20px; min-height: 44px; cursor: pointer; }
@@ -5378,7 +5158,6 @@ button.bhub-icbtn { font-family: inherit; cursor: pointer; padding: 0; }
 #iv-attn { display: flex; flex-direction: column; gap: 12px; }
 #iv-attn:empty { display: none; }
 @media (min-width: 1200px) { #inbox-landing { display: none; } }
-@media (max-width: 1199px) { #inbox-folders { display: none; } }
 
 /* ---- STATUS CAPSULES — serif is for money, a STATE is a capsule. ✓ when
    clear, a stroke-drawn warning triangle when something needs the owner,
@@ -5405,8 +5184,6 @@ button.bhub-icbtn { font-family: inherit; cursor: pointer; padding: 0; }
    whose label and sub are SIBLINGS — as flex items the sub sat beside the label
    and squeezed it to 4px, breaking the name into a column of single words. */
 #inbox-landing > .bhub-fold-grp .bhub-fold-lbl { display: flex; align-items: flex-start; gap: 9px; }
-.iv-lic { width: 17px; height: 17px; flex: 0 0 auto; color: var(--text-muted); margin-top: 2px; }
-.iv-lwrap { min-width: 0; }
 
 /* The email reader's two folds (guest-match verdict + the earlier chain) —
    a details wearing the fold-row anatomy inside the reader card. */
@@ -5428,39 +5205,6 @@ button.bhub-icbtn { font-family: inherit; cursor: pointer; padding: 0; }
 @media (prefers-reduced-motion: reduce) { .mbx-ctx-d .bhub-chev { transition: none; } }
 .mbx-ctx-d .mbx-ctx, .mbx-ctx-d .mbx-chain { padding: 0 2px 10px; }
 
-/* ---- THE OWNER'S REPLY WINDOW (#messages-modal). These rules live in
-   admin.css rather than beside their base rules in app.css for the reason
-   stated at the top of the PR2 block: this window only ever opens for the
-   owner, and app.css is the sheet every anonymous visitor pays for.
-
-   THE NAME GETS ITS OWN ROW. Beside Archive / Delete / ✕ the serif title had a
-   72px column and wrapped a guest's name over two lines; the actions are a
-   quiet row beneath it instead of three pills competing with the person you
-   are writing to.
-
-   THE COMPOSER IS ONE ROW. Four stacked controls of three weights took 175px
-   under a 383px thread and left the reply field 138px, in which "Write a
-   reply…" wrapped onto two lines. Quick replies are one line above the
-   field; the select STAYS a <select>, being the
-   accessible control, and chips would be five buttons for something used once
-   in ten replies. ---- */
-#messages-modal .msg-head { margin-bottom: 12px; }
-#messages-modal .msg-head h3 { margin: 0 0 8px; overflow-wrap: anywhere; }
-#messages-modal .msg-head-acts { display: flex; gap: 8px; align-items: center; }
-#messages-modal .msg-head-acts .reviews-modal-close { margin-left: auto; }
-#messages-modal .msg-quick {
-  display: flex; align-items: center; gap: 8px; margin: 0 0 8px;
-  overflow-x: auto; overscroll-behavior-x: contain; scrollbar-width: none;
-}
-#messages-modal .msg-quick::-webkit-scrollbar { display: none; }
-#messages-modal .msg-quick > * { flex: 0 0 auto; margin: 0; }
-/* Wide enough for its OWN label: a <select> clips with no ellipsis, and at
-   140px "Quick replies…" rendered as "Quick replies.." (96px of inner width
-   for 121px of text) — the one control whose text says what it opens. */
-#messages-modal #msg-canned { flex: 1 1 auto; min-width: 168px; }
-#messages-modal .chat-composer { margin-top: 0; }
-#messages-modal .chat-attach-btn, #messages-modal .chat-send { width: 44px; height: 44px; }
-#messages-modal .chat-composer textarea { min-height: 44px; }
 /* THE RAIL ALREADY NAMED THIS FOLDER. Its selected row reads "Enquiries 2" and
    the list column repeated the same label and count 20px to its right.
    Visually hidden, NOT removed: ui-test-mailbox reads the heading's text to
@@ -5477,8 +5221,6 @@ button.bhub-icbtn { font-family: inherit; cursor: pointer; padding: 0; }
    UA rule, so an empty caption painted over a clean page. */
 .bhub-grpcap[hidden] { display: none; }
 #accounts-content .bhub-fold-grp { max-width: 640px; }
-.mo-row { background: none; border: none; font: inherit; width: 100%; cursor: pointer; text-align: left; min-height: 44px; align-items: center; }
-@media (hover: hover) { .mo-row:hover .bhub-kv-label { color: var(--accent-text); } }
 /* THE TRENDS FOLD IS PART OF THE PAGE, not the old dashboard inside it. A
    .mo-card is a 20px-radius bordered card, and four of them sat inside a fold
    group whose own bottom corners are 12px — a child rounder than its container.
@@ -6270,115 +6012,6 @@ body.offline-snap .ods-mark {
 .arv-row b { font-weight: 600; text-align: right; min-width: 0; overflow-wrap: anywhere; }
 .arv-note { font-size: var(--fs-caption); color: var(--text-muted); margin: 9px 0 0; }
 
-/* ============================================================
-   THE FRAME — the day spine + the rail (the approved redesign).
-   Two pieces of chrome AROUND the screens, built by admin.js
-   (chbFrameSync); nothing here touches a screen's own anatomy.
-   ============================================================ */
-/* ---- The day spine: the day, carried onto every admin view that doesn't
-   already open with it. IN FLOW (never sticky — the header already condenses
-   and names the screen; a second sticky bar is chrome stacking), re-parented
-   into the active view so it inherits that view's container width. The
-   [hidden] guard is load-bearing: display:flex outranks the hidden attribute
-   (the arrival stand-down lesson — the property is not the pixel). ---- */
-#day-spine {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 8px 12px;
-  margin: 0 0 18px;
-  padding: 0 0 14px;
-  border-bottom: 1px solid var(--glass-border);
-}
-#day-spine[hidden] {
-  display: none;
-}
-.spine-day {
-  font-family: var(--font-serif);
-  font-size: var(--fs-headline);
-  font-weight: 600;
-  color: var(--text-light);
-  line-height: 1.35;
-}
-/* A duty chip wears the strip's own severity vocabulary at capsule size —
-   the ink + tint pairs are the st-cap percentages a11y-test §1b discovers
-   and measures, restated here so the chips join that sweep automatically. */
-.spine-duty {
-  position: relative; /* the hit region (::before) */
-  display: inline-flex;
-  align-items: center;
-  gap: 7px;
-  font-size: var(--fs-caption);
-  font-weight: 600;
-  padding: 6px 13px 6px 11px;
-  border-radius: var(--r-pill);
-  min-height: 34px;
-  max-width: 340px;
-  cursor: pointer;
-}
-/* HIT REGION: the 34px chip keeps its look, the region reaches 44. */
-.spine-duty::before {
-  content: '';
-  position: absolute;
-  inset: -6px 0;
-  border-radius: inherit;
-}
-/* The ellipsis lives on a CHILD span — on the flex chip itself,
-   text-overflow renders nothing and long labels hard-clip mid-character. */
-.spine-lbl {
-  min-width: 0;
-  overflow: hidden;
-  white-space: nowrap;
-  text-overflow: ellipsis;
-}
-.spine-duty.is-danger { color: var(--danger-text); background: color-mix(in srgb, var(--danger) 13%, transparent); border: 1px solid color-mix(in srgb, var(--danger) 24%, transparent); }
-.spine-duty.is-warn { color: var(--warn-text); background: color-mix(in srgb, var(--warn) 13%, transparent); border: 1px solid color-mix(in srgb, var(--warn) 24%, transparent); }
-.spine-duty.is-ok { color: var(--ok-text); background: color-mix(in srgb, var(--ok) 14%, transparent); border: 1px solid color-mix(in srgb, var(--ok) 24%, transparent); }
-.spine-duty.is-more { color: var(--text-muted); background: color-mix(in srgb, var(--text-muted) 10%, transparent); border: 1px solid color-mix(in srgb, var(--text-muted) 18%, transparent); font-weight: 500; }
-@media (hover: hover) {
-}
-.spine-dot {
-  width: 7px;
-  height: 7px;
-  border-radius: 50%;
-  flex: 0 0 auto;
-  background: currentColor;
-}
-.spine-duties {
-  display: contents;
-}
-/* Present everywhere, transparent everywhere except while the rail spine is
-   condensing — see the collapse rules below. */
-.spine-dutiesin {
-  display: contents;
-}
-/* The condensed count pill — hidden until the spine condenses. */
-.spine-cnt {
-  display: none;
-  align-items: center;
-  font-size: var(--fs-caption);
-  font-weight: 700;
-  padding: 4px 10px;
-  border-radius: var(--r-pill);
-  color: var(--danger-text);
-  background: color-mix(in srgb, var(--danger) 14%, transparent);
-  border: 1px solid color-mix(in srgb, var(--danger) 26%, transparent);
-  flex: 0 0 auto;
-  cursor: pointer;
-}
-/* On rail screens the spine IS the page's head (no header above it): the
-   prototype's serif scale, sticky, condensing on scroll to one line + the
-   count. The ground is stated (the page shows through a transparent sticky). */
-body.rail-on.admin-screen #day-spine {
-  position: sticky;
-  top: 0;
-  z-index: 5;
-  margin: 0 0 18px;
-  padding: 16px 0 14px;
-  background: color-mix(in srgb, var(--dark-grey) 88%, transparent);
-  -webkit-backdrop-filter: blur(10px);
-  backdrop-filter: blur(10px);
-}
 /* The container's top padding moves INTO the spine on views that carry one —
    with it on the container, content scrolled visibly through the 18px strip
    ABOVE the sticky spine (measured on the build's own screenshot: a ghost of
@@ -6386,114 +6019,6 @@ body.rail-on.admin-screen #day-spine {
    (Today) keep the container's own padding. */
 body.rail-on.admin-screen main.container:has(> #day-spine:not([hidden])) {
   padding-top: 0;
-}
-body.rail-on.admin-screen #day-spine {
-  padding-top: calc(18px + var(--safe-t));
-}
-/* Full state: the sentence owns its line and the chips sit UNDER it — the
-   prototype's stacked anatomy, not a crowded single row. */
-body.rail-on.admin-screen .spine-day {
-  font-size: var(--fs-title);
-  line-height: 1.28;
-  text-wrap: balance;
-  flex: 1 1 100%;
-}
-/* IT CONDENSES OVER 320ms, not in one frame. Measured before: 103.2px then 46px
-   with nothing between (`transition: all`, i.e. 0s) — a 57px jump of the page's
-   own head mid-scroll. Padding, the sentence's size and the duties row's HEIGHT
-   carry it. The row rides .bhub-fold's discipline — a collapsing grid with
-   `visibility` on the last keyframe — and the visibility half is not optional:
-   a bare 0fr grid leaves focusable 44px chips in the tab order and the a11y tree
-   behind a condensed bar, a worse bug than the jump. */
-body.rail-on.admin-screen #day-spine {
-  transition:
-    padding-top 320ms var(--unfold),
-    padding-bottom 320ms var(--unfold),
-    row-gap 320ms var(--unfold);
-}
-body.rail-on.admin-screen .spine-day {
-  transition: font-size 320ms var(--unfold);
-}
-body.rail-on.admin-screen .spine-duties {
-  display: grid;
-  grid-template-rows: 1fr;
-  flex: 1 1 100%;
-  min-height: 0;
-  transition:
-    grid-template-rows 320ms var(--unfold),
-    opacity 220ms linear,
-    visibility 0s;
-}
-/* min-width/min-height: 0 — a grid item's automatic minimum is its MIN-CONTENT
-   size, so without the release the track will not collapse (and the column sizes
-   to the widest unbreakable chip). The .bhub-fold note has the long version. */
-body.rail-on.admin-screen .spine-dutiesin {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px 12px;
-  min-width: 0;
-  min-height: 0;
-  overflow: hidden;
-}
-/* `flex-wrap: nowrap` USED to be here and had to go: it is not animatable, so
-   flipping it re-laid both lines into one in a single frame and 36px of the 57
-   went instantly, before the collapse had moved. With `wrap`, the sentence and
-   the count share line one and the duties row is the `1 1 100%` line beneath it.
-   Measured: 103.2 → 46 over 20 frames, no step wider than 5.4px. */
-body.rail-on.admin-screen #day-spine.spine-cond {
-  padding: 10px 0;
-  /* The collapsed duties row is still a wrapped line, so the spine's own 8px
-     row-gap would leave the condensed bar 8px taller than the design. Animated
-     with the rest so it closes on one clock. */
-  row-gap: 0;
-}
-body.rail-on.admin-screen #day-spine.spine-cond .spine-day {
-  font-size: var(--fs-body);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  flex: 1 1 auto;
-  min-width: 0;
-}
-body.rail-on.admin-screen #day-spine.spine-cond .spine-duties {
-  grid-template-rows: 0fr;
-  opacity: 0;
-  visibility: hidden;
-  /* The row stays visible WHILE it closes and leaves the tab order the moment it
-     has (the delayed 0s step — the .cmdk-box trick). */
-  transition:
-    grid-template-rows 320ms var(--unfold),
-    opacity 220ms linear,
-    visibility 0s linear 320ms;
-}
-@media (prefers-reduced-motion: reduce) {
-  body.rail-on.admin-screen #day-spine,
-  body.rail-on.admin-screen .spine-day,
-  body.rail-on.admin-screen .spine-duties,
-  body.rail-on.admin-screen #day-spine.spine-cond .spine-duties {
-    transition: none;
-  }
-  body.rail-on.admin-screen #day-spine.spine-cond .spine-duties {
-    display: none;
-  }
-}
-body.rail-on.admin-screen #day-spine.spine-cond .spine-cnt {
-  display: inline-flex;
-}
-/* ON A PHONE THE SPINE CONDENSES: the sentence, then ONE scrolling row of 32px
-   chips (stacked, they cost a quarter of the fold on every owner subpage). */
-@media (max-width: 640px) {
-  /* NOWRAP is load-bearing: a column that still WRAPS sizes its one line to the
-     items' max-content (597px at 390) and the row overflowed the page sideways. */
-  #day-spine { flex-direction: column; flex-wrap: nowrap; align-items: stretch; gap: 10px; margin-bottom: 16px; padding-bottom: 12px; min-width: 0; }
-  .spine-day { min-width: 0; }
-  .spine-day { font-size: var(--fs-headline); }
-  /* A scroll container CLIPS its children's overflow — including the chips'
-     ::before hit region (-6px) — so the row carries 6px of padding cancelled by
-     margin: the region stays inside the scroll box and still reaches 44. */
-  .spine-duties { display: flex; flex-wrap: nowrap; gap: 8px; overflow-x: auto; scrollbar-width: none; padding: 8px 0; margin: -8px 0; min-width: 0; }
-  .spine-duties::-webkit-scrollbar { display: none; }
-  .spine-duty { flex: none; min-height: 32px; padding: 4px 12px; font-size: var(--fs-sub); max-width: 260px; }
 }
 
 /* ---- The rail: the dock's destinations plus Cottages, as a left column
@@ -6722,10 +6247,6 @@ body.rail-on.admin-screen #today-date {
   line-height: 1.35;
   color: var(--text-light);
   text-wrap: balance;
-}
-body.rail-on.admin-screen #today-date .ops-owed {
-  font: inherit;
-  color: var(--accent-text);
 }
 /* The day's VERDICT belongs beside the head — and at rail widths the head is
    the sentence, not the hidden h1. display:contents lifts the verdict out of
@@ -6981,29 +6502,6 @@ body.offline-snap #admin-rail .rail-row[data-view='view-settings'] {
   font-weight: 700;
 }
 
-/* ============================================================================
-   BACK-OFFICE MOTION — four small motions beside the fold above. The measured
-   starting point: app.css carries 99 animations and admin.css 38, and of every
-   row type in the app only .ny-row had an entrance. Each one below earns its
-   place by saying something true; where it would only decorate it is labelled
-   as such and kept to a once-per-visit moment.
-   ========================================================================= */
-
-/* --- The answer ARRIVING (moLand, the Money landing's slow answers). The
-   figure settles in from 4px instead of replacing the placeholder in one frame.
-   `backwards` holds it at opacity 0 through its own stagger delay, so a row
-   that has not had its turn shows nothing rather than flashing the answer and
-   then animating it. inline-block because these are <span>s and a transform
-   does not apply to an inline box. */
-.mo-landed {
-  display: inline-block;
-  animation: moLand 0.36s var(--unfold) var(--mo-land-d, 0s) backwards;
-}
-div.mo-landed { display: block; } /* the row lists under each figure */
-@keyframes moLand {
-  from { opacity: 0; transform: translateY(4px); }
-}
-
 /* --- A FIGURE THAT CHANGED SAYS SO — two grammars, and the difference is the
    point. The owed capsule was already on screen and has been RECOMPUTED, so it
    settles; payPop's 0.5→1.2 scale means "this appeared", which on a figure
@@ -7037,52 +6535,15 @@ div.mo-landed { display: block; } /* the row lists under each figure */
    change of subject, never on the data refreshes renderBookings also runs for. */
 
 @media (prefers-reduced-motion: reduce) {
-  .mo-landed, .bk-verdict-settle, .dock-badge-pop, .tl-bar.tl-draw {
+  .bk-verdict-settle, .dock-badge-pop, .tl-bar.tl-draw {
     animation: none;
   }
-}
-
-/* ── ONE DISCLOSURE VOCABULARY ────────────────────────────────────────────
-   Six <details> on the owner's screens wore three chevrons ('▾', '›', the UA
-   ▶) and two heights, two of them 29px — under the app's own 44px floor. ONE
-   spec, and the chevron IS `BHUB_CHEV`: the same 24-unit path drawn as a mask
-   so a stylesheet can carry it, in currentColor, rotating 90° on [open]. The
-   whole `.help-disclosure` block moved here from app.css with it — the markup
-   is owner-only, so every guest was paying for it. */
-.help-disclosure { max-width: 640px; margin: 14px 0 0; }
-.help-disclosure > summary {
-  cursor: pointer; list-style: none;
-  display: flex; align-items: center; gap: 8px;
-  min-height: 44px; padding: 4px 0;
-  font-size: var(--fs-sub); font-weight: 600;
-  text-transform: none; letter-spacing: normal;
-  color: var(--accent-text);
-  -webkit-tap-highlight-color: transparent;
-}
-
-/* The mid-light accent fails contrast on the light theme (~2.9:1) — these
-   summaries are interactive text, so use the dark ink there. */
-body.light-mode .help-disclosure > summary { color: var(--accent-ink); }
-.help-disclosure > summary::-webkit-details-marker { display: none; }
-.help-disclosure > summary::after {
-  content: ''; width: 14px; height: 14px; flex: 0 0 auto;
-  background: currentColor;
-  -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M9 6l6 6-6 6'/%3E%3C/svg%3E") center / contain no-repeat;
-  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M9 6l6 6-6 6'/%3E%3C/svg%3E") center / contain no-repeat;
-  transition: transform 0.2s var(--fluid-bezier);
-}
-.help-disclosure[open] > summary::after { transform: rotate(90deg); }
-.help-disclosure > summary:focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: 2px;
-  border-radius: 4px;
 }
 
 /* ===== ROUND EIGHT (measured sweep after the header / radii / type-scale PRs) ===== */
 /* Reach 44 (round eight): hit regions on the search chrome, the hub's contact links,
    Today's money pill and the deposit stepper — regions, not bigger controls. */
-#cmdk-clear, #cmdk-pin, #cmdk-close, #cmdk-help, .cmdk-chip, .cmdk-scope,
-.bhub-kv-act, .bhub-kv a, .ops-owed, .acr-step button { position: relative; }
+#cmdk-clear, #cmdk-pin, #cmdk-close, #cmdk-help, .cmdk-chip, .cmdk-scope, .bhub-kv-act, .bhub-kv a, .acr-step button { position: relative; }
 #cmdk-clear::after { content: ''; position: absolute; inset: -10px; }
 #cmdk-pin::after, #cmdk-help::after { content: ''; position: absolute; inset: -6px; }
 #cmdk-close::after { content: ''; position: absolute; inset: -5px; }
@@ -7101,7 +6562,6 @@ body.light-mode .help-disclosure > summary { color: var(--accent-ink); }
 }
 .bhub-kv-act::after { content: ''; position: absolute; inset: -10px 0; }
 .bhub-kv a::after { content: ''; position: absolute; inset: -13px 0; }
-.ops-owed::after { content: ''; position: absolute; inset: -9px 0; }
 .acr-step button::after { content: ''; position: absolute; inset: -3px; }
 /* A sub may take two lines: beside a capsule at 390 these lost 12–36% of their
    words to an ellipsis on Today, the enquiry hub, the Inbox and the search rows.
@@ -7146,7 +6606,7 @@ body.light-mode .help-disclosure > summary { color: var(--accent-ink); }
 /* The messages toolbar's two 40px fields. Scoped, NOT `.input-glass.field-sm`
    globally — field-sm is used at ~30 sites and raising them all is a layout
    question at thirty places (the .date-range-trigger.field-sm precedent). */
-#msg-search, #msg-canned { min-height: 44px; }
+#msg-search { min-height: 44px; }
 /* THE ACTIVITY LOG'S FOURTEEN FILTER CHIPS keep flex-wrap and take the region.
    A nowrap scroller would hide 12 of the 14 behind a swipe on the one screen
    whose job is finding a past event; the 8px row gap means two regions meet in
@@ -7191,10 +6651,7 @@ select.acw-pill { min-height: 44px; }
    declared earlier would not win while the finger is down. */
 @media (prefers-reduced-motion: no-preference) {
   .inbox-sort-btn:active,
-  .spine-duty:active,
-  .ops-owed:active,
   body.owner-mode .logo.logo-assist:active,
-  .area-ov-card:active,
   .bhub-actlink:active,
   .bhub-icbtn:active,
   .bhub-kv-act:active,
@@ -7211,8 +6668,6 @@ select.acw-pill { min-height: 44px; }
 }
 /* THE RELEASE is the base rule's transition, so anything without one gets one. */
 .inbox-sort-btn,
-.spine-duty,
-.ops-owed,
 body.owner-mode .logo.logo-assist,
 .bhub-actlink,
 .bhub-icbtn,
@@ -7310,7 +6765,6 @@ body.light-mode .tl-cell:active {
 /* Today's title carries no divider: the line under it belonged to the day sentence that was removed. */
 #view-backoffice .dashboard-header { border-bottom: 0; padding-bottom: 0; margin-bottom: 8px; }
 
-
 /* THE BOOKING PAGE, ONE DECISION AT A TIME (approved demo). The decision card owns its buttons on every
    width; the sticky bar only exists while the card is off screen; call/email are plain buttons under the
    name; the when-line carries one state capsule; the page settles in once per booking opened. */
@@ -7376,7 +6830,6 @@ body.light-mode .tl-cell:active {
 .bhub-head-top > .bhub-actions { position: absolute; top: 0; right: 0; z-index: 2; }
 .bhub-namerow { margin-top: 8px; }
 .bhub-next-acts .bhub-next-alt { justify-content: center; justify-items: center; text-align: center; }
-
 
 /* ONE ROW OF THREE: call, email and ⋯ are the same 44px circles on one line, top-right, level with the
    cottage tag; the name takes the full width beneath. */
@@ -7474,9 +6927,7 @@ body.light-mode .tl-cell:active {
 .mbx-mark { background: color-mix(in srgb, var(--warn) 24%, transparent); color: inherit; border-radius: 4px; padding: 0 2px; }
 @media (prefers-reduced-motion: reduce) { .mbx-fold, .mbx-fchip .bhub-chev { transition: none; } }
 
-/* ---- PAYMENTS LANDING: a sentence under the title and its status pill, tools as three buttons ---- */
-.mo-headline { font: 600 var(--fs-title)/1.3 var(--font-serif, Georgia, serif); margin: 4px 0 8px; text-wrap: balance; }
-.mo-headline b { color: var(--accent-text); font-weight: 600; }
+/* ---- Tool buttons, three to a row (Calendar sync's Sync now / Copy link / Edit links) ---- */
 .mo-tools { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
 .mo-tool { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; min-height: 76px; padding: 8px 4px; border: 1px solid var(--glass-border); border-radius: var(--r-sm); background: none; color: var(--text-light); font: 600 var(--fs-caption)/1.25 var(--font-sans); text-align: center; cursor: pointer; }
 .mo-tool .ic { width: 22px; height: 22px; color: var(--accent-text); }
@@ -7484,7 +6935,6 @@ body.light-mode .tl-cell:active {
 /* ---- TYPE BY ROLE (owner-asked, approved demo). One family everywhere; size follows the job a line does.
    Headline sentence 17 · section caption 12 · row sub-line 13 · row figure 17 · buttons 15. Row titles (15), capsules (12),
    notes (13), page titles (28) and chat (15) were already right. Supersedes the Payments "one size" block. ---- */
-body.owner-mode .mo-headline { font-size: var(--fs-headline); line-height: 1.35; font-weight: 600; }
 body.owner-mode .bhub-grpcap, body.owner-mode .acr-cap, body.owner-mode .bo-sec-title { font-size: var(--fs-caption); }
 body.owner-mode .bhub-fold-sub, body.owner-mode .settings-row-sub, body.owner-mode .ny-sub, body.owner-mode .bhub-kv-sub { font-size: var(--fs-sub); }
 body.owner-mode .bhub-payline-fig, body.owner-mode .bhub-sum-val { font-size: var(--fs-headline); }
@@ -7508,11 +6958,9 @@ body.owner-mode.chb-busy::before { content: ""; position: fixed; top: 0; left: 0
 .sk-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 16px; min-height: 64px; border-top: 1px solid var(--glass-border); }
 .sk-row:first-child { border-top: 0; }
 .sk-a { height: 14px; width: 120px; } .sk-b { height: 12px; width: 168px; margin-top: 8px; } .sk-c { height: 16px; width: 64px; }
-.mo-run { animation: chbPulse 1.3s ease-in-out infinite; }
-@keyframes chbPulse { 50% { opacity: .45; } }
 @media (prefers-reduced-motion: reduce) {
     body.owner-mode.chb-busy::before { animation: none; width: 100%; opacity: .5; }
-    .sk::after, .mo-run { animation: none; }
+    .sk::after { animation: none; }
 }
 
 /* ---- ONE WINDOW CURVE (owner-asked, from the Refresh-calendar menu: a 28px menu around a 12px item read as two different shapes).
@@ -7598,12 +7046,6 @@ body.owner-mode .accounts-empty { text-align: left; padding: 16px 4px; font-size
    snapping when a row arrives or leaves. */
 .cron-pill.unk { color: var(--text-muted); background: color-mix(in srgb, var(--text-muted) 10%, transparent); border-color: color-mix(in srgb, var(--text-muted) 22%, transparent); }
 #health-pill, .head-pill { transition: background-color 350ms var(--out), color 350ms var(--out), border-color 350ms var(--out), transform 320ms var(--settle), filter 200ms var(--out); }
-.mg-sum {
-  display: flex; align-items: center; gap: 12px; width: 100%; text-align: left;
-  padding: 16px; margin: 0 0 4px; cursor: pointer; color: var(--text-light); font: inherit;
-  background: var(--glass-bg); border: 1px solid var(--glass-border); border-radius: var(--r-lg);
-  transition: border-color 400ms var(--out), transform 320ms var(--settle);
-}
 .mg-txt { flex: 1; min-width: 0; display: flex; flex-direction: column; }
 .mg-s { font-size: var(--fs-sub); color: var(--text-muted); text-wrap: pretty; }
 /* The problems unfold (the fold discipline: a 0fr grid, ONE child). */
@@ -7636,17 +7078,6 @@ body.owner-mode .accounts-empty { text-align: left; padding: 16px 4px; font-size
 /* (The expense rows are .xp-row in the one-look block: this grid was keyed on .exp-row, a class the
    guest's Things-to-do rows also wear, and their display:flex had been silently beating it.) */
 
-/* THE MONEY LANDING'S "To give back" SLOT is a wrapper filled late (moAsyncFill),
-   so the sibling join rules never saw through it: two joined runs with a
-   full-radius card and 12px gaps between them. Transparent to layout, and the
-   join looks through it whether it holds a group or nothing. */
-#mo-back-slot { display: contents; }
-.bhub-fold-grp + #mo-back-slot > .bhub-fold-grp,
-#mo-back-slot:has(> .bhub-fold-grp) + .bhub-fold-grp,
-.bhub-fold-grp + #mo-back-slot:empty + .bhub-fold-grp { margin-top: calc(-1 * var(--fold-gap, 0px)); border-top-width: 0; border-top-left-radius: 0; border-top-right-radius: 0; }
-.bhub-fold-grp:has(+ #mo-back-slot > .bhub-fold-grp),
-.bhub-fold-grp:has(+ #mo-back-slot:empty + .bhub-fold-grp),
-#mo-back-slot:has(+ .bhub-fold-grp) > .bhub-fold-grp { border-bottom-left-radius: 0; border-bottom-right-radius: 0; }
 /* Round-3 audit. The Add-expense form's inline `flex: 1 1 160px` became a 160px
    HEIGHT once the phone layout turned the form into a column (a 110px hole under
    Note). One task's button is a button, not a 1086px bar, on wide screens. Below
@@ -7674,12 +7105,11 @@ body.owner-mode .accounts-empty { text-align: left; padding: 16px 4px; font-size
 .rv-acts { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); gap: 8px; }
 .rv-row + .rv-row, .rv-go + .rv-go, .rv-qrow + .rv-qrow { border-top: 1px solid color-mix(in srgb, var(--text-light) 7%, transparent); }
 .rv-go { width: 100%; border: 0; background: none; color: var(--text-light); font: inherit; text-align: left; cursor: pointer; padding-right: 16px; }
-.rv-go:focus-visible, .rv-act:focus-visible, .rvq-close:focus-visible { outline: 2px solid var(--accent-text); outline-offset: -2px; }
+.rv-go:focus-visible, .rv-act:focus-visible { outline: 2px solid var(--accent-text); outline-offset: -2px; }
 .rv-dot { width: 10px; height: 10px; border-radius: 50%; flex: none; }
 .rv-go-txt { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
 .rv-name { font-size: var(--fs-body); font-weight: 600; color: var(--text-light); }
 .rv-sub { font-size: var(--fs-sub); color: var(--text-muted); }
-.rv-path { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .rv-act { height: 44px; min-width: 0; padding: 0 8px; border-radius: var(--r-sm); border: 1px solid color-mix(in srgb, var(--text-light) 12%, transparent); background: none; color: var(--text-light); font: inherit; font-size: var(--fs-body); font-weight: 600; display: inline-flex; align-items: center; justify-content: center; gap: 8px; cursor: pointer; white-space: nowrap; }
 .rv-act svg { flex: none; }
 .rv-copy { border-color: transparent; background: var(--accent); color: var(--accent-ink); }
@@ -7750,7 +7180,6 @@ body.owner-mode .accounts-empty { text-align: left; padding: 16px 4px; font-size
 .rvq-overlay .rvq-box { max-width: 340px; width: 100%; padding: 20px; display: flex; flex-direction: column; gap: 16px; }
 .rvq-head { display: flex; align-items: center; gap: 12px; }
 .rvq-head h2 { margin: 0; flex: 1 1 auto; min-width: 0; font-family: var(--font-sans); font-size: var(--fs-headline); font-weight: 600; color: var(--text-light); text-align: left; }
-.rvq-close { width: 44px; height: 44px; margin: -12px -12px -12px 0; flex: none; border: 0; background: none; color: var(--text-muted); display: inline-flex; align-items: center; justify-content: center; cursor: pointer; }
 .rvq-code { align-self: center; width: 232px; max-width: 100%; aspect-ratio: 1; box-sizing: border-box; padding: 16px; border-radius: var(--r-lg); background: white; }
 .rvq-code svg { display: block; width: 100%; height: 100%; }
 .rvq-code path { fill: black; } /* a code is dark on white in both themes */
@@ -7802,7 +7231,7 @@ body.owner-mode .accounts-empty { text-align: left; padding: 16px 4px; font-size
 .pay-locline select { flex: 1 1 auto; min-width: 0; margin: 0; }
 .pay-note { margin: 0; font-size: var(--fs-sub); color: var(--text-muted); }
 .pay-note:empty { display: none; }
-#sq-webhook-card .stcap-empty, #sq-webhook-status:empty { display: none; }
+#sq-webhook-status:empty { display: none; }
 #sq-loc-card[hidden] { display: none; }
 /* The location picker: a row button showing the choice, a sheet in the house
    style listing the options (the QR window's frame). */
@@ -7827,12 +7256,6 @@ body.owner-mode .accounts-empty { text-align: left; padding: 16px 4px; font-size
 .sg-now { position: absolute; top: 0; bottom: 0; left: 0; width: 2px; background: var(--text-light); z-index: 1; }
 .sg-blk { position: absolute; top: 0; bottom: 0; min-width: 6px; border: 0; padding: 0; cursor: pointer; }
 .sg-months { display: grid; grid-template-columns: repeat(12, minmax(0, 1fr)); margin-top: 8px; font-size: var(--fs-micro); font-weight: 600; color: var(--text-muted); }
-.sg-c0 { background: var(--accent); }
-.sg-c1 { background: var(--info); }
-.sg-c2 { background: var(--ok); }
-.sg-c3 { background: color-mix(in srgb, var(--accent) 55%, var(--info)); }
-.sg-c4 { background: var(--warn); }
-.sg-c5 { background: color-mix(in srgb, var(--ok) 55%, var(--info)); }
 .sg-cards { gap: 12px; }
 .sg-sum { width: 100%; display: flex; flex-direction: column; gap: 12px; padding: 20px; border: 0; background: none; color: var(--text-light); font: inherit; text-align: left; cursor: pointer; }
 .sg-sum-top { display: flex; align-items: center; gap: 12px; width: 100%; }
@@ -7925,7 +7348,6 @@ body.owner-mode .accounts-empty { text-align: left; padding: 16px 4px; font-size
 #pricing-body .pr-card .ny-sub { font-size: var(--fs-sub); color: var(--text-muted); line-height: 1.45; }
 #pricing-body .pr-card .ny-act { flex: none; font-size: var(--fs-sub); font-weight: 600; color: var(--accent-text); }
 .pr-calm { display: flex; align-items: center; gap: 12px; padding: 16px 20px; font-size: var(--fs-body); }
-.pr-more { margin-top: 12px; }
 .pr-rule { min-height: 64px; padding: 8px 12px 8px 20px; }
 .pr-rlbl { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
 .pr-rsub { font-size: var(--fs-sub); color: var(--text-muted); }
@@ -8315,7 +7737,6 @@ div.ga-row.oa-swrow { cursor: default; }
 /* People & access: a person's row leads with their photo, at the icon's place. */
 .ga-row .ga-ava.oa-pava { width: 40px; height: 40px; flex: 0 0 auto; font-size: var(--fs-headline); }
 .ga-row.oa-dim .ga-t { color: var(--text-muted); }
-.ga-row.oa-warn .ga-t { color: var(--warn-text); }
 /* The guests' card keeps the guest site's serif: this IS what guests see. */
 .oa-preview { --font-serif: "Playfair Display", serif; }
 .oa-preview .host-card { pointer-events: none; }
@@ -8585,7 +8006,6 @@ body.owner-mode.light-mode { --u-field: rgba(255, 255, 255, 0.5); }
   font-size: var(--fs-sub); font-weight: 600;
 }
 :is(main, div).one-look :is(.rvi-chip, .msg-filter-chip):is([aria-pressed="true"], .is-on, .on) { background: var(--accent) !important; color: var(--accent-ink) !important; border-color: transparent !important; }
-:is(main, div).one-look .u-chips { display: flex; flex-wrap: wrap; gap: 8px; }
 
 /* ---------- 9. STAT TILE: a figure over its name ---------- */
 :is(main, div).one-look :is(.gst-stat, .sl-stat, .mo-kpi, .sp-vital, .u-stat) {
@@ -8821,8 +8241,6 @@ body.owner-mode:where(:has(main.one-look.active), :has(#cmdk.cmdk-sheet)) :is(.g
 :is(main, div).one-look .bhub-fold .msg-threads { background: var(--u-inset); border-color: transparent; border-radius: var(--u-r-cell); }
 :is(main, div).one-look .msg-threads .msg-thread-row { margin: 0; background: none; border: 0; border-radius: 0; box-shadow: none; min-height: var(--u-h-row); padding: 12px var(--u-pad); }
 :is(main, div).one-look .msg-threads .msg-thread-row + .msg-thread-row { border-top: 1px solid var(--u-edge); }
-/* A folder's own icon is the one icon tile. */
-:is(main, div).one-look .iv-lic { flex: 0 0 32px; width: 32px; height: 32px; padding: 8px; margin: 0; box-sizing: border-box; border-radius: var(--u-r-cell); background: var(--well-bg); color: var(--accent-text); }
 /* The message search row: the one field, then its filter chips and its one action. */
 :is(main, div).one-look .msg-inbox-controls { gap: 8px; margin: 0 0 12px; }
 :is(main, div).one-look .msg-chips { flex: 1 1 100%; display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
@@ -8903,12 +8321,6 @@ body.owner-mode:where(:has(main.one-look.active)) #modal-save-btn { background: 
 :is(main, div).one-look .ny-chev {
   display: inline-block; flex: none; width: 16px; height: 16px; font-size: 0; background: currentColor;
   -webkit-mask: var(--u-chev) center / 16px no-repeat; mask: var(--u-chev) center / 16px no-repeat;
-}
-/* The conversation (a sheet on a phone, the Inbox's pane from 1200px) takes the window's title and
-   the one field: the picker and the reply box were 44px and the reply box sat on the card's corner. */
-body.owner-mode:where(:has(main.one-look.active)) #messages-modal-title { font-family: var(--font-sans); font-size: var(--fs-headline); font-weight: 600; }
-body.owner-mode:where(:has(main.one-look.active)) #messages-modal :is(#msg-canned, .chat-composer textarea) {
-  min-height: var(--u-h-field); border-radius: var(--u-r-cell); font-size: var(--fs-headline);
 }
 /* The timeline's Earlier / Later carry the drawn chevron too. */
 .tl-seg button svg { display: block; margin: auto; }
@@ -9512,7 +8924,6 @@ body.pm-detail-open:has(#view-accounts.active) { overflow: hidden; }
 #pm .pm-lh-cap { font-size: var(--fs-sub); color: var(--text-muted); }
 #pm .pm-lhero > .pm-cap { margin-top: 12px; gap: 4px; white-space: normal; }
 #pm .pm-lhero > .pm-cap svg { width: 12px; height: 12px; flex: none; }
-#pm .pm-okword { color: var(--ok-text); }
 #pm .pm-bar { height: 6px; border-radius: 3px; background: var(--pm-well); overflow: hidden; }
 #pm .pm-bar i { display: block; height: 100%; border-radius: 3px; background: var(--ok); }
 #pm .pm-dcap { font-size: var(--fs-caption); font-weight: 600; color: var(--text-muted); margin: 4px 4px -8px; }
@@ -9588,10 +8999,6 @@ body.pm-sheet-open { overflow: hidden; }
 #pm .pm-bankstrip { margin-top: 12px; }
 #pm .pm-bsugg { grid-column: 2 / -1; display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; margin-top: 8px; font-size: var(--fs-sub); color: var(--text-light); text-wrap: pretty; }
 #pm .pm-bsugg .pm-linkbtn { min-height: 32px; padding: 0 8px; margin-left: auto; position: relative; }
-/* a sorted payment: what it was, and its one action, on one line */
-#pm .pm-bdone { flex-wrap: nowrap; color: var(--text-muted); }
-#pm .pm-bdone > span:first-child { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-#pm .pm-bdone .pm-linkbtn { flex: none; }
 #pm .pm-bsugg .pm-linkbtn::after { content: ""; position: absolute; inset: -6px 0; }
 #pm .pm-bsame { grid-column: 1 / -1; margin: 4px -12px -8px; }
 #pm .pm-bsame .pm-linkbtn { font-size: var(--fs-caption); }

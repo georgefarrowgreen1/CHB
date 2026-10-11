@@ -7,11 +7,11 @@
 // the window properties when the bundle loads. Deploy checklist: bump ADMIN_V
 // whenever admin.js changes (it is the ?v= cache-buster).
 // ============================================================
-const ADMIN_BUNDLE_V = 784;
+const ADMIN_BUNDLE_V = 785;
 // admin.css is the owner-only stylesheet, split out of app.css so guests never
 // download it. Injected here (not a static <link>) and version-stamped on its
 // own — bump when admin.css changes. Kept OUT of the sw.js CORE precache.
-const ADMIN_CSS_V = 406;
+const ADMIN_CSS_V = 407;
 function ensureAdminCss() {
     if (document.getElementById('admin-css')) return Promise.resolve();
     return new Promise((resolve) => {
@@ -476,12 +476,12 @@ const CHB_ACT_CAP = {
     'bk.edit': ['openAddBooking', 'bhubEdit', 'saveBookingNote'],
     'bk.cancel': ['bhubCancel', 'bhubDelete'],
     'bk.block': ['openBlockDates', 'tlBlockTap'],
-    'gu.reply': ['sendEnquiryEmail', 'openEnquiryEmail', 'openBookingEmail', 'mailboxReply', 'mailboxDelete', 'sendArrivalInfo', 'sendConfirmationEmail', 'offerUpdatedConfirmationEmail', 'openArrivalReview', 'chatSendArrival', 'notifyWaitlist', 'deleteWaitlist', 'deleteCurrentThread', 'gstInvite', 'gstResend'],
+    'gu.reply': ['sendEnquiryEmail', 'openEnquiryEmail', 'openBookingEmail', 'mailboxReply', 'mailboxDelete', 'sendArrivalInfo', 'sendConfirmationEmail', 'offerUpdatedConfirmationEmail', 'openArrivalReview', 'notifyWaitlist', 'deleteWaitlist', 'gstInvite', 'gstResend'],
     'gu.approve': ['approveEnquiry', 'declineEnquiry', 'openEditEnquiry'],
     'gu.reviews': ['setReviewStatus', 'moderatePhoto', 'setLeadStatus', 'deleteLead'],
     'ks.see': ['openKeysafe', 'keysafeOpen'],
     'ks.change': ['keysafeRotate', 'keysafeSheetRotate', 'keysafeSetEnabled', 'odsKeysafe'],
-    'mo.ask': ['requestPayment', 'editPaymentPlan', 'copyPayLink', 'sendPaymentReminder', 'chatSendBalance', 'setEnquiryPrice', 'setEnquiryPlan', 'usePlanPreset'],
+    'mo.ask': ['requestPayment', 'editPaymentPlan', 'copyPayLink', 'sendPaymentReminder', 'setEnquiryPrice', 'setEnquiryPlan', 'usePlanPreset'],
     'mo.record': ['recordPayment', 'recordSquareOrphan', 'captureHold', 'odsPay'],
     'mo.refund': ['refundPayment', 'hubRefundPicker', 'releaseHold'],
     'mo.deposit': ['returnDeposit', 'keepDeposit', 'odsDep'],
@@ -2381,11 +2381,6 @@ function trackEvent(name, prop) {
         );
     } catch (e) {}
 }
-// Hero CTA → smooth-scroll to the "Check availability" panel (dates-first homepage).
-function scrollToAvailability() {
-    const el = document.getElementById('home-availability');
-    if (el) chbScroll(el, { block: 'start' });
-}
 // Progressive scroll-reveal: fade + rise sections as they enter view. Does nothing
 // under reduced-motion (so .reveal elements stay fully visible), and only arms the
 // hiding CSS by adding html.js-reveal — content is never hidden without JS.
@@ -3070,9 +3065,6 @@ function setBackofficeMode(m) {
             : 'Classic layout restored.');
     } catch (e) {}
 }
-function toggleBackofficeMode() {
-    setBackofficeMode(backofficeMode() === 'search' ? 'classic' : 'search');
-}
 
 // ---- Sliding selection pill for the admin dock ----
 // Sizes + positions the white indicator under the active section button, so it
@@ -3587,7 +3579,6 @@ function cancelPolicyTier(policy, checkIn, today) {
     const tier = !(days > 0) ? 'none' : days >= w.full ? 'full' : days >= w.part ? 'part' : 'none';
     return { tier, days, window: w };
 }
-
 
 // ===================================================================
 //  ACCOUNTS — financial reporting by UK tax year (6 Apr – 5 Apr)
@@ -4809,7 +4800,6 @@ async function deleteGuestAccount() {
     }
 }
 
-
 // ---- THE CODE-FIRST SIGN-IN (approved demo) ----
 // One email field, then a six-digit code we email (the link rides beside it for a
 // known guest). An iPhone opens an emailed link in Safari, not the installed app,
@@ -5535,37 +5525,6 @@ async function guestLogin() {
     }
 }
 
-// Passwordless: email the guest a one-tap sign-in link. For privacy we
-// always report success (the server won't reveal whether the email exists).
-async function requestMagicLink() {
-    const email = (document.getElementById('login-email').value || '').trim();
-    const msg = document.getElementById('magic-link-msg');
-    const show = (t, ok) => {
-        if (msg) {
-            msg.textContent = t;
-            // ONE CLASS PAIR, not a raw fill used as ink: --ok / --danger are FILL
-            // tokens and measured 2.33-2.74:1 as words on the light ground.
-            // .auth-msg.is-ok / .is-bad are status text on their OWN tint, which is
-            // also the shape a11y-test S1b discovers - so these lines are measured
-            // on every run instead of by luck.
-            msg.className = 'auth-msg ' + (ok ? 'is-ok' : 'is-bad');
-            msg.style.display = 'block';
-        }
-    };
-    if (!email || email.indexOf('@') < 1) {
-        show('Enter your email above first, then tap this.', false);
-        return;
-    }
-    try {
-        await apiPost('auth.php', { action: 'guest_magic_request', email });
-        show(
-            'Check your inbox — if that email has an account, a sign-in link is on its way. It expires in 30 minutes.',
-            true,
-        );
-    } catch (e) {
-        show("Couldn't send the link — please try again.", false);
-    }
-}
 // A reset link (sent by the owner) lands here signed in: the guest chooses the new
 // password themselves. Closing the dialog is fine — they stay signed in and can set
 // one from their account details while the link's 30-minute window lasts.
@@ -9007,7 +8966,7 @@ async function submitGuestReview(propKey) {
 }
 
 // ---- Booking Terms & Conditions ----
-// Render the terms into the modal body (uses any Live Editor title override).
+// Render the terms into the modal body (the title is the owner's saved terms-title).
 // Clause 7's refund terms come from the cottage's chosen cancellation policy
 // (set in Manage → Cancellation policy), so the Terms always match what the
 // guest is shown on the cottage page.
@@ -9932,7 +9891,7 @@ async function liveUpdateTick() {
             renderCardPrices();
         } catch (e) {}
         try {
-            loadPropContentOverrides();
+            renderSeoText();
         } catch (e) {}
         try {
             renderReviews();
@@ -9992,21 +9951,6 @@ window.addEventListener('DOMContentLoaded', async () => {
             const bb = document.getElementById('prop-book-bar');
             if (bb && bb.parentElement !== document.body) document.body.appendChild(bb);
         } catch (e) {}
-        // Show the passkey sign-in option only if the device/browser supports it
-        if (window.PublicKeyCredential && navigator.credentials && navigator.credentials.get) {
-            const w = document.getElementById('passkey-login-wrap');
-            if (w) w.style.display = 'block';
-            const h = document.getElementById('passkey-hint');
-            if (h) h.style.display = 'block';
-        }
-        document.querySelectorAll('[data-edit-text]').forEach((el) => {
-            const saved = localStorage.getItem(el.getAttribute('data-edit-text'));
-            if (saved) el.textContent = decodeEntities(saved);
-        });
-        document.querySelectorAll('[data-edit-img]').forEach((el) => {
-            const saved = localStorage.getItem(el.getAttribute('data-edit-img'));
-            if (saved) el.style.backgroundImage = `url('${chbCssUrl(el.classList.contains('card-img') ? resizedUrl(saved, 800) : saved)}')`;
-        });
         // Load live data from the backend — ONE bootstrap round-trip covers all
         // four parts (rates/content/reviews/Square config). Each loader is still
         // wrapped so one failing never blocks the others or stops the page from
@@ -10025,7 +9969,7 @@ window.addEventListener('DOMContentLoaded', async () => {
             console.error(e);
         }
         try {
-            loadPropContentOverrides();
+            renderSeoText();
         } catch (e) {
             console.error(e);
         }
@@ -10430,10 +10374,10 @@ function occupancyHint(propKey) {
 }
 
 // Per-property page content (title, description, gallery images, amenities).
-// Editable text/images on the property page are saved to localStorage per
-// property via the existing data-edit-* system (keys are namespaced per propKey).
-// Booking Terms & Conditions content. Editable via the Live Editor (the
-// intro/title) and rendered both in the on-screen modal and the PDF.
+// The owner's saved wording reaches the property page through the data-edit-*
+// attributes (keys namespaced per propKey) and applyContentOverrides.
+// Booking Terms & Conditions content, rendered both in the on-screen modal and
+// the PDF (the title is owner-editable content, terms-title).
 // Update TERMS_VERSION whenever the wording materially changes, so the
 // acceptance recorded against each booking reflects which version was agreed.
 const TERMS_VERSION = '2026-09a';
@@ -11112,13 +11056,6 @@ async function renderCottagesMap() {
     }, 220);
 }
 
-// Payment status config: label + colour. Keys are stored on each booking.
-const paymentMeta = {
-    paid: { label: 'Paid in full', color: 'var(--ok)', dot: 'var(--ok)' },
-    deposit: { label: 'Deposit paid', color: 'var(--warn)', dot: 'var(--warn)' },
-    unpaid: { label: 'Unpaid', color: 'var(--danger)', dot: 'var(--danger)' },
-};
-
 // ===================================================================
 //  PRICING — per-property rates & fees (editable in the back office)
 // ===================================================================
@@ -11588,7 +11525,6 @@ function displayGrand(p, ps, holdStatus, b) {
     return { dep, total, paid, balance, fullyPaid: balance <= 0.001 };
 }
 
-
 // WHAT A BOOKING STILL OWES YOU — one definition. Three surfaces gave two answers
 // on one screen: the row said "£340.00 due", Today's header and the bookings
 // summary said "£290 to collect". The row was right — paymentSummary().balance is
@@ -11810,7 +11746,6 @@ function guestFlowHtml(propKey, b, payToken) {
     return `<div class="bkflow">${steps}${next}</div>`;
 }
 
-
 // Dummy Database
 const dbBookings = {
     '21a': [],
@@ -11955,15 +11890,6 @@ function restoreSessions() {
     ]);
 }
 
-// persistDB/persistEnquiries are now no-ops: writes go straight to the
-// backend via the action functions. Kept as stubs so existing callers work.
-function persistDB() {
-    /* server is the source of truth */
-}
-function persistEnquiries() {
-    /* server is the source of truth */
-}
-
 // Load bookings + enquiries + rates from the backend into memory.
 // Admin-only data (full bookings/enquiries) requires an admin session;
 // if not logged in those fetches simply yield empty lists.
@@ -12100,11 +12026,6 @@ async function loadData() {
     return { ok: failed.length === 0, failed };
 }
 
-// True when two checkout-exclusive date ranges [in, out) overlap.
-function rangesOverlap(aIn, aOut, bIn, bOut) {
-    return !!(aIn && aOut && bIn && bOut) && aIn < bOut && bIn < aOut;
-}
-
 // SUBTRACT the local booking from an external block, never delete the block. The
 // case this exists for is the exact-range MIRROR — our own booking exported to
 // Airbnb and imported back — and deleting is right for that and wrong for any
@@ -12232,8 +12153,6 @@ function hasDateClash(propKey, checkIn, checkOut, ignoreId = null) {
     return (dbBlocks[propKey] || []).some((bl) => checkIn < bl.checkOut && checkOut > bl.checkIn);
 }
 
-
-
 // ---- Square online payments (admin) ----
 let squareAdminEnabled = false;
 async function loadSquareAdminConfig(pre) {
@@ -12304,32 +12223,6 @@ function paymentStatusMeta(kind, status) {
               : 'wait';
     const label = st ? st.charAt(0) + st.slice(1).toLowerCase() : 'Pending';
     return { level, label };
-}
-// Show the Square payment ledger for a booking inside the details modal.
-async function loadBookingPayments(bookingId) {
-    const el = document.getElementById('sq-pay-' + bookingId);
-    if (!el) return;
-    const booking = findBookingById(bookingId);
-    if (!booking) {
-        el.textContent = '';
-        return;
-    }
-    // Once the guest has arrived, or the cancellation window has closed, the rental
-    // is no longer refundable — only the damages deposit (Return deposit) can go
-    // back. Hide the per-charge Refund button in that window (the server enforces it).
-    const loc = findBookingLocation(bookingId);
-    const refundOff = rentalRefundBlocked(loc ? loc.propKey : '', booking);
-    try {
-        const res = await apiPost('bookings.php', { action: 'payments', id: booking.dbId });
-        const list = res.payments || [];
-        if (!list.length) {
-            el.textContent = 'No online payments yet.';
-            return;
-        }
-        el.innerHTML = list.map((p) => hubLedgerRowHtml(p, bookingId, refundOff)).join('');
-    } catch (e) {
-        el.textContent = 'Could not load payments.';
-    }
 }
 // ONE ledger row — shared by the (legacy) per-block loader above and the hub's
 // Activity feed, so the row a gate reads is the row every surface renders.
@@ -12448,7 +12341,6 @@ async function refundPayment(bookingId, squareId, maxAmount, carried) {
         glassAlert('Refund failed: ' + e.message);
     }
 }
-
 
 // --- Same-day changeover notifications (planning aid) ---
 const CHANGEOVER_DISMISSED_KEY = 'nn-changeover-dismissed';
@@ -13387,16 +13279,8 @@ function chatTypingPing() {
         () => {},
     );
 }
-function adminTypingPing() {
-    if (!__msgThreadId) return;
-    const now = Date.now();
-    if (now - __typingLastPing < 2500) return;
-    __typingLastPing = now;
-    apiPost('messages.php', { action: 'typing', thread_id: __msgThreadId }).catch(() => {});
-}
-// ---- Chat image attachments (guest widget + owner thread) ----
+// ---- Chat image attachments (the guest widget) ----
 let __chatPendingAttach = null;
-let __adminPendingAttach = null;
 function chatPickImageFile() {
     return new Promise((resolve) => {
         const input = document.createElement('input');
@@ -13463,34 +13347,11 @@ function chatClearAttach() {
     __chatPendingAttach = null;
     renderChatAttachPreview('chat-attach-preview', null);
 }
-async function adminAttachPhoto() {
-    if (!__msgThreadId) return;
-    const file = await chatPickImageFile();
-    if (!file) return;
-    const btn = document.getElementById('msg-attach-btn');
-    if (btn) btn.classList.add('busy');
-    try {
-        const up = await chatUploadImage(file, false);
-        __adminPendingAttach = up.url;
-        renderChatAttachPreview('msg-attach-preview', up.local, adminClearAttach);
-    } catch (e) {
-        glassAlert("Couldn't attach that photo: " + e.message);
-    } finally {
-        if (btn) btn.classList.remove('busy');
-    }
-}
-function adminClearAttach() {
-    __adminPendingAttach = null;
-    renderChatAttachPreview('msg-attach-preview', null);
-}
-// Returning to the tab with a chat open → refresh straight away (guest widget
-// and, for the owner, the open back-office conversation).
+// Returning to the tab with the chat open → refresh straight away.
 document.addEventListener('visibilitychange', () => {
     if (document.hidden) return;
     const w = document.getElementById('chat-widget');
     if (w && w.classList.contains('open')) chatPoll();
-    const mm = document.getElementById('messages-modal');
-    if (mm && mm.classList.contains('open') && typeof adminThreadPoll === 'function') adminThreadPoll();
 });
 // Guest quick-reply chips: common questions send immediately; "Report an
 // issue" prefills a prefix and lets the guest describe it.
@@ -13956,17 +13817,6 @@ function chatAvailNotify(prop, ci, co) {
         openWaitlistModal({ prop, checkIn: ci, checkOut: co });
     } catch (e) {}
 }
-// Admin canned reply: drop a pre-written line into the reply box to edit/send.
-function adminCanned(text) {
-    if (!text) return;
-    const t = document.getElementById('messages-modal-input');
-    if (t) {
-        t.value = text;
-        t.focus();
-    }
-    const s = document.getElementById('msg-canned');
-    if (s) s.value = '';
-}
 let __faqBypass = false; // set by "message a person" so the same question reaches the owner
 async function sendChat() {
     const input = document.getElementById('chat-input');
@@ -14343,265 +14193,6 @@ async function maybeHandleUnsubscribe() {
         history.replaceState(null, '', window.location.pathname);
     } catch (e) {}
 }
-let __msgThreadId = null;
-let __msgThreadArchived = false;
-function bookingLine(b) {
-    const name = (propertyMeta[b.prop_key] || {}).name || b.prop_key;
-    // PLAIN TEXT — the caller escapes once (it used to be escaped here AND there,
-    // so "Harbour & Mill" read "Harbour &amp;amp; Mill").
-    return `${name} · ${fmtDate(b.check_in)} → ${fmtDate(b.check_out)}${b.payment ? ' · ' + b.payment : ''}`;
-}
-// Bookings block in the reply modal, with one-tap "Send arrival info / balance
-// link" actions for any upcoming stay (reuses the normal arrival/payment senders).
-function bookingCtxHtml(bookings) {
-    if (!bookings.length) {
-        return `<div class="mc-row"><span class="mc-k">Bookings</span><span class="mc-v">None on file</span></div>`;
-    }
-    const today = todayDashed(); // UK clock, not UTC (BST midnight off-by-a-day)
-    return bookings
-        .map((b) => {
-            const upcoming = (b.check_out || '') >= today; // stay hasn't ended yet
-            const owed = (b.payment || '') !== 'paid';
-            const actions =
-                upcoming && b.id
-                    ? `<div class="mc-actions">
-                        <button class="btn-sm btn-edit" ${chbAttrs('chatSendArrival', b.id)}>Send arrival info</button>
-                        ${owed ? `<button class="btn-sm btn-edit" ${chbAttrs('chatSendBalance', b.id)}>Send balance link</button>` : ''}
-                       </div>`
-                    : '';
-            return `<div class="mc-row"><span class="mc-k">Booking</span><span class="mc-v">${escapeHtml(bookingLine(b))}${actions}</span></div>`;
-        })
-        .join('');
-}
-async function chatSendArrival(bid) {
-    if (!__msgThreadId) return;
-    try {
-        await apiPost('messages.php', {
-            action: 'send_arrival',
-            thread_id: __msgThreadId,
-            booking_id: bid,
-        });
-        toast('Arrival info emailed.');
-        openMessageThread(__msgThreadId); // refresh so the chat note shows
-    } catch (e) {
-        // Sent a moment ago (here or from the booking page): a fact, not a failure.
-        if (e && e.code === 'already_sent') toast(e.message);
-        else glassAlert("Couldn't send: " + e.message);
-    }
-}
-async function chatSendBalance(bid) {
-    if (!__msgThreadId) return;
-    if (!(await glassConfirm('Email this guest a secure link to pay their balance?', 'Send the link'))) return;
-    try {
-        await apiPost('messages.php', {
-            action: 'send_balance',
-            thread_id: __msgThreadId,
-            booking_id: bid,
-        });
-        toast('Balance link emailed.');
-        openMessageThread(__msgThreadId);
-    } catch (e) {
-        if (e && e.code === 'already_sent') toast(e.message);
-        else glassAlert("Couldn't send: " + e.message);
-    }
-}
-async function openMessageThread(threadId) {
-    __msgThreadId = threadId;
-    adminClearAttach(); // don't carry a pending photo between conversations
-    const modal = document.getElementById('messages-modal');
-    // The desktop Inbox docks this window into its reading pane. If that
-    // context no longer applies (different view, messages folder hidden, or a
-    // narrow window), give it back to <body> so it opens as the floating
-    // window again. DOM-state checks only — no back-office globals.
-    try {
-        const paneEl = document.getElementById('inbox-detail-pane');
-        const inboxActive = !!document.querySelector('#view-inbox.active');
-        const msgFold = document.getElementById('inbox-folder-messages');
-        const foldShown = !!msgFold && msgFold.style.display !== 'none';
-        const wide = window.matchMedia('(min-width: 1200px)').matches;
-        if (modal && paneEl && modal.parentElement === paneEl && !(inboxActive && foldShown && wide)) {
-            document.body.appendChild(modal);
-        }
-    } catch (e) {}
-    const title = document.getElementById('messages-modal-title');
-    const ctx = document.getElementById('messages-modal-ctx');
-    const thread = document.getElementById('messages-modal-thread');
-    if (thread)
-        thread.innerHTML = `<div style="padding:10px 4px;"><span class="skel-bar w65" style="display:block;margin-bottom:12px;"></span><span class="skel-bar w45" style="display:block;margin-bottom:12px;"></span><span class="skel-bar w85" style="display:block;margin-left:auto;"></span></div>`;
-    if (ctx) ctx.innerHTML = '';
-    // Floating (not docked in the Inbox pane): Back closes it, like any sheet.
-    if (modal && !modal.classList.contains('open') && modal.parentElement === document.body) overlayHistPush();
-    if (modal) modal.classList.add('open');
-    try {
-        const r = await apiPost('messages.php', { action: 'thread', thread_id: threadId });
-        const t = r.thread || {};
-        __msgThreadArchived = !!t.archived;
-        const archBtn = document.getElementById('msg-archive-btn');
-        if (archBtn) archBtn.textContent = __msgThreadArchived ? 'Unarchive' : 'Archive';
-        if (title) title.textContent = t.name ? t.name : t.email || 'Message';
-        if (ctx) {
-            const bk = bookingCtxHtml(r.bookings || []);
-            const nBk = (r.bookings || []).length;
-            // A typed address is not proof (messages.php chat_thread_verified).
-            const unconf = t.verified === false;
-            const summary = `${t.is_guest && !unconf ? 'Registered guest' : t.is_guest ? 'Guest account' : 'Website visitor'}${t.email ? ' · ' + escapeHtml(t.email) : ''}${unconf ? ' · email not confirmed' : ''}`;
-            // The reference folds CLOSED — the conversation is the work (the
-            // enquiry page's message rule). The summary carries the verdict:
-            // one upcoming stay states its paid state, so checking the balance
-            // mid-chat is one tap, not a trip to Today.
-            const today2 = todayDashed();
-            const ups = (r.bookings || []).filter((b2) => (b2.check_out || '') >= today2);
-            const pill = ups.length === 1
-                ? (String(ups[0].payment || '') === 'paid'
-                    ? '<span class="msg-ctx-pill is-ok">Paid in full ✓</span>'
-                    : '<span class="msg-ctx-pill is-due">Balance to pay</span>')
-                : nBk ? `<span class="msg-ctx-pill">${nBk} booking${nBk > 1 ? 's' : ''}</span>` : '';
-            ctx.innerHTML = `<details class="msg-ctx-d">
-                        <summary class="msg-ctx-sum"><span class="msg-ctx-sum-txt">${summary}</span>${pill}<span class="msg-ctx-caret" aria-hidden="true">▾</span></summary>
-                        <div class="msg-ctx-body">
-                            ${t.email ? `<div class="mc-row"><span class="mc-k">Email</span><span class="mc-v">${escapeHtml(t.email)}</span></div>` : ''}
-                            <div class="mc-row"><span class="mc-k">Came from</span><span class="mc-v">${escapeHtml(t.source || '—')}</span></div>
-                            <div class="mc-row"><span class="mc-k">Location</span><span class="mc-v">${escapeHtml(t.location || 'Unknown')}</span></div>
-                            ${bk}
-                        </div>
-                    </details>`;
-        }
-        if (thread) {
-            thread.innerHTML = chatBubbles(r.messages || [], 'admin');
-            thread.scrollTop = thread.scrollHeight;
-        }
-        __msgThreadSig = adminMsgSig(r.messages || []);
-        chatSetTyping('messages-modal-thread', !!r.peer_typing);
-    } catch (e) {
-        if (thread) thread.innerHTML = `<p class="chat-empty">Couldn't load this thread.</p>`;
-    }
-    loadAdminMessages(); // clear the unread badge now it's been read
-    adminThreadStartPolling(); // live: pull new guest replies + flip the receipt to "Read"
-}
-// ---- Live refresh of the open conversation: poll every ~7s so a new guest
-//  message appears and the owner's read receipt flips Sent → Read without
-//  reopening. Only re-renders when the thread actually changed (signature keys
-//  off the last message AND the read-state of the owner's latest reply). ----
-let __msgThreadSig = '';
-let __msgPollTimer = null;
-function adminMsgSig(msgs) {
-    let seen = '';
-    for (let i = msgs.length - 1; i >= 0; i--) {
-        if (msgs[i].role === 'admin') {
-            seen = msgs[i].seen ? 'r' : 's';
-            break;
-        }
-    }
-    return chatMsgSig(msgs) + ':' + seen;
-}
-function adminThreadStartPolling() {
-    adminThreadStopPolling();
-    __msgPollTimer = setInterval(adminThreadPoll, 4000);
-}
-function adminThreadStopPolling() {
-    if (__msgPollTimer) {
-        clearInterval(__msgPollTimer);
-        __msgPollTimer = null;
-    }
-}
-async function adminThreadPoll() {
-    const modal = document.getElementById('messages-modal');
-    if (!modal || !modal.classList.contains('open') || !__msgThreadId) {
-        adminThreadStopPolling();
-        return;
-    }
-    if (document.hidden) return; // don't poll a backgrounded tab
-    // Snapshot the thread and bail if the owner switched during the request — a
-    // slow response for thread A must not repaint thread B with A's messages.
-    const polledThread = __msgThreadId;
-    try {
-        const r = await apiPost('messages.php', { action: 'thread', thread_id: polledThread });
-        if (polledThread !== __msgThreadId) return;
-        const msgs = r.messages || [];
-        const sig = adminMsgSig(msgs);
-        if (sig !== __msgThreadSig) {
-            __msgThreadSig = sig;
-            const thread = document.getElementById('messages-modal-thread');
-            if (thread) {
-                const nearBottom = chatNearBottom(thread);
-                const enter = !chatMotionOff();
-                thread.innerHTML = chatBubbles(msgs, 'admin', enter);
-                if (nearBottom) chatFollow(thread, enter); // only autoscroll if already at the bottom
-            }
-            loadAdminMessages(); // keep the inbox list/badge in sync if a new guest reply landed
-        }
-        // Typing state updates every tick, independent of message changes.
-        chatSetTyping('messages-modal-thread', !!r.peer_typing);
-    } catch (e) {
-        /* transient — try again next tick */
-    }
-}
-function closeMessagesModal() {
-    adminThreadStopPolling();
-    const mm = document.getElementById('messages-modal');
-    if (mm && mm.classList.contains('open') && mm.parentElement === document.body) overlayHistConsume();
-    chbCloseOverlay(mm);
-    __msgThreadId = null;
-}
-// Archive / unarchive the open conversation (kept, hidden from the active inbox).
-async function archiveCurrentThread() {
-    if (!__msgThreadId) return;
-    const archiving = !__msgThreadArchived;
-    try {
-        await apiPost('messages.php', {
-            action: archiving ? 'archive' : 'unarchive',
-            thread_id: __msgThreadId,
-        });
-        closeMessagesModal();
-        loadAdminMessages();
-        toast(archiving ? 'Conversation archived.' : 'Conversation restored.');
-    } catch (e) {
-        glassAlert("Couldn't update: " + e.message);
-    }
-}
-// Permanently delete the open conversation and its messages.
-async function deleteCurrentThread() {
-    if (!__msgThreadId) return;
-    if (!(await glassConfirm('Delete this conversation and all its messages permanently?', 'Delete the conversation', { danger: true }))) return;
-    try {
-        await apiPost('messages.php', { action: 'delete', thread_id: __msgThreadId });
-        closeMessagesModal();
-        loadAdminMessages();
-        toast('Conversation deleted.');
-    } catch (e) {
-        glassAlert("Couldn't delete: " + e.message);
-    }
-}
-async function adminSendMessage() {
-    const input = document.getElementById('messages-modal-input');
-    const body = ((input && input.value) || '').trim();
-    if ((!body && !__adminPendingAttach) || !__msgThreadId) return;
-    try {
-        const res = await queueOrPost('messages.php', {
-            action: 'send',
-            thread_id: __msgThreadId,
-            body,
-            attachment: __adminPendingAttach || '',
-        });
-        if (input) input.value = '';
-        adminClearAttach();
-        if (res && res.queued) {
-            toast('Saved offline — your reply will send when you reconnect.');
-            return;
-        }
-        const r = await apiPost('messages.php', { action: 'thread', thread_id: __msgThreadId });
-        const thread = document.getElementById('messages-modal-thread');
-        if (thread) {
-            thread.innerHTML = chatBubbles(r.messages || [], 'admin');
-            thread.scrollTop = thread.scrollHeight;
-        }
-        __msgThreadSig = adminMsgSig(r.messages || []); // so the live poll re-renders only on the guest's next read/reply
-        loadAdminMessages();
-    } catch (e) {
-        glassAlert("Couldn't send: " + e.message);
-    }
-}
-
 // ---- House rules list (per cottage, guest-facing bullets) ----
 const DEFAULT_HOUSE_RULES = [
     'Please treat the cottage as your own home',
@@ -16658,10 +16249,6 @@ const MODAL_CLOSERS = {
     'privacy-modal': closePrivacyModal,
     'enquire-modal': closeEnquireModal,
     'edit-modal': closeModal,
-    // Route Esc to these modals' own close functions so their cleanup runs
-    // (e.g. the messages modal stops its live-refresh poll) instead of just
-    // hiding the element via the generic fallback below.
-    'messages-modal': closeMessagesModal,
     'waitlist-modal': closeWaitlistModal,
     'ga-photo-sheet': gaPhotoSheetClose,
     'exp-detail-modal': closeExpDetail,
@@ -17183,22 +16770,6 @@ function openDatePicker() {
     const seed = dpParse(dpState.start) || dpFirstOpenMonth();
     dpState.view = new Date(seed.getFullYear(), seed.getMonth(), 1);
     document.getElementById('date-picker').classList.remove('dp-admin');
-    renderDatePicker();
-    dpRememberOpener();
-    document.getElementById('date-picker').classList.add('open');
-}
-// The SAME glass picker for the back-office Add/Edit Booking modal. Taken
-// nights for the chosen cottage are shaded from the data already loaded
-// (excluding the booking being edited) but everything stays pickable — the
-// owner may back-date a stay or deliberately overlap, and the availability
-// strip + the server's clash confirm still guard the save.
-function openBookingDatePicker() {
-    dpMode = 'admin';
-    dpState.start = document.getElementById('modal-checkin').value || null;
-    dpState.end = document.getElementById('modal-checkout').value || null;
-    const seed = dpParse(dpState.start) || dpToday0();
-    dpState.view = new Date(seed.getFullYear(), seed.getMonth(), 1);
-    document.getElementById('date-picker').classList.add('dp-admin');
     renderDatePicker();
     dpRememberOpener();
     document.getElementById('date-picker').classList.add('open');
@@ -18822,23 +18393,9 @@ function guestSummary(adults, children) {
 // ===================================================================
 //  PER-PROPERTY FRONT-END PAGE
 // ===================================================================
-const PROP_CONTENT_KEY = 'nn-property-content';
-
-function loadPropContentOverrides() {
-    try {
-        const saved = JSON.parse(localStorage.getItem(PROP_CONTENT_KEY));
-        if (saved && typeof saved === 'object') {
-            Object.keys(propertyContent).forEach((k) => {
-                if (saved[k]) propertyContent[k] = Object.assign({}, propertyContent[k], saved[k]);
-            });
-        }
-    } catch (e) {}
-    renderSeoText();
-}
-
 // Rebuild the hidden SEO block from live cottage content so it always
 // matches what's actually on the site (titles, descriptions, amenities),
-// including any Live Editor edits. Keeps location keywords for search value.
+// including the owner's own wording. Keeps location keywords for search value.
 function renderSeoText() {
     const wrap = document.getElementById('seo-cottages');
     if (!wrap) return;
@@ -18847,13 +18404,10 @@ function renderSeoText() {
             .replace(/&/g, '&amp;')
             .replace(/</g, '&lt;')
             .replace(/>/g, '&gt;');
-    // Prefer a Live Editor override (localStorage), else the content default.
+    // The owner's saved wording (the same content the page shows), else the default.
     const val = (key, fallback) => {
-        try {
-            const s = localStorage.getItem(key);
-            if (s) return decodeEntities(s);
-        } catch (e) {}
-        return fallback;
+        const s = siteContent && siteContent[key];
+        return s ? decodeEntities(String(s)) : fallback;
     };
     // Every live cottage (owner-added included), not just the original three.
     const order =
@@ -19189,8 +18743,6 @@ function closeTopOverlay() {
     if (open('oa-dev-sheet') && typeof window.oaDevClose === 'function') { window.oaDevClose(); return true; }
     if (open('oa-pw-sheet') && typeof window.oaPwClose === 'function') { window.oaPwClose(); return true; }
     if (open('enq-email-modal') && typeof window.closeEnquiryEmailModal === 'function') { window.closeEnquiryEmailModal(); return true; }
-    const mm = document.getElementById('messages-modal');
-    if (mm && mm.classList.contains('open') && mm.parentElement === document.body) { closeMessagesModal(); return true; }
     return false;
 }
 window.addEventListener('popstate', (ev) => {
@@ -19327,7 +18879,7 @@ function openProperty(propKey) {
     loadAvailability(propKey); // prefetch booked dates for the date picker
     availCalMonth = new Date(chbNow().getFullYear(), chbNow().getMonth(), 1);
     renderAvailCal();
-    loadPropContentOverrides();
+    renderSeoText();
     try {
         renderStayedBefore(); // "you've stayed here before" for a returning guest
     } catch (e) {}
@@ -19447,18 +18999,9 @@ function openProperty(propKey) {
     } catch (e) {} // desktop: tuck calendar above "Enquire now"
 }
 
-// Re-apply saved data-edit values (used after we swap namespaced keys in)
+// Re-apply the saved content to the cottage page (after its keys are swapped in).
 function applySavedEdits() {
-    // Backend (shared) content first, then any local cache on top
     applyContentOverrides(document.getElementById('view-21a'));
-    document.querySelectorAll('#view-21a [data-edit-text]').forEach((el) => {
-        const saved = localStorage.getItem(el.getAttribute('data-edit-text'));
-        if (saved) el.textContent = decodeEntities(saved);
-    });
-    document.querySelectorAll('#view-21a [data-edit-img]').forEach((el) => {
-        const saved = localStorage.getItem(el.getAttribute('data-edit-img'));
-        if (saved) el.style.backgroundImage = `url('${chbCssUrl(saved)}')`;
-    });
 }
 
 // ---- Enquiry form: the personable layer (the owner-approved demo — warm
@@ -22275,7 +21818,7 @@ const CHB_SK_CARD = '<div class="card glass-panel sk-card"><div class="skeleton 
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'r8night6';
+    const BUILD = 'r8night7';
     /** @type {any} */ (window).__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;

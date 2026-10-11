@@ -12,6 +12,9 @@
 //   §9 the chat's first quick reply clears the edge
 //   §10 Things to do has no "Your list 0" chip
 //   §11 the delete confirm has a title; the pending card says its state once
+//   §12 the one look on the guest side (card radius, back links, accent chips)
+//   §13 old browser storage never overrides the owner's saved wording (the inline
+//       editor that wrote it is long gone; its replays outlived it)
 const { bootBrowser } = require('./ui-test-lib');
 
 let fails = 0;
@@ -36,13 +39,14 @@ const REVIEWS = [
     const priced = { agreed_total: 400, agreed_per_night: 133.33, agreed_nights: 3, agreed_nightly: 400, agreed_txn_fee: 0, agreed_txn_pct: 0, agreed_booking_fee: 0 };
     const mk = (pk, i, o, x) => Object.assign({ prop_key: pk, check_in: i, check_out: o, adults: 2, children: 0, id: Math.floor(Math.random() * 1e6) }, priced, x || {});
 
-    const open = async ({ width = 390, guest = null, bookings = [] } = {}) => {
+    const open = async ({ width = 390, guest = null, bookings = [], store = null } = {}) => {
         const page = await browser.newPage({ viewport: { width, height: width < 900 ? 844 : 900 } });
         page.on('pageerror', (e) => { console.log('  PAGEERR:', e.message); fails++; });
-        await page.addInitScript(() => {
+        await page.addInitScript((st) => {
             if (navigator.serviceWorker) navigator.serviceWorker.register = () => new Promise(() => {});
             try { localStorage.removeItem('chb-exp-saved'); } catch (e) {}
-        });
+            try { if (st) for (const k of Object.keys(st)) localStorage.setItem(k, st[k]); } catch (e) {}
+        }, store);
         await page.route(/\.php/, (route) => {
             const url = route.request().url();
             const json = (x, st) => route.fulfill({ status: st || 200, contentType: 'application/json', body: JSON.stringify(x) });
@@ -305,6 +309,24 @@ const REVIEWS = [
         }
         await page.close();
     }
+
+    // ------------------------------------------------------------------
+    // The removed inline editor saved wording to localStorage, and three boot paths
+    // went on replaying it over the owner's saved content: the page's editable text,
+    // the cottage page, and the hidden SEO block. On a device that once used it, an
+    // old title beat the real one.
+    console.log('§13 old browser storage never overrides the saved wording');
+    page = await open({ store: { 'hero-title': 'STALE HERO', 'jollyboat-title': 'STALE TITLE', 'jollyboat-desc': 'STALE DESC', 'nn-property-content': JSON.stringify({ jollyboat: { title: 'STALE OBJ', desc: 'STALE OBJ DESC' } }) } });
+    const heroTxt = await page.evaluate(() => (document.querySelector('.hero h1') || {}).textContent || '');
+    ok(!/STALE/.test(heroTxt) && heroTxt.trim().length > 0, `the hero headline is the site's own (“${heroTxt.trim().slice(0, 40)}”)`);
+    await page.evaluate(() => openProperty('jollyboat')); await page.waitForTimeout(700);
+    const propTxt = await page.evaluate(() => ({ t: (document.getElementById('prop-title') || {}).textContent || '', d: (document.getElementById('prop-desc') || {}).textContent || '' }));
+    ok(!/STALE/.test(propTxt.t + propTxt.d) && propTxt.t.trim().length > 0, `the cottage page's title and description are the saved ones (“${propTxt.t.trim()}”)`);
+    const seo = await page.evaluate(() => (document.getElementById('seo-cottages') || {}).textContent || '');
+    ok(seo.length > 0 && !/STALE/.test(seo), 'the hidden SEO block carries no stale wording');
+    const seoSaved = await page.evaluate(() => { siteContent['jollyboat-title'] = 'Jollyboat by the Quay'; renderSeoText(); return (document.getElementById('seo-cottages') || {}).textContent || ''; });
+    ok(/Jollyboat by the Quay/.test(seoSaved), 'the SEO block follows the owner\'s saved title');
+    await page.close();
 
     console.log(fails ? `\n${fails} FAILED` : '\nALL GUEST POLISH CHECKS PASSED');
     await done(fails);
