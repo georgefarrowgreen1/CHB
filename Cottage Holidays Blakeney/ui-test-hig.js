@@ -539,17 +539,17 @@ const NEST = (rootSel) => {
   console.log('§7 My Stays — the pay button takes the accent; the progress well has no box');
   await open(page, "(async () => { currentGuest = { id: 9, name: 'Priya Patel', email: 'guest@example.com' }; try { setAuthUI(); } catch (e) {} nav('view-guest-bookings'); await renderGuestBookings(); })()", 1200);
   const stays = await page.evaluate(() => {
-    const btn = [...document.querySelectorAll('#guest-bookings-list .gb2-cta button')].find((b) => /Pay balance/.test(b.textContent));
+    const btn = [...document.querySelectorAll('#guest-bookings-list .gbm-btn')].find((b) => /^\s*Pay\s*$/.test(b.textContent));
     const acc = getComputedStyle(document.body).getPropertyValue('--accent').trim();
     const probe = document.createElement('span'); probe.style.backgroundColor = acc; document.body.appendChild(probe); const accRgb = getComputedStyle(probe).backgroundColor; probe.remove();
     const flow = document.querySelector('#guest-bookings-list .bkflow');
-    const count = document.querySelector('.my-stay-hub-soon .hub-count');
+    const count = document.querySelector('#guest-bookings-list .gb2-next .gb2-count');
     return { has: !!btn, bg: btn ? getComputedStyle(btn).backgroundColor : null, accRgb, flowBg: flow ? getComputedStyle(flow).backgroundColor : null, flowBorder: flow ? parseFloat(getComputedStyle(flow).borderTopWidth) : null, countBorder: count ? parseFloat(getComputedStyle(count).borderTopWidth) : null };
   });
-  ok(stays.has, 'the upcoming stay offers "Pay balance"');
+  ok(stays.has, 'the upcoming stay offers Pay, in its money block');
   ok(stays.bg === stays.accRgb, `and it is painted in the ACCENT, not the done-state green (${stays.bg})`);
   ok((stays.flowBg === 'rgba(0, 0, 0, 0)' || stays.flowBg === 'transparent') && stays.flowBorder === 0, 'the booking-progress pills sit in the card\'s own flow (no well)');
-  ok(stays.countBorder === 0, 'the countdown badge keeps its tint and drops its border');
+  ok(stays.countBorder === 0, 'the countdown badge on the stay\'s photo carries no border');
 
   console.log('§8 The footer at 390 — sentence case, two grouped columns, 44px rows');
   await open(page, "nav('view-main')", 600);

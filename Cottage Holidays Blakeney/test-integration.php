@@ -1376,6 +1376,26 @@ $rootDb->exec('UPDATE bookings SET deposit_paid = ' . $dep . ' WHERE id = ' . $n
 $row = $acct();
 it_check('deposit settled → the account moves to the BALANCE', ($row['next_payment']['kind'] ?? '') === 'balance', json_encode($row['next_payment'] ?? null));
 it_check('…asking for what is actually left', $grand > 0 && $dep > 0 && abs((float) ($row['next_payment']['due'] ?? 0) - round($grand - $dep, 2)) < 0.005, json_encode($row['next_payment'] ?? null));
+// THE ARRIVAL DAY AND THE PLAN'S ROWS (the pay-screens build). The account names
+// the day the arrival details go out — the pre-arrival job's own window
+// (PRE_ARRIVAL_DAYS, 3 here) — and an armed monthly plan rides it as its rows,
+// from booking_autopay_plan_view: the one definition the pay screen reads too.
+it_check('the account names the day the arrival details go out', ($row['arrival_on'] ?? '') === date('Y-m-d', strtotime($npIn . ' 12:00:00 -3 days')), json_encode($row['arrival_on'] ?? null));
+$npDue = date('Y-m-d', strtotime($npIn . ' 12:00:00 -' . payment_balance_days() . ' days'));
+$npSched = booking_instalment_schedule($npDue, 3);
+// The collections must cover what the card will take — the balance AND the
+// refundable deposit riding it (next_payment.charge) — or the plan reads 'stale'.
+$npLeft = round((float) ($row['next_payment']['due'] ?? 0), 2);
+$npPer = round(ceil((float) ($row['next_payment']['charge'] ?? 0) / 3 * 100) / 100, 2);
+$rootDb->prepare('UPDATE bookings SET autopay_consent_at = NOW(), autopay_card_id = ?, autopay_amount = ?, autopay_due = ?, autopay_instalments = 3, autopay_next_at = ? WHERE id = ?')
+    ->execute(['ccof:it19plan', $npPer, $npDue, $npSched[0], $npId]);
+$row = $acct();
+$npPlan = is_array($row) ? ($row['autopay_plan'] ?? null) : null;
+it_check('an armed monthly plan rides the account as its rows',
+    is_array($npPlan) && count($npPlan['dates'] ?? []) === 3 && ($npPlan['dates'][0]['state'] ?? '') === 'next' && ($npPlan['state'] ?? '') === 'on',
+    json_encode([$row['autopay_state'] ?? null, $npPlan]));
+it_check('…rows that sum to what is left', is_array($npPlan) && abs(array_sum(array_column($npPlan['dates'], 'fig')) - $npLeft) < 0.005, json_encode($npPlan));
+$rootDb->exec('UPDATE bookings SET autopay_consent_at = NULL, autopay_card_id = NULL, autopay_amount = NULL, autopay_due = NULL, autopay_instalments = NULL, autopay_next_at = NULL WHERE id = ' . $npId);
 // CLEAN UP the Due Date Guest, whose dates are RELATIVE (+260 days). This
 // delete was the NARROW fix for one instance of a general defect: a fixed
 // fixture date is eventually swept by a relative one, and whichever of the two

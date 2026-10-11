@@ -313,11 +313,11 @@ const reachOk = (name, list, floor, axis) => {
     // THE PAY SCREEN — money.
     await run(page, "openPayView('paytok', '7', 'balance')", 1100);
     const paid = await page.evaluate(() => {
-      const f = [...document.querySelectorAll('#pay-journey .pj-fig')].map((e) => e.textContent.trim());
+      const f = [...document.querySelectorAll('#pay-story .pp-stop-amt')].map((e) => e.textContent.trim());
       return { figs: f, view: (document.querySelector('#view-pay') || {}).className };
     });
     ok(/active/.test(paid.view || ''), 'the pay screen is up');
-    ok(paid.figs.some((x) => /£50\.00/.test(x)), `the journey states the £50.00 that comes back (${paid.figs.join(' · ')})`);
+    ok(paid.figs.some((x) => /£50\.00/.test(x)), `the money story states the £50.00 that comes back (${paid.figs.join(' · ')})`);
     fabOk(await sweepFab(page, 'pay 390'));
 
     // EXPERIENCES — the first card's Directions button.

@@ -721,6 +721,70 @@ function booking_instalment_schedule($due, $n)
     return $dates;
 }
 
+// A MONTHLY PLAN AS THE GUEST AGREED IT, with live states: done / next / still to
+// come, figures that SUM to what is actually left, and the plan's own weather.
+// Read by My stays (my-bookings.php) and by the pay screen of an arranged or
+// troubled plan, so the two show the same rows. null for anything but a monthly
+// plan that is armed or has failed ('revoked' stays hidden: they turned it off).
+function booking_autopay_plan_view($bk, $ap = null)
+{
+    $ap = $ap !== null ? $ap : booking_autopay_state($bk);
+    $apN = (int) ($bk['autopay_instalments'] ?? 0);
+    if (!in_array($ap[0], ['armed', 'failed'], true) || $apN <= 1 || empty($bk['autopay_due'])) {
+        return null;
+    }
+    $apDue = substr((string) $bk['autopay_due'], 0, 10);
+    $apNext = substr((string) ($bk['autopay_next_at'] ?? ''), 0, 10);
+    $apKind = booking_payment_kind($bk);
+    $apAmt = booking_amount_due($bk, $apKind === 'hold' ? 'deposit' : $apKind);
+    $apRest = round(max(0, (float) $apAmt['due']), 2);
+    $apPer = round((float) ($bk['autopay_amount'] ?? 0), 2);
+    $apDates = [];
+    foreach (booking_instalment_schedule($apDue, $apN) as $d) {
+        $st = $apNext === '' ? 'done' : ($d < $apNext ? 'done' : ($d === $apNext ? 'next' : 'todo'));
+        $apDates[] = ['date' => $d, 'state' => $st, 'fig' => $apPer];
+    }
+    // EACH remaining row shows what the collector will actually TAKE — min(per,
+    // running remainder) — not the agreed ceiling. After a manual part-payment the
+    // NEXT row must not announce the full £per while the collector takes less.
+    $apRun = $apRest;
+    foreach ($apDates as &$apRow) {
+        if ($apRow['state'] === 'done') {
+            continue;
+        }
+        $apTake = round(min($apPer, max(0, $apRun)), 2);
+        $apRow['fig'] = $apTake;
+        $apRun = round($apRun - $apTake, 2);
+    }
+    unset($apRow);
+    $apPlan = ['n' => $apN, 'per' => $apPer, 'toGo' => $apRest, 'next' => $apNext, 'dates' => $apDates];
+    // 'on' (nothing wrong), 'retrying' (a try failed, more to come) or 'stopped'
+    // (the try cap). why is autopay_square_why's prose.
+    $apAtt = (int) ($bk['autopay_attempts'] ?? 0);
+    $apPlan['state'] = $ap[0] === 'failed' ? 'stopped' : ($apAtt > 0 ? 'retrying' : 'on');
+    if ($apAtt > 0) {
+        $apPlan['why'] = (string) ($bk['autopay_last_error'] ?? '');
+        $apLastTry = substr((string) ($bk['autopay_last_try'] ?? ''), 0, 10);
+        if ($apPlan['state'] === 'retrying' && $apLastTry !== '') {
+            $apRetryDays = defined('AUTOPAY_RETRY_DAYS') ? AUTOPAY_RETRY_DAYS : 1;
+            $apPlan['retry'] = date('Y-m-d', strtotime($apLastTry . ' +' . $apRetryDays . ' days'));
+        }
+    }
+    return $apPlan;
+}
+
+// The day the arrival details go out: pre-arrival.php emails stays checking in
+// within PRE_ARRIVAL_DAYS (3 unless configured). '' when there is no check-in.
+function booking_arrival_details_on($b)
+{
+    $ci = substr((string) ($b['check_in'] ?? ''), 0, 10);
+    if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $ci)) {
+        return '';
+    }
+    $days = defined('PRE_ARRIVAL_DAYS') ? max(1, (int) PRE_ARRIVAL_DAYS) : 3;
+    return date('Y-m-d', strtotime($ci . ' 12:00:00 -' . $days . ' days'));
+}
+
 // THE ONE DERIVATION of what monthly collection this booking could be offered —
 // read by the pay screen that shows it, the charge that validates the guest's
 // pick, and the owner's Edit-plan preview, so the three can never disagree.

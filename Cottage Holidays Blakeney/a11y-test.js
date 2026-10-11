@@ -597,6 +597,9 @@ const stub = (page) => page.route(/\.php/, (r) => {
         // are display:none until something happens, so nothing had ever rendered them.
         // Both are driven with a message SHOWN, or the scene measures an empty box.
         ['pay', "(async()=>{closeEnquireModal();await openPayView('a11ytok','8','deposit');await new Promise(r=>setTimeout(r,1300));try{payStepsArm();}catch(e){}await new Promise(r=>setTimeout(r,700));})()"],
+        // …and the RECEIPT: the ticket (the card, the reference, the deposit inside it)
+        // and what happens next — the screen with the most to say once it has worked.
+        ['pay-receipt', "(async()=>{try{payStepsEnd(true);}catch(e){}payReceipt({charged:225,fullyPaid:false,autopay:null,card:{brand:'VISA',last4:'4242'}},null);await new Promise(r=>setTimeout(r,1200));})()"],
         ['signin', "(async()=>{nav('view-main');openGuestAuthModal();await new Promise(r=>setTimeout(r,600));const e=document.getElementById('login-error');if(e){e.textContent='That email and password do not match.';e.style.display='block';}const m=document.getElementById('magic-link-msg');if(m){m.className='auth-msg is-ok';m.textContent='Check your inbox \\u2014 a sign-in link is on its way.';m.style.display='block';}await new Promise(r=>setTimeout(r,400));})()"],
         ['signin-off', "(async()=>{closeGuestAuthModal();nav('view-main');await new Promise(r=>setTimeout(r,500));})()"],
         ['admin-today', "(async()=>{closeEnquireModal();isAuthenticated=true;document.body.classList.add('owner-mode');await loadAdminBundle();await initBackOffice();})()"],

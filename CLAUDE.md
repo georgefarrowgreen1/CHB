@@ -4374,7 +4374,86 @@ screens driven at 390 and 1280 with every control inventoried.** Gated by
   `superellipse(1.5)`). Gated by ui-test-smallthings §7 (the CSSOM rule, the
   computed value where the engine supports it, the radius untouched).
 
-## The guest pay screen tells the WHOLE money story (the approved v2 + motion)
+## The guest pay screens, rebuilt — and one rule for what a stay asks for (approved demo v2, built)
+
+**Asked for as "look at all of the guest facing payment screens and fully overhaul them … clean yet powerful", demoed
+twice ("remove the other payment amount"), then "Build it".** Supersedes the journey, the part payment and the old
+`pay-*` anatomy described in "The guest pay screen tells the WHOLE money story" below; the rules carried forward are
+named there. Code: `view-pay` in index.html (`#pay-body` / `#pay-done` / `#pay-error`), the `pp-*` block in app.css,
+and the pay block in app.js (`payFig`, `payRender`, `payStoryHtml`, `paySegHtml`, `payPlanHtml`, `payReceipt`,
+`payUnsure`, `payCalm`, `payCheckAgain`).
+- **ONE FIGURE, SAID ONCE.** `payFig(s)` is the one derivation of the screen's money: `today` (the stage plus the
+  refundable deposit riding it), `paid` (the deposit already charged folded in), `rest`, `back`, `grand`. The hero
+  states `today`; the breakdown is a tap away; the money story (`payStoryHtml`, `#pay-story`: what was paid, today,
+  what follows, what comes back) renders only with two stops or more, because one stop says nothing the hero hasn't.
+- **DEPOSIT | WHOLE STAY is a switch, and the whole stay is its OWN summary** (`paySegHtml`, `payMode`): the balance
+  stage asked early, with its own quote (`payState.sAll`). Until it lands the button waits (`payChargeNow` returns 0),
+  so the figure on the button is always the one the server quoted.
+- **THE PLAN IS A DECISION** (`payPlanHtml`: I'll pay it myself / take it on the day / spread it monthly). An automatic
+  choice stands the wallets down with the reason (`payMethodsSync`; Square cannot keep a wallet card on file), the
+  belt in `walletPay` refuses a chosen plan before tokenize, and one consent sentence restates the arrangement.
+- **THE CONNECTION DROPPED IS NOT A DECLINE** (`payUnsure`): no Pay button on that screen at all, only "Check whether
+  it went through" (`payCheckAgain`, which reads paid-in-full from the STAY's balance, not this stage's). A second tap
+  of a full-strength Pay button is how a guest pays twice.
+- **A refusal sits on the card** (`#pay-alert`); a field mistake is said once, by Square's own box (`fieldOnly`).
+- **BUSY IS THE SPINNER, NEVER A DIM**: the dispatcher disables the button while it works, so the dim rule is
+  `.pp-cta:disabled:not([aria-busy='true'])`. Money moving must not look like a control switched off.
+- **THE STALE LOAD**: every open takes a stamp (`openStamp` / `openLive`), so a slow summary from an earlier open can
+  never paint over a newer booking.
+- Sticky Pay bar on the phone (`.pp-bar`, a 14px gutter at ≤480 so it cannot overflow), two columns from 900px, and
+  calm screens for armed (nothing to pay today: no card box, no bar), repair (Update card), hold, loading, expired and
+  settled. The receipt says what is next and which card paid.
+- **GUEST MONEY SCREENS SPEAK THEIR DATES** (`payDay` → "Wed 27 Jan", `payRange` → both weekdays, the year once): the
+  email rule (a date read once and acted on) applied to the screens where a guest pays. Owner screens keep DD/MM/YYYY.
+- **Server** (gated by test-payrail's "pay screen's facts" and integration §19): the summary carries `adults`,
+  `children`, `paidOn`, `arrivalOn` (`booking_arrival_details_on`: the pre-arrival job's own `PRE_ARRIVAL_DAYS`
+  window, noon-anchored), `emailHint` (`email_hint`: "d•••@example.co.uk" — the screen opens from a forwardable link,
+  so it names the inbox and never quotes the address) and `autopayPlan` (`booking_autopay_plan_view`, extracted from
+  my-bookings.php: ONE definition of a monthly plan's rows for My stays and the pay screen); the charge answers with
+  `card` {brand, last4}.
+- **THE PART PAYMENT IS GONE FROM THE GUEST SCREEN** (the owner's ask). The server keeps all of it — the bounds, the
+  clamp, the quote-before-clamp order, `remaining` — and the client simply never sends `part_amount`. test-payrail
+  asserts the absence and keeps the server checks.
+
+**ONE RULE FOR WHAT A STAY ASKS FOR** (`guestStayAsk(b, gt, payToken)` → state `paid | trouble | arranged | owner |
+nocard | deposit | balance` and the one button `pay | fix | manage | message`). Read by My stays' money block, the You
+page's lead card (`gaStayMoney`, `GA_ASK_ACT`) and the account's pip (`guestDockNeedsSync`), so they cannot disagree.
+Three disagreements it ended: an ARRANGED balance still offered Pay on both pages; an owner-arranged stay read "you're
+all set" on one card and stated its balance on the next; and with no card rail a stay still owing read "All arranged".
+- **Figures this page cannot work out are judged by the server's payment state**: every comparison against NaN is
+  false, so "is anything owed?" answered no and a part-paid stay with no snapshot read "Paid in full". The figure
+  shows as £— instead of a guess.
+- **The journey asks the same rule** (`guestFlowHtml`): while the money block asks, the journey adds no sentence about
+  money; once paid it says what is next. A register short of the party still asks (`bookingRegComplete`, the old
+  hub's rule — the journey had used the weaker `regSubmitted`).
+- **The plan's next collection is said one way** (`payPlanNext`): "£175.00 monthly · next on Tue 20 Oct", or "Next
+  £60.00 on Tue 20 Oct" when it is smaller than the rest, so a smaller figure is never called the monthly one.
+
+**MY STAYS: ONE MONEY BLOCK PER STAY, AND THE SOONEST STAY IS ONE CARD.** `gbMoneyHtml` (`.gbm`): the figure and its
+line from the rule, the one button, a bar of what is paid, and the breakdown folded under "Payment details" (it keeps
+`.gb2-payline` and `#gb2-fold-<id>`, so every gate that opens the fold still can). The pre-arrival hub
+(`guestPreArrivalHubHtml`), the stay timeline (`guestStayTimelineHtml`) and the plan rail (`guestPlanBlockHtml`) are
+gone: they told the same stay twice and offered Pay twice. The soonest stay's own card (`.gb2-next`, under "Your next
+stay") carries the countdown on its photo, the weather and the tiles. The Messages pill stands down for `.gb2-next`
+too (`guest-app.css`), and that card drops its Welcome book link (it is a tile there).
+- **A STAY THAT OWES SAYS ITS NEXT STEP ONCE**: in its money block, with no journey caption repeating it. The caption
+  ("Next · 4 of 6 · Arrival info") speaks once the money is settled (ui-test-round8 §6 re-aimed).
+- **The invoice is unchanged**, at the owner's decision.
+- Gates: ui-test-pay (§1–§11) and ui-test-paystay (every state on both pages), re-aims of ui-test-yourstay (rewritten
+  around the merged card), -hig, -guestrepairs, -round8, -smallthings and -reach; layout-test's pay, pay-whole and
+  pay-receipt scenes and the next-stay card on My stays; a11y-test's pay-receipt scene; test-payrail and integration
+  §19. Break-tested one rule at a time in throwaway copies of the app (BREAKS).
+- **Not done, said plainly**: Apple Pay and Google Pay are stubbed in every suite (Square's SDK cannot load here), so
+  the wallet sheets themselves are unverified on a device; the 3-D Secure challenge is stubbed; and the receipt names
+  the card only when Square's answer carries card details.
+
+## The guest pay screen tells the WHOLE money story (SUPERSEDED in part by the rebuild above)
+
+**Read the rebuild first.** The journey (`#pay-journey`), the part payment, `#pay-armed-note` and the `pay-*` / `pj-*`
+classes below are gone. Carried forward into the rebuild: the narrated wait (`payStepsArm`), the unhurried success
+tempo, the plan before the methods with `payMethodsSync` as its one decider, the wallet belt, the field error said
+once, and the deposit tracker on past stays.
+
 
 Three additions to `view-pay` (index.html) rendered by `openPayView`/`payWithToken`
 (app.js), styled in app.css's pay block. Gated by the existing ui-test-pay strings
@@ -7434,7 +7513,9 @@ Logged-out, owner, first-time and upcoming-only guests see nothing. Gated by
 ui-test-welcomeback.js (nudge + favourite, CTA → cottage page + note, upcoming-only and
 logged-out stay empty).
 
-**Your stay hub** (app.js — guest-side, `renderGuestBookings` under the "Your stay" header):
+**Your stay hub** (app.js — guest-side, `renderGuestBookings` under the "Your stay" header). **The pre-arrival half is
+SUPERSEDED**: the soonest stay's own card (`.gb2-next`) carries the countdown, the tiles and the one money block now —
+see "The guest pay screens, rebuilt". The in-residence hub below stands:
 there are TWO hub cards, both `.my-stay-hub`. The in-residence one (unchanged) shows for a stay
 including today. The **pre-arrival** one (`guestPreArrivalHubHtml`, `.my-stay-hub-soon`) shows
 ONCE for the SOONEST strictly-future booking (`mine` is sorted soonest-first): a sea-blue
@@ -7446,7 +7527,8 @@ Add-details link to `b.regUrl`; else "you're all set"), and planning tiles reusi
 endpoints. Gated by ui-test-yourstay.js (countdown wording, balance/all-set states, Tomorrow at
 +1 day, only-soonest, past-only + logged-out show nothing).
 
-**The My Stays companion** (app.js — the approved demo's PR-1; gated by
+**The My Stays companion** (the STAY TIMELINE is GONE — the money block replaced it; the door-code and weather rules
+below stand) (app.js — the approved demo's PR-1; gated by
 ui-test-yourstay §21–25 + test-integration §19). The pre-arrival hub carries a
 STAY TIMELINE ("Your road to Blakeney", `guestStayTimelineHtml`) — booking
 confirmed / paid-so-far / the NOW money row / your stay / deposit back — the

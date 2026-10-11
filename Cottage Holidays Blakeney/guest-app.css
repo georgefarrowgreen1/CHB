@@ -819,9 +819,9 @@ body.guest-app:not(.owner-mode) .chat-fab {
 body.guest-app:not(.owner-mode):has(#chat-widget.open) #guest-msg-fab {
   display: none;
 }
-/* And on My Stays while a stay hub is up: the hub's Contact host IS the chat, and
-   the pill sat on the countdown badge (364px² of "days to go", measured). */
-body.guest-app:not(.owner-mode):has(#view-guest-bookings.page-view.active .my-stay-hub) #guest-msg-fab {
+/* And on My Stays while a stay's tiles are up (the in-residence hub, or the next
+   stay's card): their Contact host IS the chat, and the pill sat over the tiles. */
+body.guest-app:not(.owner-mode):has(#view-guest-bookings.page-view.active :is(.my-stay-hub, .gb2-next)) #guest-msg-fab {
   display: none;
 }
 /* AND ON THE PAY SCREEN — it covers MONEY. Measured at 390 in every state: the

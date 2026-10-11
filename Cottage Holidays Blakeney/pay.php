@@ -188,6 +188,18 @@ if ($action === 'summary') {
         'holdAmount' => $holdAmount,
         'holdStatus' => $holdStatus,
         'autopayRepair' => $apRepair,
+        // THE STAY, said on the screen that pays for it: the party, the day the
+        // first money arrived (the money story's first stop), when the arrival
+        // details go out, and the inbox a receipt goes to — named, not quoted
+        // (email_hint): this screen opens from a link that can be forwarded.
+        'adults' => (int) ($b['adults'] ?? 0),
+        'children' => (int) ($b['children'] ?? 0),
+        'paidOn' => $alreadyPaid > 0.005 && !empty($b['payment_date']) ? substr((string) $b['payment_date'], 0, 10) : null,
+        'arrivalOn' => booking_arrival_details_on($b),
+        'emailHint' => email_hint($b['email'] ?? ''),
+        // A monthly plan's rows (booking_autopay_plan_view — the same rows My stays
+        // shows), for the arranged and the troubled screens. null otherwise.
+        'autopayPlan' => booking_autopay_plan_view($b, $apStateNow),
     ]);
 }
 
@@ -763,6 +775,9 @@ if ($action === 'charge') {
         // The arrangement's outcome (null = none was asked for) — the done
         // screen speaks it, both ways round.
         'autopay' => $apOutcome,
+        // Which card paid, for the receipt ("Paid with Visa •• 4242") — the card
+        // the guest has just typed, said back to the person who typed it.
+        'card' => $cardInfo['last4'] !== '' ? ['brand' => $cardInfo['brand'], 'last4' => $cardInfo['last4']] : null,
     ]);
 }
 

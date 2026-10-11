@@ -140,61 +140,16 @@ function my_bookings_payload(string $email, bool $preview = false): array
         $bk['autopay_state'] = $ap[0];
         $bk['autopay_says'] = $ap[1];
         // A MONTHLY plan is shown as the schedule the guest agreed to, with live
-        // states — done / next / still to come — and figures that SUM to what is
-        // actually left (the final row absorbs any manual payments), so the card
-        // can never promise money the ledger disagrees with.
+        // states (booking_autopay_plan_view, pricing.php — the pay screen reads
+        // the same rows for an arranged or troubled plan).
         $apN = (int) ($bk['autopay_instalments'] ?? 0);
-        // A plan in TROUBLE still renders — 'failed' (stopped at the try cap)
-        // and armed-with-failed-tries both carry the schedule plus why and what
-        // happens next, because a plan that silently vanishes from the guest's
-        // own screen the moment it needs them is the worst version of this
-        // card. 'revoked' stays hidden: they turned it off on purpose.
-        if (in_array($ap[0], ['armed', 'failed'], true) && $apN > 1 && !empty($bk['autopay_due'])) {
-            $apDue = substr((string) $bk['autopay_due'], 0, 10);
-            $apNext = substr((string) ($bk['autopay_next_at'] ?? ''), 0, 10);
-            $apKind = booking_payment_kind($bk);
-            $apAmt = booking_amount_due($bk, $apKind === 'hold' ? 'deposit' : $apKind);
-            $apRest = round(max(0, (float) $apAmt['due']), 2);
-            $apPer = round((float) ($bk['autopay_amount'] ?? 0), 2);
-            $apDates = [];
-            foreach (booking_instalment_schedule($apDue, $apN) as $d) {
-                $st = $apNext === '' ? 'done' : ($d < $apNext ? 'done' : ($d === $apNext ? 'next' : 'todo'));
-                $apDates[] = ['date' => $d, 'state' => $st, 'fig' => $apPer];
-            }
-            // EACH remaining row shows what the collector will actually TAKE —
-            // min(per, running remainder) — not the agreed ceiling. The old code
-            // put the whole shrink on the FINAL row only, so after a manual
-            // part-payment the NEXT row still announced the full £per while the
-            // collector (min(rest, per)) would take less: a card promising £150
-            // when £60 is owed is the alarm this card exists to avoid. Walking
-            // the not-done rows in order keeps the rows summing to $apRest AND
-            // makes the "next" figure the one that will really be charged.
-            $apRun = $apRest;
-            foreach ($apDates as &$apRow) {
-                if ($apRow['state'] === 'done') {
-                    continue;
-                }
-                $apTake = round(min($apPer, max(0, $apRun)), 2);
-                $apRow['fig'] = $apTake;
-                $apRun = round($apRun - $apTake, 2);
-            }
-            unset($apRow);
-            $apPlan = ['n' => $apN, 'per' => $apPer, 'toGo' => $apRest, 'next' => $apNext, 'dates' => $apDates];
-            // The plan's own weather: 'on' (nothing wrong), 'retrying' (a try
-            // failed, more to come — the collector's cadence names the day) or
-            // 'stopped' (the try cap). why is autopay_square_why's prose.
-            $apAtt = (int) ($bk['autopay_attempts'] ?? 0);
-            $apPlan['state'] = $ap[0] === 'failed' ? 'stopped' : ($apAtt > 0 ? 'retrying' : 'on');
-            if ($apAtt > 0) {
-                $apPlan['why'] = (string) ($bk['autopay_last_error'] ?? '');
-                $apLastTry = substr((string) ($bk['autopay_last_try'] ?? ''), 0, 10);
-                if ($apPlan['state'] === 'retrying' && $apLastTry !== '') {
-                    $apRetryDays = defined('AUTOPAY_RETRY_DAYS') ? AUTOPAY_RETRY_DAYS : 1;
-                    $apPlan['retry'] = date('Y-m-d', strtotime($apLastTry . ' +' . $apRetryDays . ' days'));
-                }
-            }
+        $apPlan = booking_autopay_plan_view($bk, $ap);
+        if ($apPlan !== null) {
             $bk['autopay_plan'] = $apPlan;
         }
+        // When the arrival details are sent, so the account can name the day
+        // rather than promise "a week before" (the job sends PRE_ARRIVAL_DAYS out).
+        $bk['arrival_on'] = booking_arrival_details_on($bk);
         // A SINGLE "one payment" consent in trouble has no schedule block, but it
         // must not read as healthy — the failure email sends the guest here, and
         // without this a retrying single collection showed the green "on the way"
