@@ -6553,6 +6553,51 @@ it_check('§86 …and keeps an unsubscribe, as the record of it', $nlRow86('gone
 $rootDb->exec('DELETE FROM newsletter_subscribers');
 $rootDb->exec("DELETE FROM login_attempts WHERE identifier IN ('newsletter', 'nlconfirm') OR identifier LIKE 'nlmail:%'");
 
+// §87 THE NARROWER OUTSIDE-CODE RULE, ON TRIAL (the security leftovers, step 5). The
+// browser sends what the Report-Only rule would stop to csp-report.php?trial=1; only
+// what the narrowing itself stops is kept (info, once a day per address, capped), and
+// the Status page lists the week's. The rule's own shape is test-csp-report's.
+echo "\n== §87 the narrower outside-code rule, on trial ==\n";
+$rootDb->exec("DELETE FROM activity_log WHERE action IN ('csp.trial', 'csp.violation')");
+$csp87 = function ($body, $trial = true) use ($BASE) {
+    $ch = curl_init($BASE . '/csp-report.php' . ($trial ? '?trial=1' : ''));
+    curl_setopt_array($ch, [CURLOPT_POST => true, CURLOPT_RETURNTRANSFER => true, CURLOPT_HTTPHEADER => ['Content-Type: application/csp-report'], CURLOPT_POSTFIELDS => json_encode($body)]);
+    curl_exec($ch);
+    $code = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    curl_close($ch);
+    return $code;
+};
+$trialRows87 = fn() => $rootDb->query("SELECT summary, severity FROM activity_log WHERE action = 'csp.trial' ORDER BY id")->fetchAll(PDO::FETCH_ASSOC);
+$foreign87 = 'https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js';
+$c87 = $csp87(['csp-report' => ['effective-directive' => 'script-src-elem', 'blocked-uri' => $foreign87 . '?v=1', 'disposition' => 'report']]);
+$rows87 = $trialRows87();
+it_check('§87 a script the narrowing would stop is kept, as info, by its address without the query', $c87 === 204 && count($rows87) === 1 && $rows87[0]['summary'] === 'Narrower rule would stop script-src-elem → cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js' && $rows87[0]['severity'] === 'info', json_encode($rows87));
+$csp87([['type' => 'csp-violation', 'body' => ['effectiveDirective' => 'script-src-elem', 'blockedURL' => $foreign87 . '?v=2', 'disposition' => 'report']]]);
+it_check('§87 the same address again that day is not kept twice (in the Reporting API shape too)', count($trialRows87()) === 1, json_encode($trialRows87()));
+$csp87(['csp-report' => ['effective-directive' => 'script-src-elem', 'blocked-uri' => 'https://evil.example.com/x.js']]);
+$csp87(['csp-report' => ['effective-directive' => 'script-src-elem', 'blocked-uri' => 'inline']]);
+it_check('§87 a block the enforced rule also makes, or an inline one, is not a trial finding', count($trialRows87()) === 1, json_encode($trialRows87()));
+$csp87(['csp-report' => ['effective-directive' => 'script-src-elem', 'blocked-uri' => 'https://cdn.jsdelivr.net/gh/anyone/anything@main/other.js']], false);
+it_check('§87 a report from the enforced rule is never filed as a trial finding', count($trialRows87()) === 1 && (int) $rootDb->query("SELECT COUNT(*) FROM activity_log WHERE action = 'csp.violation'")->fetchColumn() === 1, '');
+$diag87 = function () use (&$adm83) {
+    $r = http($adm83, 'POST', '/diagnostics.php', ['action' => 'run']);
+    foreach (($r['json']['checks'] ?? []) as $c) {
+        if (($c['label'] ?? '') === 'Outside code rule (on trial)') {
+            return $c;
+        }
+    }
+    return null;
+};
+$d87 = $diag87();
+it_check('§87 the Status page names what the trial would have stopped', is_array($d87) && $d87['status'] === 'warn' && strpos($d87['detail'], 'Would have stopped a script from cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js') === 0, json_encode($d87));
+for ($i = 0; $i < 12; $i++) {
+    $csp87(['csp-report' => ['effective-directive' => 'img-src', 'blocked-uri' => 'https://cdnjs.cloudflare.com/ajax/libs/made-up-' . $i . '/1.0.0/x.png']]);
+}
+it_check('§87 one address can add at most 10 trial findings an hour', count($trialRows87()) === 10, (string) count($trialRows87()));
+$rootDb->exec("DELETE FROM activity_log WHERE action IN ('csp.trial', 'csp.violation')");
+$d87 = $diag87();
+it_check('§87 …and with nothing found it says so', is_array($d87) && $d87['status'] === 'ok' && strpos($d87['detail'], 'Nothing in the last 7 days') === 0, json_encode($d87));
+
 echo "\n== Summary ==\n";
 if ($fail) {
     echo "  $fail CHECK(S) FAILED \xE2\x9D\x8C\n\n";

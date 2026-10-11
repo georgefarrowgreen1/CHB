@@ -13,13 +13,24 @@ require_once __DIR__ . '/csp-lib.php';
 // tells you to run it). Kept HERE rather than in a separate script so the
 // generator and the assertion that uses it can never disagree.
 $GEN = __DIR__ . '/csp-policy.php';
+$GEN_TRIAL = __DIR__ . '/csp-trial.php';
 $htRaw = (string) @file_get_contents(__DIR__ . '/htaccess.txt');
 $livePolicy = $htRaw === '' ? null : csp_extract_policy($htRaw);
+$trialPolicy = $htRaw === '' ? null : csp_extract_trial_policy($htRaw);
 if (in_array('--update', $argv ?? [], true)) {
     if (!$livePolicy) {
         fwrite(STDERR, "cannot extract the CSP from htaccess.txt\n");
         exit(1);
     }
+    // The rule on trial (Report-Only), or '' when none runs: the Status page reads it
+    // to know whether to show the trial's findings.
+    file_put_contents($GEN_TRIAL, "<?php\n"
+        . "// AUTO-GENERATED from htaccess.txt — do NOT edit by hand.\n"
+        . "// Regenerate:  php test-csp-report.php --update\n"
+        . "//\n"
+        . "// The Content-Security-Policy-Report-Only header (the narrower rule on trial),\n"
+        . "// or '' when no trial runs. Read by diagnostics.php; parity is gated.\n"
+        . 'return ' . var_export((string) $trialPolicy, true) . ";\n");
     file_put_contents($GEN, "<?php\n"
         . "// AUTO-GENERATED from htaccess.txt — do NOT edit by hand.\n"
         . "// Regenerate:  php test-csp-report.php --update\n"
@@ -31,7 +42,7 @@ if (in_array('--update', $argv ?? [], true)) {
         . "// read it. An include always works. Parity with htaccess.txt is gated by\n"
         . "// test-csp-report.php, so this file cannot drift from the real header.\n"
         . 'return ' . var_export($livePolicy, true) . ";\n");
-    echo "regenerated csp-policy.php\n";
+    echo "regenerated csp-policy.php and csp-trial.php\n";
     exit(0);
 }
 
@@ -58,6 +69,107 @@ ok(isset($P['form-action']) && isset($P['connect-src']), 'policy parses into dir
 $gen = is_file($GEN) ? include $GEN : null;
 ok(is_string($gen) && $gen !== '', 'csp-policy.php exists and returns a string (run: php test-csp-report.php --update)');
 ok($gen === $polStr, 'csp-policy.php matches the CSP in htaccess.txt (run: php test-csp-report.php --update)');
+
+// ---- THE NARROWER RULE ON TRIAL (the security leftovers, Step 5). The enforced rule
+// lets a page run anything on jsDelivr and cdnjs; the trial pins the six packages the
+// site uses. These checks hold the trial to "the enforced rule, narrowed, and nothing
+// else", and every address the code loads to being inside it.
+$genTrial = is_file($GEN_TRIAL) ? include $GEN_TRIAL : null;
+ok(is_string($genTrial), 'csp-trial.php exists and returns a string (run: php test-csp-report.php --update)');
+ok($genTrial === (string) $trialPolicy, 'csp-trial.php matches the Report-Only header in htaccess.txt (run: php test-csp-report.php --update)');
+$T = $trialPolicy ? csp_parse_policy($trialPolicy) : [];
+ok($T !== [], 'a narrower rule is on trial (Content-Security-Policy-Report-Only)');
+$WIDE = ['https://cdnjs.cloudflare.com', 'https://cdn.jsdelivr.net'];
+$DROPPED = ['https://tessdata.projectnaptha.com']; // tesseract.js 5 reads its language data from jsDelivr
+$pinned = fn($s) => (bool) preg_match('#^https://(cdnjs\.cloudflare\.com|cdn\.jsdelivr\.net)/.+/$#', $s);
+$sameElse = true;
+$why = [];
+foreach ($P as $dir => $srcs) {
+    if ($dir === 'upgrade-insecure-requests') {
+        continue; // ignored in a Report-Only policy, so left out
+    }
+    if ($dir === 'report-uri') {
+        continue;
+    }
+    $want = array_values(array_diff($srcs, $WIDE, $DROPPED));
+    $got = array_values(array_filter($T[$dir] ?? ['(missing)'], fn($s) => !$pinned($s)));
+    sort($want);
+    sort($got);
+    if ($want !== $got) {
+        $sameElse = false;
+        $why[] = $dir;
+    }
+}
+ok($sameElse && count($T) === count($P) - 1, 'the trial is the enforced rule with only the two libraries narrowed (' . (implode(', ', $why) ?: 'every directive') . ')');
+ok(($T['report-uri'] ?? []) === ['/csp-report.php?trial=1'], 'the trial reports to csp-report.php?trial=1, apart from real blocks');
+$bare = 0;
+foreach ($T as $srcs) {
+    foreach ($srcs as $s) {
+        $bare += in_array($s, $WIDE, true) ? 1 : 0;
+    }
+}
+ok($bare === 0, 'no directive of the trial allows a whole library host');
+$unversioned = array_filter(array_merge(...array_values($T)), fn($s) => $pinned($s) && !preg_match('#@v?\d+\.\d+\.\d+/|/\d+\.\d+\.\d+/|/@tesseract\.js-data/eng/$#', $s));
+ok($unversioned === [], 'every pinned path names an exact version (' . implode(' ', $unversioned) . ')');
+// Every library address the shipped code loads is inside the trial, so switching it on
+// cannot break a feature. An updated library changes its address in the code, and this
+// fails until the rule follows.
+$cdnUrls = [];
+foreach (['app.js', 'admin.js', 'guest-app.js'] as $f) {
+    preg_match_all('#https://(?:cdnjs\.cloudflare\.com|cdn\.jsdelivr\.net)/[^\'"`\s)]+#', (string) file_get_contents(__DIR__ . '/' . $f), $um);
+    $cdnUrls = array_merge($cdnUrls, $um[0]);
+}
+$cdnUrls = array_values(array_unique($cdnUrls));
+ok(count($cdnUrls) >= 7, '(the code\'s library addresses were found: ' . count($cdnUrls) . ')');
+$outside = array_filter($cdnUrls, fn($u) => !csp_policy_permits($T, preg_match('/\.css$/', $u) ? 'style-src-elem' : 'script-src-elem', $u));
+ok($outside === [], 'every library address in the code is allowed by the trial (' . implode(' ', $outside) . ')');
+// What the libraries fetch at run time, measured in Chromium with the trial ENFORCED:
+// all six worked with no violation.
+$runtime = [
+    ['script-src-elem', 'https://cdn.jsdelivr.net/npm/tesseract.js@v5.1.1/dist/worker.min.js'],
+    ['script-src-elem', 'https://cdn.jsdelivr.net/npm/tesseract.js-core@v5.1.1/tesseract-core-simd-lstm.wasm.js'],
+    ['connect-src', 'https://cdn.jsdelivr.net/npm/@tesseract.js-data/eng/4.0.0_best_int/eng.traineddata.gz'],
+    ['script-src-elem', 'https://cdn.jsdelivr.net/npm/onnxruntime-web@1.20.1/dist/ort-wasm-simd-threaded.mjs'],
+    ['connect-src', 'https://cdn.jsdelivr.net/npm/onnxruntime-web@1.20.1/dist/ort.min.js'],
+    ['connect-src', 'https://cdn.jsdelivr.net/npm/onnxruntime-web@1.20.1/dist/ort-wasm-simd-threaded.wasm'],
+    ['img-src', 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/images/marker-icon.png'],
+    ['img-src', 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/images/marker-shadow.png'],
+];
+$blockedRt = array_filter($runtime, fn($r) => !csp_policy_permits($T, $r[0], $r[1]));
+ok($blockedRt === [], 'everything the libraries fetch at run time is allowed (' . implode(' ', array_column($blockedRt, 1)) . ')');
+// …and what the narrowing is for: three addresses the enforced rule allows today.
+foreach ([
+    ['anyone\'s project on GitHub', 'https://cdn.jsdelivr.net/gh/anyone/anything@main/script.js'],
+    ['an old library known for slipping past rules like these', 'https://cdnjs.cloudflare.com/ajax/libs/angular.js/1.8.2/angular.min.js'],
+    ['our PDF maker from a different address', 'https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js'],
+] as [$what, $u]) {
+    ok(csp_policy_permits($P, 'script-src-elem', $u) && !csp_policy_permits($T, 'script-src-elem', $u), "$what: allowed today, stopped by the trial");
+}
+
+// ---- The matcher reads paths and the newer sub-directives as browsers do.
+$pp = csp_parse_policy("script-src https://cdn.example.com/lib/1.0/ https://cdn.example.com/one.js; worker-src blob:");
+ok(csp_policy_permits($pp, 'script-src', 'https://cdn.example.com/lib/1.0/a/b.js?x=1'), 'a source ending in / allows everything under it');
+ok(!csp_policy_permits($pp, 'script-src', 'https://cdn.example.com/lib/1.01/a.js'), '…and nothing beside it');
+ok(csp_policy_permits($pp, 'script-src', 'https://cdn.example.com/one.js') && !csp_policy_permits($pp, 'script-src', 'https://cdn.example.com/one.js.map'), 'a source without the slash allows that file exactly');
+ok(!csp_policy_permits($pp, 'script-src', 'https://cdn.example.com'), 'a report naming only the origin is not shown to sit under a pinned path');
+ok(csp_policy_permits(csp_parse_policy('script-src https://cdn.example.com/npm/x@1.0.0/'), 'script-src', 'https://cdn.example.com/npm/x%401.0.0/y.js'), 'an encoded @ is read as @');
+ok(csp_policy_permits($pp, 'script-src-elem', 'https://cdn.example.com/one.js'), 'script-src-elem falls back to script-src (what browsers report now)');
+ok(csp_policy_permits(csp_parse_policy('child-src https://w.example.com'), 'worker-src', 'https://w.example.com/x.js') && csp_policy_permits(csp_parse_policy('script-src https://w.example.com'), 'worker-src', 'https://w.example.com/x.js'), 'worker-src falls back to child-src, then script-src');
+ok(csp_policy_permits(csp_parse_policy("style-src 'self' https://s.example.com"), 'style-src-elem', 'https://s.example.com/a.css'), 'style-src-elem falls back to style-src');
+ok(csp_policy_permits($pp, 'worker-src', 'blob:https://site.example/1') && !csp_policy_permits($pp, 'worker-src', 'https://cdn.example.com/one.js'), 'a stated worker-src is the one that applies');
+
+// ---- Which trial reports are kept: only what the narrowing itself would stop.
+ok(csp_trial_worth_recording('script-src-elem', 'https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js', $P), 'a script the enforced rule allows but the trial stops is kept');
+ok(!csp_trial_worth_recording('script-src-elem', 'https://evil.example.com/x.js', $P), 'a block the enforced rule also makes is not (it is reported already)');
+ok(!csp_trial_worth_recording('script-src-elem', 'inline', $P) && !csp_trial_worth_recording('img-src', '', $P), 'inline and empty are not addresses');
+ok(csp_trial_sig('script-src-elem', 'https://cdn.jsdelivr.net/gh/a/b@main/c.js?t=123') === 'script-src-elem → cdn.jsdelivr.net/gh/a/b@main/c.js', 'a trial report is known by its directive and address, without the query');
+// Trial reports are machine reports: pruned and capped like the rest (two lists).
+$noiseSrc = (string) file_get_contents(__DIR__ . '/activity-lib.php');
+$cronSrc = (string) file_get_contents(__DIR__ . '/cron.php');
+preg_match("/const ACTIVITY_NOISE_ACTIONS = \\[([^\\]]*)\\]/", $noiseSrc, $nm);
+preg_match_all("/'([a-z.]+)'/", $nm[1] ?? '', $nn);
+ok(in_array('csp.trial', $nn[1], true), 'csp.trial is a machine report in activity-lib.php');
+ok(array_filter($nn[1], fn($a) => strpos($cronSrc, "'" . $a . "'") === false) === [], 'cron.php prunes every machine report the activity log reads apart');
 
 // ---- RESOLUTION MUST SURVIVE THE PRODUCTION FILESYSTEM. This is the check whose
 // absence let the first version ship broken: it read '.htaccess' with
@@ -159,6 +271,7 @@ ok(($probe['csp']['probe']['3ds'] ?? '') === 'info' && ($probe['csp']['probe']['
     'it reports how THIS deploy would grade the two nagging reports (info)');
 ok(($probe['csp']['probe']['evil'] ?? '') === 'warn',
     '…and that a genuine block would still be warn');
+ok(($probe['csp']['trial'] ?? null) === true, 'it says the narrower rule is on trial in this deploy');
 ok(!str_contains(strtolower($probeRaw), 'password') && !str_contains($probeRaw, 'DB_'),
     'the diagnostic leaks no configuration');
 

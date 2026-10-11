@@ -73,6 +73,46 @@ try {
     // The connection's own address, as everywhere else in the app: the first
     // X-Forwarded-For value is whatever the sender chose to write.
     $ip = mb_substr((string) ($_SERVER['REMOTE_ADDR'] ?? ''), 0, 60);
+    // Chrome has historically sent the FULL directive ("form-action 'self'") in
+    // violated-directive, so take the name only.
+    $effDir = strtolower(trim(explode(' ', (string) $directive)[0]));
+
+    // THE NARROWER RULE ON TRIAL (the security leftovers, Step 5): reports from the
+    // Content-Security-Policy-Report-Only header come to ?trial=1. Only what the
+    // narrowing itself would stop is kept (the enforced rule allows it today); a block
+    // the enforced rule also makes is reported by it already. Info, once a day per
+    // address, under the same caps; the Status page lists them.
+    if (($_GET['trial'] ?? '') === '1') {
+        $enforced = function_exists('csp_live_policy') ? csp_live_policy(__DIR__) : null;
+        if (!function_exists('csp_trial_worth_recording') || !csp_trial_worth_recording($effDir, $blocked, $enforced)) {
+            exit;
+        }
+        $tcap = $pdo->prepare(
+            "SELECT SUM(ip = ?) AS mine, COUNT(*) AS allr FROM activity_log
+              WHERE action = 'csp.trial' AND created_at > (NOW() - INTERVAL 1 HOUR)",
+        );
+        $tcap->execute([$ip]);
+        $tc = $tcap->fetch(PDO::FETCH_ASSOC) ?: [];
+        if ((int) ($tc['mine'] ?? 0) >= 10 || (int) ($tc['allr'] ?? 0) >= 60) {
+            exit;
+        }
+        $tsum = mb_substr('Narrower rule would stop ' . csp_trial_sig($effDir, $blocked), 0, 240);
+        $tseen = $pdo->prepare("SELECT 1 FROM activity_log WHERE action = 'csp.trial' AND summary = ? AND created_at > (NOW() - INTERVAL 1 DAY) LIMIT 1");
+        $tseen->execute([$tsum]);
+        if ($tseen->fetchColumn()) {
+            exit;
+        }
+        $pdo->prepare(
+            "INSERT INTO activity_log (actor, category, action, summary, ip, meta, severity)
+             VALUES ('system', 'security', 'csp.trial', ?, ?, ?, 'info')",
+        )->execute([$tsum, $ip, json_encode([
+            'directive' => $effDir,
+            'blocked' => $blocked,
+            'documentUri' => $clip('document-uri', 200) ?: $clip('documentURL', 200),
+            'sourceFile' => $clip('source-file', 200) ?: $clip('sourceFile', 200),
+        ])]);
+        exit;
+    }
     // A CEILING THE SENDER CANNOT ROTATE AROUND. Anyone can POST a report for a
     // made-up host, and each new host is a new de-dupe signature — so without a
     // cap, a few thousand reports pushed the owner's real history out of the log.
@@ -134,9 +174,6 @@ try {
     // refetched yet, not a threat. The live policy is read from the same file
     // Apache serves, so this cannot drift out of step with what is enforced. A
     // genuine block — a host the policy still forbids — stays 'warn'.
-    // Chrome has historically sent the FULL directive ("form-action 'self'") in
-    // violated-directive, so take the name only.
-    $effDir = strtolower(trim(explode(' ', (string) $directive)[0]));
     $parsed = function_exists('csp_live_policy') ? csp_live_policy(__DIR__) : null;
     if (function_exists('csp_report_severity')) {
         $sev = csp_report_severity($effDir, $blocked, $parsed);

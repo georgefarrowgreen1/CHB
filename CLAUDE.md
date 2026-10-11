@@ -1160,8 +1160,8 @@ Found by the guest-endpoint and scheduled-jobs reviews; each was reproduced firs
   **ui-test-inbox §10** (its own row, the warning, linking the thread, asking again, a proven chat still
   joining), test-jobs, test-requires, test-reply (the handled list), test-content-keys. Break-tested one fix at a
   time. admin.js budget +600 bytes gz: the unconfirmed-chat handling and its warning card (owner-only, cached).
-- **Not done, said plainly**: `script-src` still allows the whole of jsDelivr and cdnjs. (The register and
-  enquiry answers that revealed an account or a booking were closed by the security leftovers' Step 3.)
+- **Since closed**: the register and enquiry answers that revealed an account or a booking (the security leftovers'
+  Step 3), and `script-src` allowing the whole of jsDelivr and cdnjs (Step 5: a narrower rule on trial, then on).
 
 ## A refresh does the work once (round 5, performance)
 
@@ -11133,6 +11133,49 @@ ships as its own PR.
   counts, the broadcast, the outbox, a scanner's GET, every refusal, the dated return, the tidy) and
   **ui-test-newsletter.js** (the footer message, the link opened, an expired link, the Newsletter page and its send
   confirm). Fourteen mutations break-tested (nine server, five page), each failing its own named check.
+
+### Step 5: outside code is pinned to exact files (a week on trial first)
+
+- **THE RULE PINS THE SIX PACKAGES** the site loads from jsDelivr and cdnjs to their exact versioned paths: jsPDF
+  2.5.1, heic2any 0.0.4 and Leaflet 1.9.4 on cdnjs; onnxruntime-web 1.20.1, tesseract.js 5.1.1 (and its `@v5.1.1`
+  worker path), tesseract.js-core v5.1.1 and the English data under `@tesseract.js-data/eng/` on jsDelivr. The same
+  narrowing applies to styles and images (Leaflet), workers and downloads; `tessdata.projectnaptha.com` is dropped
+  (tesseract.js 5 reads its language data from jsDelivr). The enforced rule allowed any of millions of packages and
+  any public GitHub project.
+- **IT SHIPS AS A TRIAL**: `Content-Security-Policy-Report-Only` beside the enforced rule in htaccess.txt, reporting to
+  `csp-report.php?trial=1`. It stops nothing; the browser reports what it would stop. The plan is a week of that, then
+  the narrowed sources move into the enforced rule and the Report-Only header goes.
+- **MEASURED FIRST, IN A BROWSER, WITH THE TRIAL RULE ENFORCED**: all six libraries load and work with no violation (a
+  PDF made, an iPhone HEIC photo converted to JPEG, a map with its marker images, a receipt read by OCR, the meaning
+  model embedding a sentence). Two harness lessons, worth keeping: this machine's proxy relay drops browser downloads
+  at random (`ERR_TOO_MANY_RETRIES`), so the check served each CDN file from a curl-fetched copy AT THE SAME URL (the
+  rule judges the URL, so the verdict is the live one); and Chromium reports scripts as **`script-src-elem`**, the
+  CSP3 sub-directive.
+- **THE REPORT HANDLER WAS WRONG ABOUT BOTH OF THOSE, and is fixed** (csp-lib.php): `csp_source_permits` ignored a
+  source's PATH (a pinned jsDelivr source read as allowing all of jsDelivr), and `csp_policy_permits` fell back from
+  `script-src-elem` straight to `default-src`, so every allowed script read as forbidden. Paths now match as browsers
+  match them (a trailing `/` allows everything under it, otherwise the exact file; a report naming only an origin is
+  not under a pinned path), and the CSP3 chains are followed (`script-src-elem` → `script-src` → `default-src`,
+  `worker-src` → `child-src` → `script-src`, the style ones likewise).
+- **ONLY WHAT THE NARROWING ITSELF WOULD STOP IS KEPT** (`csp_trial_worth_recording`: the enforced rule allows it
+  today). A block the enforced rule also makes is already reported by it; inline and empty are not addresses. Kept as
+  info, `csp.trial` (a machine report: capped 10 an address and 60 an hour, pruned with the rest; cron.php's list
+  follows activity-lib's), once a day per address without its query.
+- **The Status page lists the week's** ("Outside code rule (on trial)", Security): ok with nothing, warn naming what
+  would have been stopped ("Would have stopped a script from cdn.jsdelivr.net/…"), shown only while
+  `csp-trial.php` (generated from htaccess.txt by `php test-csp-report.php --update`, parity-gated) says a trial runs.
+  `version.php?csp=1` says `trial`.
+- **Updating a library means changing its address in the rule too**: test-csp-report scans app.js, admin.js and
+  guest-app.js for every jsDelivr and cdnjs address and fails if the trial rule would stop one.
+- Gates: **test-csp-report.php** (the trial is the enforced rule narrowed and nothing else, no whole-host source,
+  every pin versioned, every address in the code and everything the libraries fetch at run time allowed, the demo's
+  three foreign addresses allowed today and stopped by the trial, paths, the CSP3 chains, which reports are kept) and
+  integration **§87** (a foreign script kept as info by its address, the Reporting API shape, the same address once a
+  day, a block the enforced rule makes or an inline one not kept, an enforced report never filed as a trial finding,
+  the Status page naming it, the cap, the empty state). Ten mutations break-tested (six against test-csp-report:
+  the path match, the CSP3 chain, a whole host back in the trial, a library version moved in the code, cron's noise
+  list, an ungenerated csp-trial.php; four against §87: no trial branch, every report kept, no Status row, no
+  once-a-day), each failing its own named checks.
 
 ## Self-repair & error reporting
 - Errors: client capture (app.js, third-party webview noise filtered, sends

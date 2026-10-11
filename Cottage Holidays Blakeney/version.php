@@ -50,6 +50,9 @@ if (isset($_GET['csp'])) {
         // reporter's IP (pre-#861). The activity log shows the sig, so this pins
         // down which csp-report.php is actually running.
         $csp['sig'] = 'directive|host';
+        // Whether the narrower outside-code rule is on trial in this deploy (Step 5).
+        $trial = is_file(__DIR__ . '/csp-trial.php') ? @include __DIR__ . '/csp-trial.php' : '';
+        $csp['trial'] = is_string($trial) && $trial !== '';
     }
     echo json_encode(['build' => $build, 'csp' => $csp]);
     exit;

@@ -201,7 +201,7 @@ if ($isCron) {
     // days and at most 2,000 rows; everything else keeps three years, under a
     // 200,000-row ceiling that is there for the disk, not for routine pruning.
     try {
-        $noise = "('csp.violation', 'request.blocked', 'client.error', 'client.swallow')";
+        $noise = "('csp.violation', 'csp.trial', 'request.blocked', 'client.error', 'client.swallow')"; // activity-lib.php's ACTIVITY_NOISE_ACTIONS
         db()->exec("DELETE FROM activity_log WHERE action IN $noise AND created_at < (NOW() - INTERVAL 30 DAY)");
         db()->exec(
             "DELETE FROM activity_log WHERE action IN $noise AND id <= (SELECT cutoff FROM (SELECT id AS cutoff FROM activity_log WHERE action IN $noise ORDER BY id DESC LIMIT 1 OFFSET 2000) x)",
