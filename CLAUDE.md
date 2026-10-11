@@ -10637,6 +10637,20 @@ permission given). Seven read-only audit lenses ran beside a full local gauntlet
   `data-act="openWaitlistHere"` now, reading `activeFrontProperty` (ui-test-cottagepage §6b).
 - **"Call to discuss" only with a real number**: `wireCallButtons` reads `gaPhone()` and hides the button when no
   `contact-phone` is set; the placeholder constants are gone (smoke-test scans for them).
+- **The guest audit's three high findings**:
+  - **The sign-in sheet was 2px wider than itself on every phone**: the close (×) button's hit region (`::before`,
+    3px out) sat flush with the box's right edge, so the box scrolled sideways and cut off the first letter of every
+    line. The guest shell's `.auth-close-row` carries `padding-right: 3px` (ui-test-signin §1 measures scrollWidth
+    against clientWidth).
+  - **The invoice's Pay button took the cottage colour** with dark ink on it: 2.10:1 on Pimpernel's purple, 4.00:1
+    on Jollyboat's green, while test-invoice only ever tried three soft fixture colours. It is the emails' house pair
+    now (`INV_BTN_FILL` #C6885E / `INV_BTN_INK` #1B1208, 6.23:1); the cottage colour stays on the 3px band. test-invoice
+    renders it with the real colours and holds the pair equal to `email_btn`'s.
+  - **Back closed the wrong overlay**: with the date picker up over the enquiry sheet it closed the SHEET and left the
+    calendar floating; a confirm stayed up; the Things-to-do place sheet and the guest-photo lightbox were not on
+    Back's list. `closeTopOverlay` answers the picker and a confirm first (a confirm as backed out, `null`, Escape's
+    answer, never OK), and the photo lightbox pushes its own entry, is a `role="dialog"` and hands focus back to the
+    photo (ui-test-guest-modals §4–§5).
 - **ONE STAGE FOR EVERY PAYMENT ASK: THE SERVER'S** (the money audit's findings 1–5). The pay link carries no stage
   (pay.php derives one on open), and every back-office ask chose its own: the hub counted the refundable deposit into
   the first payment, a reminder always said `'balance'`, Payments' "Ask to pay" went by whether anything was paid, and

@@ -644,9 +644,11 @@ body.guest-app:not(.owner-mode) #guest-auth-modal .modal-box {
   padding: 0 0 calc(40px + var(--safe-b));
 }
 /* The box has no padding here, so the close (×) row's desktop negative margins
-   would push it past the edge and clip its top-right — keep it fully inside. */
+   would push it past the edge and clip its top-right — keep it fully inside, with
+   room for the button's hit region (3px out), or the box scrolls sideways. */
 body.guest-app:not(.owner-mode) .auth-close-row {
   margin: 0 0 6px;
+  padding-right: 4px;
 }
 
 /* Messages is also a full PAGE on mobile (like the other menu items), not a

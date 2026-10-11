@@ -7,7 +7,7 @@
 // the window properties when the bundle loads. Deploy checklist: bump ADMIN_V
 // whenever admin.js changes (it is the ?v= cache-buster).
 // ============================================================
-const ADMIN_BUNDLE_V = 780;
+const ADMIN_BUNDLE_V = 781;
 // admin.css is the owner-only stylesheet, split out of app.css so guests never
 // download it. Injected here (not a static <link>) and version-stamped on its
 // own — bump when admin.css changes. Kept OUT of the sw.js CORE precache.
@@ -10792,18 +10792,31 @@ function openPhotoLightbox(data) {
     if (img) img.src = url;
     if (c) c.textContent = cap || '';
     if (box) {
+        // Its own Back entry, and focus back to the photo that opened it.
+        if (!box.classList.contains('open')) {
+            __plOpener = /** @type {HTMLElement|null} */ (document.activeElement);
+            overlayHistPush();
+        }
         box.classList.add('open');
         document.body.style.overflow = 'hidden'; // lock scroll behind the lightbox
         const close = box.querySelector('.pl-close');
-        if (close) close.focus();
+        if (close instanceof HTMLElement) close.focus();
     }
 }
+/** @type {HTMLElement|null} */
+let __plOpener = null;
 function closePhotoLightbox() {
     const box = document.getElementById('photo-lightbox');
+    const wasOpen = !!(box && box.classList.contains('open'));
     chbCloseOverlay(box);
     const img = document.getElementById('pl-img');
     if (img) img.src = '';
     document.body.style.overflow = '';
+    if (!wasOpen) return;
+    overlayHistConsume();
+    const back = __plOpener;
+    __plOpener = null;
+    if (back && document.contains(back) && typeof back.focus === 'function') back.focus({ preventScroll: true });
 }
 
 // The trip planner ('Plan your North Norfolk days') is REMOVED — its opener
@@ -19054,9 +19067,14 @@ function closeTopOverlay() {
         const el = document.getElementById(id);
         return el && el.classList.contains('open');
     };
-    // ORDER IS TOPMOST-FIRST, because two can be open at once: the terms are
-    // opened FROM the enquiry form and now paint above it (#terms-modal, z 2200),
-    // so Back must close the terms and leave the form up.
+    // ORDER IS TOPMOST-FIRST: the terms (z 2200) over the enquiry form, and the
+    // picker / a confirm (z 2100 / 6000) over the sheets that raise them. A confirm
+    // is answered as backed out (null, Escape's answer), never as OK.
+    const dpUp = open('date-picker');
+    const gdUp = open('glass-dialog');
+    const dpEl = document.getElementById('date-picker');
+    if (dpUp && (!gdUp || (dpEl && dpEl.classList.contains('dp-over-glass')))) { closeDatePicker(); return true; }
+    if (gdUp) { glassDialogResolve(null); return true; }
     if (open('privacy-modal')) { closePrivacyModal(); return true; }
     if (open('terms-modal')) { closeTermsModal(); return true; }
     if (open('enquire-modal')) { closeEnquireModal(); return true; }
@@ -19068,6 +19086,8 @@ function closeTopOverlay() {
     // entry when it opens and consumes it when it closes, exactly as the four
     // above do; this is the list Back consults.
     if (open('lightbox')) { closeLightbox(); return true; }
+    if (open('photo-lightbox')) { closePhotoLightbox(); return true; }
+    if (open('exp-detail-modal')) { closeExpDetail(); return true; }
     if (open('ga-crop')) { gaCropClose(); return true; }
     if (open('ga-photo-sheet')) { gaPhotoSheetClose(); return true; }
     if (open('photo-upload-modal')) { closePhotoUpload(); return true; }
@@ -22161,7 +22181,7 @@ const CHB_SK_CARD = '<div class="card glass-panel sk-card"><div class="skeleton 
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'r8night3';
+    const BUILD = 'r8night4';
     /** @type {any} */ (window).__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;

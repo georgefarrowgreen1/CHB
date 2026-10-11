@@ -276,12 +276,20 @@ foreach ($INKS as $name => [$hex, $grounds]) {
     inv_ok($worst >= 4.5, "$name clears AA everywhere it appears",
         sprintf('%s worst %.2f:1 on %s', $hex, $worst, $where));
 }
-// the accent FILL only ever carries the dark ink — white on it is 2.55:1, which
-// is what the old Print button did
-foreach (['#C79A64', '#8FB3C7', '#7FA88A'] as $acc) {
-    inv_ok($ratio(INV_ON_ACCENT, $acc) >= 4.5, "ink on the $acc fill clears AA",
-        sprintf('%.2f:1 (white would be %.2f:1)', $ratio(INV_ON_ACCENT, $acc), $ratio('#ffffff', $acc)));
+// THE BUTTON IS THE HOUSE PAIR, whatever the cottage. It filled with the cottage
+// colour and wrote dark ink on it, which this gate checked only against soft
+// fixture colours; the real ones measured 2.10:1 (Pimpernel #9C27B0) and 4.00:1
+// (Jollyboat #43A047). Rendered with the real colours, the rule is the house pair.
+inv_ok($ratio(INV_BTN_INK, INV_BTN_FILL) >= 4.5, 'the button ink clears AA on the button fill',
+    sprintf('%.2f:1', $ratio(INV_BTN_INK, INV_BTN_FILL)));
+foreach (['#9C27B0', '#43A047', '#8FB3C7'] as $acc) {
+    $hAcc = $render('part', ['accent' => $acc]);
+    inv_ok(strpos($hAcc, '.btn{background:' . INV_BTN_FILL . ';color:' . INV_BTN_INK) !== false && strpos($hAcc, '.btn{background:' . $acc) === false,
+        "with the cottage colour $acc the Pay button still takes the house pair");
 }
+$mlInv = (string) file_get_contents(__DIR__ . '/mailer.php');
+inv_ok(strpos($mlInv, "\$accent = '" . INV_BTN_FILL . "';") !== false && strpos($mlInv, "\$textColor = '" . INV_BTN_INK . "';") !== false,
+    'and it is the same pair as the emails\' button (email_btn)');
 // the retired inks must not come back
 foreach (['#8a8378', '#8E877A', '#9A927F', '#A0987F', '#A79E8A'] as $dead) {
     inv_ok(stripos($html['part'], $dead) === false, "the retired ink $dead is not on the page");
