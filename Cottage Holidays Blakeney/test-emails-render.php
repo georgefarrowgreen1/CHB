@@ -227,6 +227,8 @@ $JOBS = [
   ['owner-experience', 'owner', function () { $m = owner_note_experience('Test Guest', 'Seal trip', 'Worth adding.', 'https://example.test/seals', '07700 900123'); return send_owner($m['subject'], $m['text']); }],
   ['owner-chat-new', 'owner', function () { $m = owner_note_chat_new('Test Guest', 'g@x.co', 'Parking for two cars?', true); return send_owner($m['subject'], $m['text']); }],
   ['owner-chat-reply', 'owner', function () { $m = owner_note_chat_reply('Test Guest', 'g@x.co', 'That works, thank you.', true, ' [#ab12]'); return send_owner($m['subject'], $m['text']); }],
+  ['owner-reply-expired', 'owner', function () { $m = owner_note_reply_expired('Test Guest'); return send_owner($m['subject'], $m['text']); }],
+  ['owner-reply-stale', 'owner', function () { $m = owner_note_reply_stale('Test Guest', 'g@x.co', 'We’re arriving about five, is that all right?'); return send_owner($m['subject'], $m['text']); }],
   ['owner-push-fallback', 'owner', function () { $m = owner_note_push_fallback('Payment received — £175.43', 'Test Guest has paid their deposit.'); return send_owner($m['subject'], $m['text']); }],
   // THE LAST FOUR — the two script-level weeklies, the mailbox reply and the newsletter.
   // The weeklies get a fixture payload: the ?force=1 buttons already send the real thing

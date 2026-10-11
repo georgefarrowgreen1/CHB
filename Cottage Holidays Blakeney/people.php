@@ -76,6 +76,7 @@ function people_done(array $extra = [])
             'people' => people_list_payload((int) $_SESSION['admin_id']),
             'mailKinds' => people_mail_kinds(),
             'mailExtras' => people_mail_extras(),
+            'mailStopped' => (object) people_mail_extras_stopped(),
             'permDefs' => people_perm_defs(),
             'permGroups' => PEOPLE_PERM_GROUPS,
         ] + $extra,
@@ -214,8 +215,12 @@ route_actions(
             } catch (\Throwable $e) {
             }
             devices_end_others((int) $row['id'], 0, 'removed', $myId); // they leave the Devices list too
-            log_activity('account', 'people.remove', $myFirst . ' removed ' . people_display_name($row) . '’s access', ['severity' => 'warn', 'entity' => 'admin', 'entity_id' => (string) $row['id']]);
-            people_done();
+            // THEIR ADDRESS LEAVES "ALSO EMAILED" WITH THEM. Copied there, it went on
+            // receiving every email the back office sends but the backup (a new
+            // enquiry's phone number and address among them) after the access had gone.
+            $offList = people_mail_extra_drop(admin_contact_email($row));
+            log_activity('account', 'people.remove', $myFirst . ' removed ' . people_display_name($row) . '’s access' . ($offList ? ', and their address from Also emailed' : ''), ['severity' => 'warn', 'entity' => 'admin', 'entity_id' => (string) $row['id']]);
+            people_done(['offList' => $offList]);
         },
 
         // Give access back: a fresh start — a new invite to choose a new password;

@@ -1640,9 +1640,9 @@ refuse for now or refuse for good); each was reproduced before it was fixed.
   (`gu.reply`), at their sign-in address, plus the extra addresses. A person's address follows that person's
   permission whatever list it is also on, and an address that was a removed person's posts nothing: the config owner
   address used to be let in unconditionally, and it is the first owner's, so a removed first owner could still post
-  to a guest as the business. "Also emailed" still RECEIVES what the owner listed there (it is on screen to change);
-  removal takes away posting as the business. Before people (rows unreadable) it is what it always was. §80(c),
-  through the real webhook.
+  to a guest as the business. "Also emailed" receives what the owner listed there, except an address that was a
+  removed person's sign-in, which stops receiving too (see "The security leftovers"). Before people (rows unreadable)
+  it is what it always was. §80(c), through the real webhook.
 - **AN EMAIL THAT MUST REACH SOMEONE FALLS BACK TO A CURRENT SUPER USER** (the first owner if they still are one),
   never the config owner address when that is a removed person's: with George removed and nobody choosing enquiries,
   the next enquiry (the guest's phone and address) went to George. With no current Super User at all, nobody. §80(c).
@@ -1682,8 +1682,8 @@ refuse for now or refuse for good); each was reproduced before it was fixed.
   checks were vacuous (a seeded row on the database's UTC clock read as an hour old, a mutation that landed on the
   "Damage hold placed" alert's identical text, a scan that read the wrong argument of calls with a trailing comma),
   and each was fixed until the break fired.
-- **Not done, said plainly**: reply tokens still never expire; and "Also emailed" addresses that are a removed
-  person's still receive (listed on screen for the owner to remove).
+- Both things this section left undone are done: reply tokens expire, and a removed person's "Also emailed"
+  address stops receiving (see "The security leftovers").
 
 ## The owner's newest screens, audited (round 8)
 
@@ -10761,9 +10761,9 @@ each fix is gated and break-tested. The rules it set:
     it was and feeds what each host is owed; switching statements off is a
     Super User's. The Payments page wires its own buttons (`data-pm`), so the
     server's refusal is what a Host meets there.
-  - Left as designed, flagged: Edit cottage pages (`co.pages`) reads and writes
-    the private `ops-`/`arrival-`/`welcome-` notes, where an owner may have typed
-    a key-safe code — the key safes' own permissions do not cover them.
+  - Edit cottage pages (`co.pages`) still reads and writes `arrival-`/`welcome-`
+    (text guests are shown). The private `ops-` notes, where an owner may type a
+    key-safe code, follow the door codes now (see "The security leftovers").
 
 ## The round-4 performance pass (one load per trip, a 304 that fires, indexes)
 
@@ -10965,6 +10965,53 @@ permission given). Seven read-only audit lenses ran beside a full local gauntlet
   - **Not changed, and why**: the payments-due cron still never chases a booking whose rental is settled with only
     the refundable deposit left (it selects `payment <> 'paid'`); starting new automatic emails to guests is the
     owner's call, so Payments now says "refundable deposit · ask for it" there instead of "goes by itself".
+
+## The security leftovers (approved demo, built in five steps)
+
+Asked for as "the security left overs", demoed as seven fixes ("Seven Security Fixes"), then "Build all". Each step
+ships as its own PR.
+
+### Step 1: reply links expire, a removed person stops getting email, the door-code notes
+
+- **A REPLY LINK HAS A LIFETIME** (`msg_reply_check` in db.php). A reply-by-email token is what lets an email post
+  into a guest's chat, and it never expired. Its MAC now includes the WEEK it was written
+  (`msg_reply_mac($tid, $guest, $week)`); the format is unchanged (`<tid>x|y<32 hex>`). An owner's works for 30 days
+  (`MSG_REPLY_DAYS_OWNER`) and a guest's for 180 (`MSG_REPLY_DAYS_GUEST`): at least that long, at most six days more,
+  because the unit is the week. The token is the same all week, so an alert's subject tag and its mail thread hold.
+- **TOKENS IN EMAILS SENT BEFORE THE CHANGE** carry no week. They get the same lifetimes counted from the day the change
+  shipped, `reply-dated-since` (migration-145, an internal content key). It is stored as a JSON string, because
+  `content_value()` decodes: a bare date read back as nothing, which would have left every old token working for good
+  (integration §77b checks the stored value equals the database's `CURDATE()`). `migrate.php?force=1` skips it (data).
+- **AN EXPIRED LINK IS ANSWERED, NOT IGNORED.** The deep check (`msg_reply_check($token, true)`) still recognises an
+  expired genuine token, with its thread, up to `MSG_REPLY_LOOKBACK_WEEKS` (160) back; the cheap check calls it
+  invalid. The poll and the webhook post nothing for an expired token:
+  - your own late reply earns one note back to the address that replied (`owner_note_reply_expired`, "Not sent: your
+    reply to X", sent through `people_mail_only`);
+  - a guest's late reply reaches whoever gets messages, with their words (`owner_note_reply_stale`), and is not posted.
+    The poll leaves it in the Inbox as new mail; the Inbox sets the owner's aside;
+  - anyone else's is ignored.
+
+  At most `CHAT_LATE_NOTES_DAY` (10) notes a day, each logged `reply.expired`. `msg_reply_token_in` prefers a working
+  token, then a genuine expired one (so the late reply can be answered), then any token-shaped string.
+- **A REMOVED PERSON'S "ALSO EMAILED" ADDRESS STOPS.** Removing someone left their sign-in on Also emailed, still sent
+  every guest's details. Now `people_mail_recipients` skips any extra that is a removed person's sign-in
+  (`people_mail_extras_stopped`). Removing someone takes their address off the list and says so (`offList`, and the
+  confirm names it first). A leftover reads "Stopped: X's access was removed" on the Emails page. Adding it back is
+  refused (409 `removed_person`), saying to give the access back in Permissions instead.
+- **THE PRIVATE COTTAGE NOTES FOLLOW THE DOOR CODES.** `ops-<prop>` (where an owner types key-safe codes) was read and
+  written with Edit cottage pages (`co.pages`). Reading now needs See door codes (`ks.see`, `people_content_read_cap`)
+  and writing Change door codes (`ks.change`, `people_content_cap`). The cottage page leaves the section out without
+  `ks.see` (`accomSections()`), and the box is read-only without `ks.change`.
+- **A DATABASE THAT CANNOT BE REACHED FAILS A COMMAND-LINE RUN.** `db()` answered a failed connection with `json_out`,
+  which exits 0 from the command line, so a test gate that reached the database by mistake (the repo's config points
+  nowhere) stopped at that line and passed. Found by break-testing test-reply: minting undated tokens sent its first
+  check to the database, and the gate went green with nothing after line 27 run. It writes to STDERR and exits 255
+  now, like the exception handler. All 41 CI PHP gates still pass, so none was quietly relying on it.
+  test-error-status gates it with a probe on a closed port.
+- Gates: test-reply (both ends of a week, the guest lifetime, undated grace, the finder, new tokens carrying their
+  week, the wiring), test-people (the `ops-` caps), test-error-status, test-emails-render (the two notes), and
+  integration §51 (the notes by permission), §52b (removed extras) and §77b (late replies through the real poll,
+  webhook and Inbox list). Eleven mutations break-tested, each failing its own named check.
 
 ## Self-repair & error reporting
 - Errors: client capture (app.js, third-party webview noise filtered, sends

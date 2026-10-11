@@ -271,22 +271,27 @@ if ($action === 'list') {
         // the alert went. One the poll would NOT route stays listed, including a
         // reply to a chat since deleted, which the poll leaves as ordinary mail.
         if ($fromAddr !== '' && in_array($fromAddr, $mbxSenders ??= people_mail_senders(), true)) {
-            [$rTid, $rAud] = msg_reply_parse(mailbox_token_in([
+            $rChk = msg_reply_check(mailbox_token_in([
                 'in_reply_to' => mbx_header($head, 'In-Reply-To'),
                 'references' => mbx_header($head, 'References'),
                 'subject' => mailbox_decode_subject(mbx_header($head, 'Subject')),
-            ]));
-            $rLive = false;
-            if ($rAud === 'owner' && (int) $rTid > 0) {
+            ]), true);
+            $rTid = $rChk['tid'];
+            $rAud = $rChk['aud'];
+            // An owner reply on an EXPIRED token was answered by the poll with a note
+            // back (chat_late_reply_owner), so it is set aside too: listing it would read
+            // as a person waiting, and the person is the owner.
+            $rAside = $rAud === 'owner' && $rChk['state'] === 'expired';
+            if ($rAud === 'owner' && (int) $rTid > 0 && $rChk['state'] === 'ok') {
                 try {
                     $tq = db()->prepare('SELECT 1 FROM chat_threads WHERE id = ?');
                     $tq->execute([(int) $rTid]);
-                    $rLive = (bool) $tq->fetchColumn();
+                    $rAside = (bool) $tq->fetchColumn();
                 } catch (\Throwable $e) {
-                    $rLive = true; // unreadable: as before
+                    $rAside = true; // unreadable: as before
                 }
             }
-            if ($rLive) {
+            if ($rAside) {
                 $ownHidden++;
                 continue;
             }

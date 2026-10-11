@@ -157,6 +157,13 @@ function db()
             } catch (\Throwable $e) {
             }
         } catch (PDOException $e) {
+            // From the command line json_out would end the script with status 0, so a
+            // gate that reached the database by mistake (the test config has none)
+            // stopped partway and still passed. Same rule as the exception handler.
+            if (PHP_SAPI === 'cli') {
+                fwrite(STDERR, "Database connection failed\n");
+                exit(255);
+            }
             json_out(['error' => 'Database connection failed'], 500);
         }
         // Lets the error-capture handlers (end of this file) know a connection
@@ -1775,6 +1782,10 @@ function is_internal_content_key($key)
         return true; // Status → Email's per-day sent count (mailer.php) — the
                      // owner's own mail volume, never public
     }
+    if ($key === 'reply-dated-since') {
+        return true; // the day reply-by-email tokens began carrying their week
+                     // (migration-145, msg_reply_dated_since_day) — server-only
+    }
     if ($key === 'monzo-link') {
         return true; // the Monzo Business live link's state (monzo-sync.php): which
                      // account, when it last synced, the balance — never public.
@@ -2281,52 +2292,123 @@ function ical_token($propKey)
 // its own HMAC label). Only an owner token may route a reply as the OWNER: the
 // guest used to receive the very token that authorised owner replies, so a
 // guest replying with a forged From: <owner> posted words in the owner's name.
-function msg_reply_token($threadId, $aud = 'owner')
+// A TOKEN HAS A LIFETIME. It used to verify for ever, and the From line of an email
+// can be faked, so whoever held one old alert (forwarded, in a shared mailbox, on an
+// old phone) could post to that guest as the business years later. Each token folds
+// the WEEK it was written into its HMAC: an owner's works for MSG_REPLY_DAYS_OWNER
+// days after it was sent and a guest's for MSG_REPLY_DAYS_GUEST (never fewer; up to
+// six more, the rest of its week). A week, not a day, so an alert's subject tag (and
+// with it the owner's mail thread) stays the same for a week. The shape is unchanged
+// (<id>x<32 hex>), so nothing that finds a token needs to know.
+const MSG_REPLY_DAYS_OWNER = 30;
+const MSG_REPLY_DAYS_GUEST = 180;
+const MSG_REPLY_LOOKBACK_WEEKS = 160; // how far back an EXPIRED token is still recognised
+function msg_reply_week($now = null): int
+{
+    return intdiv(intdiv((int) ($now ?? time()), 86400), 7);
+}
+function msg_reply_mac($tid, $guest, $week = null): string
+{
+    return hash_hmac('sha256', ($guest ? 'msg-reply-g|' : 'msg-reply|') . (int) $tid . ($week === null ? '' : '|w' . (int) $week), APP_SECRET);
+}
+function msg_reply_token($threadId, $aud = 'owner', $now = null)
 {
     $tid = (int) $threadId;
     $g = $aud === 'guest';
-    return $tid . ($g ? 'y' : 'x') . substr(hash_hmac('sha256', ($g ? 'msg-reply-g|' : 'msg-reply|') . $tid, APP_SECRET), 0, 32);
+    return $tid . ($g ? 'y' : 'x') . substr(msg_reply_mac($tid, $g, msg_reply_week($now)), 0, 32);
 }
-// [tid, aud] for a token of either audience; [0, ''] when it does not verify.
-function msg_reply_parse($token)
+// A token written before tokens carried their week has the same lifetime, counted from
+// the day the change shipped: the content key reply-dated-since (migration-145), as a
+// day number. Unset (the migration not run yet) reads as today, so an undated token
+// keeps working as it always did until the date exists.
+function msg_reply_dated_since_day($now = null): int
 {
-    // 32-hex is current (128-bit, matching the other tokens); 16-hex tokens
-    // still ride in the Reply-To of ALREADY-SENT emails, so verify accepts
-    // both — each against its own full-strength recomputation.
+    static $memo = null;
+    if ($memo === null) {
+        $memo = -1;
+        try {
+            $v = function_exists('content_value') ? (string) content_value('reply-dated-since') : '';
+            if (preg_match('/^\d{4}-\d{2}-\d{2}$/', $v)) {
+                $memo = intdiv((int) strtotime($v . ' 12:00:00 UTC'), 86400);
+            }
+        } catch (\Throwable $e) {
+        }
+    }
+    return $memo >= 0 ? $memo : intdiv((int) ($now ?? time()), 86400);
+}
+// What a token is: ['tid', 'aud' => 'owner'|'guest'|'', 'state' => 'ok'|'expired'|'invalid'].
+// 32-hex is current; 16-hex tokens still ride in emails sent before the widening, and
+// both are checked against their own full-strength recomputation. $deep also
+// RECOGNISES an expired token (it costs up to a few hundred HMACs, so only the routes
+// that answer one ask). $now and $since (a day number) are for tests.
+function msg_reply_check($token, $deep = false, $now = null, $since = null): array
+{
     if (!preg_match('/(\d+)([xy])([0-9a-f]{16,32})/', (string) $token, $m)) {
-        return [0, ''];
+        return ['tid' => 0, 'aud' => '', 'state' => 'invalid'];
     }
     $tid = (int) $m[1];
     $g = $m[2] === 'y';
-    $mac = hash_hmac('sha256', ($g ? 'msg-reply-g|' : 'msg-reply|') . $tid, APP_SECRET);
-    $want = strlen($m[3]) >= 32 ? substr($mac, 0, 32) : substr($mac, 0, 16);
-    return hash_equals($want, $m[3]) ? [$tid, $g ? 'guest' : 'owner'] : [0, ''];
+    $aud = $g ? 'guest' : 'owner';
+    $life = $g ? MSG_REPLY_DAYS_GUEST : MSG_REPLY_DAYS_OWNER;
+    $today = intdiv((int) ($now ?? time()), 86400);
+    $mac = $m[3];
+    if (strlen($mac) === 32) {
+        // A token from week $w was written by that week's last day ($w*7 + 6), so it is
+        // good while today <= $w*7 + 6 + $life, i.e. while $w >= ($today - $life) / 7.
+        $oldest = intdiv($today - $life, 7);
+        $week = msg_reply_week($now);
+        $stop = $deep ? $week - MSG_REPLY_LOOKBACK_WEEKS : $oldest;
+        for ($w = $week; $w >= $stop; $w--) {
+            if (hash_equals(substr(msg_reply_mac($tid, $g, $w), 0, 32), $mac)) {
+                return ['tid' => $tid, 'aud' => $aud, 'state' => $w >= $oldest ? 'ok' : 'expired'];
+            }
+        }
+    }
+    if (strlen($mac) === 32 || strlen($mac) === 16) {
+        if (hash_equals(substr(msg_reply_mac($tid, $g, null), 0, strlen($mac)), $mac)) {
+            $from = $since ?? msg_reply_dated_since_day($now);
+            return ['tid' => $tid, 'aud' => $aud, 'state' => $today <= $from + $life ? 'ok' : 'expired'];
+        }
+    }
+    return ['tid' => 0, 'aud' => '', 'state' => 'invalid'];
+}
+// [tid, aud] for a token of either audience still in its lifetime; [0, ''] otherwise.
+function msg_reply_parse($token, $now = null, $since = null)
+{
+    $c = msg_reply_check($token, false, $now, $since);
+    return $c['state'] === 'ok' ? [$c['tid'], $c['aud']] : [0, ''];
 }
 // THE WHOLE TOKEN, FROM WHEREVER IT RIDES (the plus-address, In-Reply-To, References,
-// the subject tag). Every candidate is read at its full length and the first that
-// verifies wins. Both readers took only the first 16 hex of a current 32-hex token,
-// so it verified as the old short form; and the first token-shaped string in a field
-// won even when it did not verify, hiding a real token later in the same email.
-function msg_reply_token_in(array $hays): string
+// the subject tag). Every candidate is read at its full length: one that verifies wins,
+// else one that is genuine but expired (so the reply can be answered as such), else the
+// first token-shaped string. Both readers took only the first 16 hex of a current 32-hex
+// token, so it verified as the old short form; and the first token-shaped string in a
+// field won even when it did not verify, hiding a real token later in the same email.
+function msg_reply_token_in(array $hays, $now = null, $since = null): string
 {
-    $first = '';
+    $seen = [];
     foreach ($hays as $hay) {
         if (!preg_match_all('/\d+[xy][0-9a-f]{16,32}/', (string) $hay, $m)) {
             continue;
         }
         foreach ($m[0] as $t) {
-            if (msg_reply_parse($t)[0] > 0) {
+            if (msg_reply_check($t, false, $now, $since)['state'] === 'ok') {
                 return $t;
             }
-            $first = $first !== '' ? $first : $t;
+            $seen[] = $t;
         }
     }
-    return $first;
+    foreach ($seen as $t) {
+        if (msg_reply_check($t, true, $now, $since)['state'] === 'expired') {
+            return $t;
+        }
+    }
+    return $seen[0] ?? '';
 }
 // The OWNER token's thread, else 0 — what may authorise an owner reply.
-function msg_reply_verify($token)
+function msg_reply_verify($token, $now = null, $since = null)
 {
-    [$tid, $aud] = msg_reply_parse($token);
+    [$tid, $aud] = msg_reply_parse($token, $now, $since);
     return $aud === 'owner' ? $tid : 0;
 }
 // The reply address a message-notification email points at:

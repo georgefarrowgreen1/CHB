@@ -7737,6 +7737,8 @@ div.ga-row.oa-swrow { cursor: default; }
 /* People & access: a person's row leads with their photo, at the icon's place. */
 .ga-row .ga-ava.oa-pava { width: 40px; height: 40px; flex: 0 0 auto; font-size: var(--fs-headline); }
 .ga-row.oa-dim .ga-t { color: var(--text-muted); }
+/* Also emailed: a removed person's old sign-in, sent nothing — said in the warning ink. */
+.ga-row.oa-stopped .ga-s { color: var(--warn-text); }
 /* The guests' card keeps the guest site's serif: this IS what guests see. */
 .oa-preview { --font-serif: "Playfair Display", serif; }
 .oa-preview .host-card { pointer-events: none; }

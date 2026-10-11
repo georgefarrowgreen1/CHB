@@ -630,11 +630,102 @@ function people_mail_recipients($kind)
         }
     }
     if ($kind !== 'backup') {
+        // A removed person's address left on the list gets nothing (and the lists say so).
+        $stopped = people_mail_extras_stopped();
         foreach (people_mail_extras() as $e) {
-            $add($e, null);
+            if (!isset($stopped[strtolower($e)])) {
+                $add($e, null);
+            }
         }
     }
     return $out;
+}
+// THE EXTRA ADDRESSES THAT WERE A REMOVED PERSON'S SIGN-IN, and are no current person's:
+// [address => that person's first name]. Copied on every email but the backup, such an
+// address went on receiving new enquiries (the guest's phone and address among them) and
+// guest messages after the person's access had gone. Removal now takes the address off
+// the list (people_mail_extra_drop) and adding it back is refused; this covers any saved
+// before. Unreadable people (before the table, or a failing read) stop nothing.
+function people_mail_extras_stopped(): array
+{
+    $extras = people_mail_extras();
+    $rows = people_mail_rows();
+    if (!$extras || $rows === null) {
+        return [];
+    }
+    $current = [];
+    foreach ($rows as $row) {
+        $a = strtolower(trim((string) admin_contact_email($row)));
+        if ($a !== '') {
+            $current[$a] = true;
+        }
+    }
+    $gone = [];
+    try {
+        foreach (db()->query('SELECT * FROM admins WHERE removed_at IS NOT NULL ORDER BY removed_at DESC')->fetchAll() as $row) {
+            $a = strtolower(trim((string) admin_contact_email($row)));
+            if ($a !== '' && !isset($gone[$a]) && !isset($current[$a])) {
+                $gone[$a] = people_first_name($row);
+            }
+        }
+    } catch (\Throwable $e) {
+        return [];
+    }
+    $out = [];
+    foreach ($extras as $e) {
+        $l = strtolower($e);
+        if (isset($gone[$l])) {
+            $out[$l] = $gone[$l];
+        }
+    }
+    return $out;
+}
+// The first name of the removed person whose sign-in this address was, or '' (it is no
+// removed person's, or it is a current person's too).
+function people_mail_removed_name($addr): string
+{
+    $addr = strtolower(trim((string) $addr));
+    $rows = people_mail_rows();
+    if ($addr === '' || $rows === null) {
+        return '';
+    }
+    foreach ($rows as $row) {
+        if (strtolower(trim((string) admin_contact_email($row))) === $addr) {
+            return '';
+        }
+    }
+    try {
+        foreach (db()->query('SELECT * FROM admins WHERE removed_at IS NOT NULL ORDER BY removed_at DESC')->fetchAll() as $row) {
+            if (strtolower(trim((string) admin_contact_email($row))) === $addr) {
+                return people_first_name($row);
+            }
+        }
+    } catch (\Throwable $e) {
+    }
+    return '';
+}
+// Take one address off Also emailed (removing a person takes theirs with them). Returns
+// whether it was there.
+function people_mail_extra_drop($addr): bool
+{
+    $addr = strtolower(trim((string) $addr));
+    if ($addr === '') {
+        return false;
+    }
+    try {
+        return (bool) content_locked('notify-emails', function () use ($addr) {
+            $list = content_json('notify-emails', []);
+            $list = is_array($list) ? $list : [];
+            $keep = array_values(array_filter($list, fn($e) => strtolower(trim((string) $e)) !== $addr));
+            if (count($keep) === count($list)) {
+                return false;
+            }
+            content_set_scalar('notify-emails', $keep);
+            return true;
+        });
+    } catch (\Throwable $e) {
+        return false;
+    }
 }
 // The people who can sign in (not removed), or null before the people migration
 // or when the table can't be read — the caller then does what it always did.
@@ -5258,6 +5349,44 @@ function owner_note_chat_new($guestName, $guestEmail, $message, $replyable = fal
             owner_quote($message) . "\n" .
             ($replyable ? "\nJust reply to this email and the guest gets it on the website and by email." : '') .
             "\nOr open the back office → Guest messages to reply." .
+            owner_open_line('inbox:messages'),
+    ];
+}
+
+/**
+ * The note back when the owner answers a chat alert by email after its reply code has
+ * expired (MSG_REPLY_DAYS_OWNER, db.php). It goes only to the address the reply came
+ * from, and carries no reply code of its own. Plain text by design.
+ */
+function owner_note_reply_expired($guestName)
+{
+    $who = owner_name($guestName) ?: 'the guest';
+    $days = defined('MSG_REPLY_DAYS_OWNER') ? MSG_REPLY_DAYS_OWNER : 30;
+    return [
+        'subject' => 'Not sent: your reply to ' . $who,
+        'text' =>
+            'Your emailed reply to ' . $who . " wasn't posted to the chat.\n\n" .
+            'It answered an alert more than ' . $days . ' days old. Replying by email works for ' . $days .
+            " days after an alert, so an old one can't be used to write to a guest as the business.\n\n" .
+            'Open the conversation to send it from the app.' .
+            owner_open_line('inbox:messages'),
+    ];
+}
+
+/**
+ * A guest's emailed reply to one of our emails sent more than six months earlier,
+ * after its reply code has expired (MSG_REPLY_DAYS_GUEST). Not posted to the chat,
+ * and not lost: it reaches whoever gets guest messages. Plain text by design.
+ */
+function owner_note_reply_stale($guestName, $guestEmail, $message)
+{
+    return [
+        'subject' => (owner_name($guestName) ?: 'A guest') . ' replied to an old email: “' . email_snip($message, 50) . '”',
+        'text' =>
+            "A guest replied to one of our emails from more than six months ago, so it wasn't added to the chat.\n\nFrom: " .
+            (owner_name($guestName) ?: '—') . ' (' . ($guestEmail ?: 'no email') . ")\n\n" .
+            owner_quote($message) . "\n" .
+            "\nOpen the conversation to reply." .
             owner_open_line('inbox:messages'),
     ];
 }

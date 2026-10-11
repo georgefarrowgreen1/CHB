@@ -385,8 +385,10 @@ function poll_mailbox_replies($force = false, $preview = false)
             $p = parse_email_message($raw);
             $tok = mailbox_token_in($p);
             // Either audience routes a reply to its thread; only an OWNER token may
-            // make it an admin reply (a guest holds only their own token).
-            [$tid, $tokAud] = msg_reply_parse($tok);
+            // make it an admin reply (a guest holds only their own token). A token past
+            // its lifetime routes nothing (msg_reply_check), and is answered below.
+            $tokChk = msg_reply_check($tok, true);
+            [$tid, $tokAud] = $tokChk['state'] === 'ok' ? [$tokChk['tid'], $tokChk['aud']] : [0, ''];
             $fromAddr = mailbox_from_addr($p['from']);
             $senderOk = in_array($fromAddr, $allowed, true);
             $body = $tid > 0 ? strip_quoted_reply($p['body']) : '';
@@ -421,9 +423,19 @@ function poll_mailbox_replies($force = false, $preview = false)
                     $route = 'guest';
                 }
             }
+            // A REPLY ON AN EXPIRED TOKEN POSTS NOTHING, AND IS NOT LOST. Yours (an
+            // owner token, from one of your addresses) earns a note back saying so,
+            // and the Inbox sets it aside as it does a routed reply; a guest's is left
+            // as mail, so it reaches the Inbox from their address.
+            $expired = !$isSelf && $tokChk['state'] === 'expired';
+            if ($expired && $tokChk['aud'] === 'owner' && $senderOk) {
+                $route = 'expired';
+            }
             $reason = $isSelf
                 ? 'self-notification'
-                : ($tid <= 0
+                : ($expired
+                    ? 'token-expired'
+                    : ($tid <= 0
                     ? 'no-thread-token'
                     : ($threadGone
                     ? 'thread-gone'
@@ -433,7 +445,7 @@ function poll_mailbox_replies($force = false, $preview = false)
                             ? 'delivered'
                             : ($route === 'guest'
                                 ? 'delivered-guest'
-                                : 'sender-not-recognised')))));
+                                : 'sender-not-recognised'))))));
             $info = [
                 'from' => $fromAddr,
                 'subject' => mb_substr($p['subject'], 0, 120),
@@ -466,6 +478,14 @@ function poll_mailbox_replies($force = false, $preview = false)
                     $handled++;
                 } catch (\Throwable $e) {
                     $deliverOk = false;
+                }
+            }
+            // Your late reply: one note back, to the address it came from (the uid is
+            // marked handled below, so it is never sent twice for one email).
+            if ($route === 'expired') {
+                try {
+                    chat_late_reply_owner($fromAddr, (int) $tokChk['tid']);
+                } catch (\Throwable $e) {
                 }
             }
             // NEW CUSTOMER MAIL. Not our own voice, not an automated report

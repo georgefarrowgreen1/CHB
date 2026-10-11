@@ -3532,6 +3532,28 @@ it_check('§51 the content read hides bank details from a limited person (the ow
 $oAll = http($admin, 'POST', '/content.php', ['action' => 'get_all'])['json']['content'] ?? [];
 $sAll = http($soph, 'POST', '/content.php', ['action' => 'get_all'])['json']['content'] ?? [];
 it_check('§51 …and the private read hides the backup passphrase', ($oAll['backup-passphrase'] ?? '') === 'a very long backup phrase' && !array_key_exists('backup-passphrase', $sAll) && !array_key_exists('bacs-details', $sAll), json_encode(array_keys($sAll)));
+// THE PRIVATE COTTAGE NOTES FOLLOW THE DOOR CODES. They are where a key-safe code gets
+// written down, and "Edit cottage pages" reached them, so a website helper with door
+// codes switched off could read one.
+$opsKey = 'ops-' . $propKey;
+http($admin, 'POST', '/content.php', ['action' => 'set', 'key' => $opsKey, 'value' => 'Key safe 4719, by the back door']);
+foreach (['co.pages' => true, 'ks.see' => false, 'ks.change' => false] as $pk51 => $on51) {
+    http($admin, 'POST', '/people.php', ['action' => 'set_perm', 'id' => $sId, 'perm' => $pk51, 'on' => $on51]);
+}
+$sAll = http($soph, 'POST', '/content.php', ['action' => 'get_all'])['json']['content'] ?? [];
+it_check('§51 with door codes off, the private cottage notes stay hidden though she edits the cottage pages', !array_key_exists($opsKey, $sAll), json_encode(array_keys($sAll)));
+$r = http($soph, 'POST', '/content.php', ['action' => 'set', 'key' => $opsKey, 'value' => 'IT51 overwritten']);
+$oAll = http($admin, 'POST', '/content.php', ['action' => 'get_all'])['json']['content'] ?? [];
+it_check('§51 …and she can\'t change them', $r['code'] === 403 && ($oAll[$opsKey] ?? '') === 'Key safe 4719, by the back door', $r['raw']);
+http($admin, 'POST', '/people.php', ['action' => 'set_perm', 'id' => $sId, 'perm' => 'ks.see', 'on' => true]);
+$sAll = http($soph, 'POST', '/content.php', ['action' => 'get_all'])['json']['content'] ?? [];
+$r = http($soph, 'POST', '/content.php', ['action' => 'set', 'key' => $opsKey, 'value' => 'IT51 overwritten']);
+it_check('§51 See door codes shows them; changing them still needs Change door codes', ($sAll[$opsKey] ?? '') === 'Key safe 4719, by the back door' && $r['code'] === 403, $r['raw']);
+http($admin, 'POST', '/people.php', ['action' => 'set_perm', 'id' => $sId, 'perm' => 'ks.change', 'on' => true]);
+$r = http($soph, 'POST', '/content.php', ['action' => 'set', 'key' => $opsKey, 'value' => 'Key safe 4720, by the back door']);
+it_check('§51 …and with Change door codes she can', $r['code'] === 200, $r['raw']);
+http($admin, 'POST', '/people.php', ['action' => 'set_perm', 'id' => $sId, 'perm' => 'co.pages', 'on' => false]);
+$rootDb->prepare('DELETE FROM content WHERE item_key = ?')->execute([$opsKey]);
 // A switch takes effect on the next request — no signing out and in.
 $r = http($admin, 'POST', '/people.php', ['action' => 'set_perm', 'id' => $sId, 'perm' => 'mo.view', 'on' => true]);
 it_check('§51 switching See the money back on opens the Payments screens at once', $r['code'] === 200 && http($soph, 'GET', '/accounts.php')['code'] === 200, $r['raw']);
@@ -3701,6 +3723,27 @@ $rootDb->exec("UPDATE admins SET removed_at = NOW() WHERE id = $eId");
 $R = $rcpts();
 it_check('§52 with its last person gone, a new enquiry falls back to the first owner', ($R['enquiry'] ?? []) === [$ownMail, 'co52@example.com'], json_encode($R['enquiry'] ?? null));
 it_check('§52 …and a removed person can no longer reply by email', !in_array('ellie52@example.com', $R['senders'] ?? [], true), json_encode($R['senders'] ?? null));
+// A REMOVED PERSON'S ADDRESS ON "ALSO EMAILED" GETS NOTHING. It went on receiving every
+// email but the backup (a new enquiry's phone and address among them) after the access
+// had gone. A list saved before this change still carries one: it stops, and says so.
+$rootDb->prepare("UPDATE content SET item_value = ? WHERE item_key = 'notify-emails'")->execute([json_encode(['co52@example.com', 'ellie52@example.com'])]);
+$R = $rcpts();
+it_check('§52b a removed person\'s address left on Also emailed gets no new enquiry', ($R['enquiry'] ?? []) === [$ownMail, 'co52@example.com'] && !in_array('ellie52@example.com', $R['paid'] ?? [], true), json_encode($R));
+$r = http($admin, 'POST', '/people.php', ['action' => 'list']);
+it_check('§52b …and the list marks it stopped, naming whose it was', ($r['json']['mailStopped']['ellie52@example.com'] ?? '') === 'Ellie' && !isset($r['json']['mailStopped']['co52@example.com']), json_encode($r['json']['mailStopped'] ?? null));
+http($admin, 'POST', '/notify-recipients.php', ['action' => 'remove', 'email' => 'ellie52@example.com']);
+$r = http($admin, 'POST', '/notify-recipients.php', ['action' => 'add', 'email' => 'Ellie52@Example.com']);
+it_check('§52b adding a removed person\'s old sign-in back is refused, in words', $r['code'] === 409 && ($r['json']['code'] ?? '') === 'removed_person' && strpos((string) ($r['json']['error'] ?? ''), 'Ellie’s access was removed') !== false, $r['raw']);
+$r = http($admin, 'POST', '/notify-recipients.php', ['action' => 'add', 'email' => 'bookkeeper52@example.com']);
+it_check('§52b …while an address that is nobody\'s sign-in is added as before', $r['code'] === 200 && in_array('bookkeeper52@example.com', $r['json']['extras'] ?? [], true), $r['raw']);
+// Removing someone takes their address off the list in the same step.
+$rootDb->exec("INSERT INTO admins (username, password_hash, name, email, full_access, caps, created_at) VALUES ('finn52', 'x', 'Finn Rowe', 'finn52@example.com', 0, '{}', NOW())");
+$fId = (int) $rootDb->lastInsertId();
+http($admin, 'POST', '/notify-recipients.php', ['action' => 'add', 'email' => 'finn52@example.com']);
+$r = http($admin, 'POST', '/people.php', ['action' => 'remove', 'id' => $fId]);
+$left52 = (array) json_decode((string) $rootDb->query("SELECT item_value FROM content WHERE item_key = 'notify-emails'")->fetchColumn(), true);
+it_check('§52b removing someone takes their address off Also emailed, and says so', $r['code'] === 200 && ($r['json']['offList'] ?? false) === true && !in_array('finn52@example.com', $left52, true) && in_array('bookkeeper52@example.com', $left52, true), json_encode([$r['json']['offList'] ?? null, $left52]));
+$rootDb->exec("DELETE FROM admins WHERE id = $fId");
 $rootDb->exec("DELETE FROM admins WHERE id = $eId");
 $rootDb->exec("UPDATE admins SET mail_prefs = NULL WHERE id = $ownerId");
 $rootDb->exec("DELETE FROM content WHERE item_key = 'notify-emails'");
@@ -5281,12 +5324,12 @@ $th77->execute(['it77-' . bin2hex(random_bytes(6)), 'Wren Ashby', 'wren77@exampl
 $t77 = (int) $rootDb->lastInsertId();
 $th77->execute(['it77-' . bin2hex(random_bytes(6)), 'Gone Guest', 'gone77@example.com']);
 $gone77 = (int) $rootDb->lastInsertId();
-$tk77 = $mailProbe('echo "\n" . json_encode(["o" => msg_reply_token(' . $t77 . '), "g" => msg_reply_token(' . $t77 . ', "guest"), "gone" => msg_reply_token(' . $gone77 . ')]);');
+$tk77 = $mailProbe('echo "\n" . json_encode(["o" => msg_reply_token(' . $t77 . '), "g" => msg_reply_token(' . $t77 . ', "guest"), "gone" => msg_reply_token(' . $gone77 . '), "legacy" => "' . $t77 . 'x" . substr(hash_hmac("sha256", "msg-reply|' . $t77 . '", APP_SECRET), 0, 16)]);');
 $o77 = (string) ($tk77['o'] ?? '');
 $g77 = (string) ($tk77['g'] ?? '');
 $og77 = (string) ($tk77['gone'] ?? '');
-$legacy77 = substr($o77, 0, -16); // the 16-hex form that emails sent before the widening carry
-$half77 = $legacy77 . str_repeat('0', 16); // a current token whose second half is forged
+$legacy77 = (string) ($tk77['legacy'] ?? ''); // the undated 16-hex form that emails sent before the widening carry
+$half77 = substr($o77, 0, -16) . str_repeat('0', 16); // a current token whose second half is forged
 $rootDb->exec('DELETE FROM chat_threads WHERE id = ' . $gone77); // the owner deleted that chat
 it_check('§77 (fixture) the owner, the site\'s address and three tokens', $owner77 !== '' && $own77 !== '' && $owner77 !== $own77 && strlen($o77) === strlen((string) $t77) + 33 && $g77 !== '' && $og77 !== '', json_encode([$who77, $tk77]));
 $eml77 = function ($name, array $head, $body) use ($md77) {
@@ -5389,6 +5432,42 @@ $h = $hook77(['recipient' => "reply+$og77@yourdomain.co.uk", 'sender' => $owner7
 it_check('§77 webhook: a reply to a chat since deleted makes no orphan message', $h === 'thread gone' && $one77('IT77-HOOK-GONE') === null, $h);
 $h = $hook77(['recipient' => "reply+$half77@yourdomain.co.uk", 'sender' => $owner77, 'subject' => 'Re: New message', 'stripped-text' => 'IT77-HOOK-HALF Hello?']);
 it_check('§77 webhook: a token with its second half forged finds no thread', $h === 'no thread' && $one77('IT77-HOOK-HALF') === null, $h);
+// A REPLY CODE HAS A LIFETIME: 30 days for an owner's alert, 180 for a guest's email.
+// A reply on an expired one posts nothing and is not lost: the owner gets a note back
+// (logged reply.expired; mail is off here, so the log is what can be read), and the
+// guest's is left as mail for the Inbox.
+echo "\n== §77b a reply code expires, and a late reply is answered, not lost ==\n";
+$late77 = $mailProbe('echo "\n" . json_encode(["o" => msg_reply_token(' . $t77 . ', "owner", time() - 40 * 86400), "g" => msg_reply_token(' . $t77 . ', "guest", time() - 200 * 86400)]);');
+$lo77 = (string) ($late77['o'] ?? '');
+$lg77 = (string) ($late77['g'] ?? '');
+$expRows77 = fn() => (int) $rootDb->query("SELECT COUNT(*) FROM activity_log WHERE action = 'reply.expired' AND entity = 'thread' AND entity_id = '" . $t77 . "'")->fetchColumn();
+it_check('§77b (fixture) two old codes, neither this week\'s', $lo77 !== '' && $lg77 !== '' && $lo77 !== $o77 && $lg77 !== $g77, json_encode($late77));
+$eml77('it77-12-late-owner', ['From' => "George <$owner77>", 'To' => $own77, 'Subject' => 'Re: New message from Wren Ashby', 'In-Reply-To' => "<msg.$lo77@yourdomain.co.uk>"] + $plain77, 'IT77-LATE-OWNER Answering a six-week-old alert.');
+$eml77('it77-13-late-guest', ['From' => 'Wren Ashby <wren77@example.com>', 'To' => $own77, 'Subject' => 'Re: Your message to Cottage Holidays Blakeney', 'In-Reply-To' => "<msg.$lg77@yourdomain.co.uk>"] + $plain77, 'IT77-LATE-GUEST We are coming back next summer!');
+$expBefore77 = $expRows77();
+$R77 = $poll77();
+it_check('§77b the poll posts neither late reply', ($R77['ok'] ?? false) === true && ($R77['handled'] ?? -1) === 0 && $one77('IT77-LATE-OWNER') === null && $one77('IT77-LATE-GUEST') === null, json_encode($R77));
+it_check('§77b your late reply earns one note back (logged once)', $expRows77() === $expBefore77 + 1, (string) $expRows77());
+$new77 = array_column((array) json_decode((string) $rootDb->query("SELECT item_value FROM content WHERE item_key = 'mailbox-new'")->fetchColumn(), true), null, 'uid');
+it_check('§77b the guest\'s late reply is left as new mail for you, yours is not', isset($new77['it77-13-late-guest']) && !isset($new77['it77-12-late-owner']), json_encode(array_keys($new77)));
+$r = http($admin, 'POST', '/mailbox.php', ['action' => 'list']);
+$listed77 = array_map(fn($m) => (string) $m['uid'], (array) ($r['json']['messages'] ?? []));
+it_check('§77b the Inbox lists the guest\'s late reply and sets yours aside', $r['code'] === 200 && in_array('it77-13-late-guest', $listed77, true) && !in_array('it77-12-late-owner', $listed77, true) && ($r['json']['ownHidden'] ?? -1) === 6, json_encode([$listed77, $r['json']['ownHidden'] ?? null]));
+$R77 = $poll77();
+it_check('§77b the next poll sends no second note', $expRows77() === $expBefore77 + 1 && ($R77['handled'] ?? -1) === 0, (string) $expRows77());
+// An UNDATED code (sent before the change) lives the same 30 days from the change day.
+it_check('§77b (fixture) the migration recorded the change day, as the app reads it', $mailProbe('echo "\n" . json_encode(["d" => content_value("reply-dated-since")]);')['d'] === (string) $rootDb->query('SELECT CURDATE()')->fetchColumn(), json_encode($mailProbe('echo "\n" . json_encode(["d" => content_value("reply-dated-since")]);')));
+$rootDb->exec("UPDATE content SET item_value = CONCAT('\"', DATE_FORMAT(CURDATE() - INTERVAL 40 DAY, '%Y-%m-%d'), '\"') WHERE item_key = 'reply-dated-since'");
+$eml77('it77-14-legacy-old', ['From' => "George <$owner77>", 'To' => $own77, 'Subject' => "Re: New message from Wren Ashby [#$legacy77]"] + $plain77, 'IT77-LEGACY-OLD An undated code, past its 30 days.');
+$R77 = $poll77();
+it_check('§77b an undated code past 30 days from the change posts nothing and earns a note', $one77('IT77-LEGACY-OLD') === null && $expRows77() === $expBefore77 + 2, json_encode([$R77, $expRows77()]));
+$rootDb->exec("UPDATE content SET item_value = CONCAT('\"', DATE_FORMAT(CURDATE(), '%Y-%m-%d'), '\"') WHERE item_key = 'reply-dated-since'");
+$h = $hook77(['recipient' => "reply+$lo77@yourdomain.co.uk", 'sender' => $owner77, 'subject' => 'Re: New message', 'stripped-text' => 'IT77-HOOK-LATE Six weeks on.']);
+it_check('§77b webhook: your late reply posts nothing and earns a note', $h === 'expired' && $one77('IT77-HOOK-LATE') === null && $expRows77() === $expBefore77 + 3, json_encode([$h, $expRows77()]));
+$h = $hook77(['recipient' => "reply+$lg77@yourdomain.co.uk", 'sender' => 'wren77@example.com', 'subject' => 'Re: Your message', 'stripped-text' => 'IT77-HOOK-LATEG Still thinking of you all.']);
+it_check('§77b webhook: the guest\'s late reply is forwarded to you, not posted', $h === 'expired' && $one77('IT77-HOOK-LATEG') === null && $expRows77() === $expBefore77 + 4, json_encode([$h, $expRows77()]));
+$h = $hook77(['recipient' => "reply+$lg77@yourdomain.co.uk", 'sender' => 'stranger77@example.net', 'subject' => 'Re: Your message', 'stripped-text' => 'IT77-HOOK-LATEX Hi.']);
+it_check('§77b webhook: anyone else\'s late reply is ignored', $h === 'expired' && $expRows77() === $expBefore77 + 4, json_encode([$h, $expRows77()]));
 if (is_resource($srv77)) {
     proc_terminate($srv77);
 }

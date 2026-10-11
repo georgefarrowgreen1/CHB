@@ -371,6 +371,20 @@ function chb_send_sample_emails($which = 'all', $prefix = '[SAMPLE] ')
                 return send_owner($m['subject'], $m['text']);
             },
         ],
+        'owner_reply_expired' => [
+            'Owner: a late emailed reply that wasn’t posted',
+            function () {
+                $m = owner_note_reply_expired('Test Guest');
+                return send_owner($m['subject'], $m['text']);
+            },
+        ],
+        'owner_reply_stale' => [
+            'Owner: a guest replying to an old email',
+            function () use ($owner) {
+                $m = owner_note_reply_stale('Test Guest', $owner, 'We’re arriving about five on Friday, is that all right?');
+                return send_owner($m['subject'], $m['text']);
+            },
+        ],
         'owner_push_fallback' => [
             'Owner: an alert that no device received',
             function () {

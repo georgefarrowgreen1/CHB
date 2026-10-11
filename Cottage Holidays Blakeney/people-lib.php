@@ -525,8 +525,16 @@ function people_content_cap($key)
     if ($k === 'square-location') {
         return 'owner';
     }
-    // The cottage pages and their private notes.
-    if (preg_match('/^(images|amenities|houserules|safety|geo|access|faqs|welcome|arrival|ops)-/', $k)
+    // THE PRIVATE COTTAGE NOTES FOLLOW THE DOOR-CODE PERMISSIONS. They are where a key
+    // safe's code gets written down (with the stopcock and the cleaner's number), and
+    // "Edit cottage pages" reached them, so a website helper with door codes switched off
+    // could read one. Changing them needs Change door codes; reading them, See door codes
+    // (people_content_read_cap).
+    if (strpos($k, 'ops-') === 0) {
+        return 'ks.change';
+    }
+    // The cottage pages and the guest-facing notes written for them.
+    if (preg_match('/^(images|amenities|houserules|safety|geo|access|faqs|welcome|arrival)-/', $k)
         || preg_match('/^[a-z0-9_]+-(title|subtitle|tagline|desc|location)$/', $k)
         || $k === 'darkskies') {
         return 'co.pages';
@@ -541,7 +549,13 @@ function people_content_readable($row, $key)
     if (people_is_full($row)) {
         return true;
     }
-    return in_array((string) $key, PEOPLE_READ_ALSO, true) || people_can($row, people_content_cap($key));
+    return in_array((string) $key, PEOPLE_READ_ALSO, true) || people_can($row, people_content_read_cap($key));
+}
+// What READING a key needs, where that differs from changing it: the private cottage
+// notes are read with See door codes and changed with Change door codes.
+function people_content_read_cap($key)
+{
+    return strpos((string) $key, 'ops-') === 0 ? 'ks.see' : people_content_cap($key);
 }
 // An image upload is decided by where it goes.
 function people_upload_cap($slot)

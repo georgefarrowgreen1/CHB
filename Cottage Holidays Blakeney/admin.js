@@ -5166,7 +5166,7 @@ function cmdkIntent(q) {
             const openSec = (sec) => () => cmdkOpenAccomSec(dPk, sec);
             const runQ = (query) => () => { const el = document.getElementById('cmdk-input'); if (el) el.value = query; cmdkSearch(query); };
             const head = ans(cName, facts, openSec('rates'), [{ label: 'Bookings', run: runQ(cName + ' bookings') }].concat(next ? [calChip(next.checkIn)] : []));
-            const rows = ACCOM_SECTIONS.map((s) => ({ type: 'action', id: 'dsr-' + dPk + '-' + s.id, label: s.label.replace(/&amp;/g, '&'), sub: (s.sub || '').replace(/&amp;/g, '&'), run: openSec(s.id) }));
+            const rows = accomSections().map((s) => ({ type: 'action', id: 'dsr-' + dPk + '-' + s.id, label: s.label.replace(/&amp;/g, '&'), sub: (s.sub || '').replace(/&amp;/g, '&'), run: openSec(s.id) }));
             return [head].concat(rows);
         }
     }
@@ -13912,6 +13912,7 @@ function oaPeopleLanded(res) {
 function oaMailLanded(res) {
     if (res && Array.isArray(res.mailKinds)) __oaMailKinds = res.mailKinds;
     if (res && Array.isArray(res.mailExtras)) __oaMailExtras = res.mailExtras;
+    if (res && res.mailStopped && typeof res.mailStopped === 'object') __oaMailStopped = res.mailStopped;
     if (res && Array.isArray(res.permDefs)) __oaPermDefs = res.permDefs;
     if (res && res.permGroups && typeof res.permGroups === 'object') __oaPermGroups = res.permGroups;
 }
@@ -14422,6 +14423,8 @@ const OA_MAIL_GROUPS = [
 ];
 let __oaMailKinds = []; // [{k, cap, must}] — the server's word, with the people list
 let __oaMailExtras = []; // the extra addresses copied on every email but the backup
+/** @type {Record<string, string>} */
+let __oaMailStopped = {}; // address → first name: a removed person's old sign-in, sent nothing
 let __oaEmailsFrom = 'notify'; // which page the emails page goes back to
 const oaMailLit = (p, k) => !!(p && p.mailCan && p.mailCan[k] && p.mail && p.mail[k]);
 const oaMailCount = (p) => OA_MAILS.filter((m) => oaMailLit(p, m.k)).length;
@@ -14496,7 +14499,11 @@ function renderEmails() {
     html +=
         gaGroup(
             (__oaMailExtras || [])
-                .map((e) => gaRow({ ic: 'mail', t: e, s: 'Copied on every email but the backup', v: '<span class="ga-vbtn">Remove</span>', act: chbAttrs('removeNotifyEmail', e) }))
+                .map((e) => {
+                    // A removed person's old sign-in gets nothing; the row says so.
+                    const was = __oaMailStopped[String(e).toLowerCase()];
+                    return gaRow({ ic: 'mail', t: e, s: was ? 'Stopped: ' + was + '’s access was removed' : 'Copied on every email but the backup', cls: was ? 'oa-stopped' : '', v: '<span class="ga-vbtn">Remove</span>', act: chbAttrs('removeNotifyEmail', e) });
+                })
                 .concat([gaRow({ ic: 'plus', t: 'Add an address', act: 'data-act="addNotifyEmail"', cls: 'oa-accent' })]),
             'Also emailed',
         );
@@ -14565,7 +14572,9 @@ async function oaPersonDo(what) {
     const p = (__oaPeople || []).find((x) => x.id === __oaPerson);
     if (!p) return;
     const n = p.first;
-    if (what === 'remove' && !(await glassConfirm(n + ' is signed out everywhere straight away and can’t sign in again. Everything ' + n + ' did stays in the activity log.', 'Remove the access', { title: 'Remove ' + n + '’s access?', danger: true }))) return;
+    // Their address comes off Also emailed with them (the server does it), and the ask says so.
+    const listed = !!p.contact && (__oaMailExtras || []).some((e) => String(e).toLowerCase() === String(p.contact).toLowerCase());
+    if (what === 'remove' && !(await glassConfirm(n + ' is signed out everywhere straight away and can’t sign in again.' + (listed ? ' ' + p.contact + ' comes off Also emailed too.' : '') + ' Everything ' + n + ' did stays in the activity log.', 'Remove the access', { title: 'Remove ' + n + '’s access?', danger: true }))) return;
     if (what === 'cancel_invite' && !(await glassConfirm('The link in ' + n + '’s email stops working.', 'Cancel the invite', { title: 'Cancel ' + n + '’s invite?', danger: true, cancelLabel: 'Keep it' }))) return;
     let res;
     try {
@@ -14582,7 +14591,7 @@ async function oaPersonDo(what) {
     oaPeopleLanded(res);
     const sent = res && res.sent !== false;
     const say = {
-        remove: n + ' no longer has access',
+        remove: n + ' no longer has access' + (res && res.offList ? ', and ' + p.contact + ' came off Also emailed' : ''),
         restore: sent ? 'A new invite is on its way to ' + p.contact + '.' : 'Access given back, but the email didn’t send. Try “Send the invite again”.',
         reinvite: sent ? 'Invite sent again to ' + p.contact + '.' : 'The email didn’t send. Check the address and try again.',
         reset_link: sent ? 'Reset link sent to ' + p.contact + '. ' + n + ' chooses the new password.' : 'The email didn’t send. Check the address and try again.',
@@ -15285,6 +15294,10 @@ const ACCOM_SECTIONS = [
         ic: '<rect x="4" y="3.5" width="16" height="17" rx="2.5"/><path d="M8 8h8M8 12h8M8 16h5"/>',
     },
 ];
+// The sections this person sees: the private notes hold key-safe codes, so they follow
+// the door-code permission (See door codes), not Edit cottage pages; the server sends
+// them only then, and refuses a change without Change door codes.
+const accomSections = () => ACCOM_SECTIONS.filter((s) => s.id !== 'opsnotes' || chbCan('ks.see'));
 // A cottage's page, opened straight from Manage's cottage rows: there is no list
 // page in between any more, so this shows the panel itself (unless the search
 // sheet is hosting the section) and Back returns to Manage.
@@ -15374,7 +15387,7 @@ function settingsOpenAccom(k) {
             } catch (e) {}
             return '';
         };
-        detail.innerHTML = ACCOM_SECTIONS.map((s) => {
+        detail.innerHTML = accomSections().map((s) => {
             const key = 'ac-' + k + '-' + s.id;
             const open = __bhubOpenFolds.has(key);
             return `<section class="bhub-card glass-panel bhub-fold-grp ac-card" data-grp="${escapeHtml(key)}">
@@ -27893,7 +27906,7 @@ function accomSectionHtml(k, sec) {
                     <label class="chb-switch-row"><span class="chb-switch"><input type="checkbox" id="ks-toggle-${k}" ${!__keysafe || !__keysafe[k] || __keysafe[k].enabled !== false ? 'checked' : ''} ${chbChange('keysafeSetEnabled', String(k), CHB_CHECKED)}><span class="chb-switch-track" aria-hidden="true"></span></span><span>Key safe keeper — a fresh code every changeover, shown to the guest only once you confirm the safe is set</span></label>
                     <div class="acr-cap">Private notes</div>
                     <div class="acr-well">
-                        <div class="acw-frow"><textarea rows="10" class="input-glass" placeholder="Key safe 0000 — where it is\nStopcock — where it is\nBoiler — make, where, how to reset\nCleaner — name and number\nBins — which day" ${chbChange('saveOpsNotes', String(k), CHB_VALUE)} aria-label="Private cottage notes">${escapeHtml(adminPrivateContent['ops-' + k] || '')}</textarea></div>
+                        <div class="acw-frow"><textarea rows="10" class="input-glass" placeholder="Key safe 0000 — where it is\nStopcock — where it is\nBoiler — make, where, how to reset\nCleaner — name and number\nBins — which day" ${chbCan('ks.change') ? chbChange('saveOpsNotes', String(k), CHB_VALUE) : 'readonly'} aria-label="Private cottage notes">${escapeHtml(adminPrivateContent['ops-' + k] || '')}</textarea></div>
                     </div>`;
         case 'location':
             return `

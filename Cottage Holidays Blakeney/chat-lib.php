@@ -160,6 +160,71 @@ if (!function_exists('chat_last_message_is')) {
     }
 }
 
+// ---- A reply on a token past its lifetime (msg_reply_check) ----
+// Posts nothing, and is never lost. The owner's late reply earns ONE note back, to
+// the address it came from, saying so; a guest's very late reply on the webhook route
+// (the POP3 route leaves it as mail, which reaches the Inbox) goes to whoever gets
+// guest messages. At most CHAT_LATE_NOTES_DAY a day between them, so a stream of
+// replies on one old email can't fill an inbox. Both inbound paths call these.
+const CHAT_LATE_NOTES_DAY = 10;
+if (!function_exists('chat_late_note_allowed')) {
+    function chat_late_note_allowed(): bool
+    {
+        try {
+            $q = db()->query("SELECT COUNT(*) FROM activity_log WHERE action = 'reply.expired' AND created_at > (NOW() - INTERVAL 1 DAY)");
+            return (int) $q->fetchColumn() < CHAT_LATE_NOTES_DAY;
+        } catch (\Throwable $e) {
+            return false;
+        }
+    }
+}
+if (!function_exists('chat_late_thread')) {
+    function chat_late_thread($threadId): array
+    {
+        try {
+            $t = db()->prepare('SELECT name, email FROM chat_threads WHERE id = ?');
+            $t->execute([(int) $threadId]);
+            $row = $t->fetch();
+            return is_array($row) ? $row : [];
+        } catch (\Throwable $e) {
+            return [];
+        }
+    }
+}
+if (!function_exists('chat_late_reply_owner')) {
+    function chat_late_reply_owner($toAddr, $threadId): bool
+    {
+        if (!chat_late_note_allowed() || !filter_var((string) $toAddr, FILTER_VALIDATE_EMAIL)) {
+            return false;
+        }
+        $th = chat_late_thread($threadId);
+        $m = owner_note_reply_expired($th['name'] ?? '');
+        // To the address the reply came from, and nobody else.
+        $prev = people_mail_only();
+        people_mail_only((string) $toAddr);
+        try {
+            $r = send_owner($m['subject'], $m['text']);
+        } finally {
+            people_mail_only($prev);
+        }
+        log_activity('comms', 'reply.expired', 'A late emailed reply was not posted — ' . (($th['name'] ?? '') ?: 'a guest'), ['entity' => 'thread', 'entity_id' => (string) (int) $threadId]);
+        return !empty($r['ok']);
+    }
+}
+if (!function_exists('chat_late_reply_guest')) {
+    function chat_late_reply_guest($threadId, $body): bool
+    {
+        if (!chat_late_note_allowed()) {
+            return false;
+        }
+        $th = chat_late_thread($threadId);
+        $m = owner_note_reply_stale($th['name'] ?? '', $th['email'] ?? '', (string) $body);
+        $r = send_people('messages', $m['subject'], $m['text']);
+        log_activity('comms', 'reply.expired', 'A guest replied to an old email — forwarded, not posted — ' . (($th['name'] ?? '') ?: 'a guest'), ['entity' => 'thread', 'entity_id' => (string) (int) $threadId]);
+        return !empty($r['ok']);
+    }
+}
+
 // ---- Who answers the guest chat ----
 // The away reply's state at an hour: 'off' (the switch is off), 'always' (on, with
 // no hours set), 'away' (outside the owner's hours) or 'in' (inside them). $from and
