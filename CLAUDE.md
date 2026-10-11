@@ -4400,6 +4400,13 @@ and the pay block in app.js (`payFig`, `payRender`, `payStoryHtml`, `paySegHtml`
   `.pp-cta:disabled:not([aria-busy='true'])`. Money moving must not look like a control switched off.
 - **THE STALE LOAD**: every open takes a stamp (`openStamp` / `openLive`), so a slow summary from an earlier open can
   never paint over a newer booking.
+- **ONE CARD ATTACH PER OPEN** (`payCardEnsure` → `payCardAttach`, `__payCardRun`). payRender asks for the card box on
+  every paint, and openPayView asked again straight after the first paint. Both passed the `squareCard` check before
+  either had attached, so the live SDK drew TWO card forms in one box with only one wired to Pay (reported from a
+  phone the day #1419 shipped). Callers in one open now share the attach in flight, and an attach whose open was
+  superseded destroys its form. **No suite saw it: ui-test-pay's Square stub REPLACES `#sq-card` on attach, where the
+  real SDK APPENDS an iframe.** Shipped without tests at the owner's ask; the stub still replaces, so nothing gates a
+  recurrence yet.
 - Sticky Pay bar on the phone (`.pp-bar`, a 14px gutter at ≤480 so it cannot overflow), two columns from 900px, and
   calm screens for armed (nothing to pay today: no card box, no bar), repair (Update card), hold, loading, expired and
   settled. The receipt says what is next and which card paid.

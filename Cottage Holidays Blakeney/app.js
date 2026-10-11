@@ -7965,9 +7965,27 @@ async function openPayView(token, bookingId, kind) {
 // THE CARD BOX, attached once per open and only when a screen needs it (the
 // arranged screen has none until "Change" or "Pay now instead").
 let __payCardCfg = null;
-async function payCardEnsure() {
-    if (squareCard || !__payCardCfg) return;
+// ONE ATTACH PER OPEN. payRender asks for the card box on every paint and
+// openPayView asks again straight after the first paint, so two calls passed the
+// squareCard check before either had attached, and Square attached BOTH: two card
+// forms in one box, only one of them wired to Pay (reported from a phone). Every
+// caller in an open now shares the attach in flight. The suites' Square stub
+// REPLACES the box on attach where the real SDK appends, which is why none saw it.
+/** @type {{stamp: number, p: Promise<void>}|null} */
+let __payCardRun = null;
+function payCardEnsure() {
+    if (squareCard || !__payCardCfg) return Promise.resolve();
     const stamp = payState.openStamp;
+    if (__payCardRun && __payCardRun.stamp === stamp) return __payCardRun.p;
+    const run = { stamp, p: payCardAttach(stamp) };
+    __payCardRun = run;
+    const clear = () => {
+        if (__payCardRun === run) __payCardRun = null;
+    };
+    run.p.then(clear, clear);
+    return run.p;
+}
+async function payCardAttach(stamp) {
     await loadSquareSdk(__payCardCfg.environment);
     if (stamp !== payState.openStamp || squareCard) return;
     squarePayments = window.Square.payments(__payCardCfg.applicationId, __payCardCfg.locationId);
@@ -7980,7 +7998,14 @@ async function payCardEnsure() {
         c = null;
     }
     if (!c) c = await squarePayments.card();
-    if (stamp !== payState.openStamp) return;
+    // A newer open took over while this one worked: its form must not stay in the
+    // box beside the new one.
+    const drop = async () => {
+        try {
+            await c.destroy();
+        } catch (e) {}
+    };
+    if (stamp !== payState.openStamp) return drop();
     try {
         await c.attach('#sq-card');
     } catch (e) {
@@ -7991,7 +8016,7 @@ async function payCardEnsure() {
         c = await squarePayments.card();
         await c.attach('#sq-card');
     }
-    if (stamp !== payState.openStamp) return;
+    if (stamp !== payState.openStamp) return drop();
     squareCard = c;
     // A refusal sits ON the card: typing a new card clears it.
     try {
@@ -21693,7 +21718,7 @@ const CHB_SK_CARD = '<div class="card glass-panel sk-card"><div class="skeleton 
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'payscreens1011';
+    const BUILD = 'paycard1011';
     /** @type {any} */ (window).__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;
