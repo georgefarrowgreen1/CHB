@@ -386,18 +386,26 @@ try {
         $fixed[] = "removed $stPruned staged upload(s) nobody sent";
     }
 
+    // PHOTOS SENT BEFORE THEY WERE PRIVATE move into the private folder (the deploy's
+    // migrate.php run does this too; here it catches anything that run missed).
+    $madePrivate = photos_make_private();
+    if ($madePrivate > 0) {
+        $fixed[] = "moved $madePrivate photo(s) into the private folder";
+    }
+
     // A CHAT PHOTO NO MESSAGE CARRIES is deleted after a day (a conversation deleted
-    // before its photos were, or one published by a send that then failed). Only the
+    // before its photos were, or one moved by a send that then failed). Only the
     // chat uploader's own names, and only when the messages could be read: an
     // unreadable table judges nothing.
     try {
         $refd = array_flip(db()->query("SELECT attachment FROM messages WHERE attachment LIKE 'uploads/chat-%'")->fetchAll(PDO::FETCH_COLUMN));
         $chatOrph = 0;
-        foreach (is_dir($upDir) ? scandir($upDir) ?: [] : [] as $cf) {
+        $privDir = __DIR__ . '/' . UPLOAD_PRIVATE_DIR;
+        foreach (is_dir($privDir) ? scandir($privDir) ?: [] : [] as $cf) {
             if (!preg_match('/^chat-[0-9a-f]{12}\.(jpg|png|gif|webp)$/', $cf) || isset($refd['uploads/' . $cf])) {
                 continue;
             }
-            $mt = @filemtime($upDir . '/' . $cf);
+            $mt = @filemtime($privDir . '/' . $cf);
             if ($mt !== false && $mt < time() - 86400 && upload_delete('uploads/' . $cf)) {
                 $chatOrph++;
             }

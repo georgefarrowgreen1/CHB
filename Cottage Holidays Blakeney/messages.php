@@ -69,8 +69,9 @@ function chat_msgs($threadId, $forAdmin = false)
             // Whether someone in the back office has read a guest's message: the
             // guest's "Seen" under their own latest message.
             'read' => (int) $r['read_by_admin'] === 1,
-            // Optional image attachment (path under uploads/), '' if none.
-            'attachment' => $r['attachment'] ?? '',
+            // Its photo, '' if none: a signed link that works for a few hours (the
+            // photo itself is private), fresh each time the conversation loads.
+            'attachment' => chat_photo_out($r['attachment'] ?? ''),
             // Who wrote an owner-side message (0: the crown) and what it is: '' typed,
             // 'auto' the away reply, 'event' something emailed from the chat.
             'by' => $by,
@@ -83,6 +84,17 @@ function chat_msgs($threadId, $forAdmin = false)
     }
     return $out;
 }
+// What a message's photo is shown as: a signed link, since chat photos are
+// private. Anything that is not a chat photo name is shown as stored.
+function chat_photo_out($att): string
+{
+    $att = (string) $att;
+    if ($att === '') {
+        return '';
+    }
+    $link = photo_link($att);
+    return $link !== '' ? $link : $att;
+}
 // Accept an attachment path only if it's one our uploader produced and the file
 // is really on disk — never trust a client-supplied path beyond that shape.
 function chat_valid_attachment($v)
@@ -91,21 +103,22 @@ function chat_valid_attachment($v)
     if ($v === '') {
         return '';
     }
-    // A photo uploaded for this message has waited, private, in the staging folder:
-    // sending it is what makes it public. A retry of a send that published it but
-    // lost its answer finds it already published.
+    // A photo uploaded for this message has waited in the staging folder: sending
+    // it moves it into the private folder (photo-lib.php), where it is opened only
+    // through signed links. A retry of a send that moved it but lost its answer
+    // finds it already there.
     // ONLY A CHAT PHOTO (chat-upload.php names every one chat-…). Any other file in
     // uploads/ (a cottage's gallery, the hero, a wall photo: their paths are public)
     // named here would ride the message, and deleting the conversation or the
     // account deletes a message's photo, so it would vanish from the site.
-    if (preg_match('#^uploads/pending/(chat-[A-Za-z0-9._-]+\.(?:jpe?g|png|gif|webp))$#i', $v, $pm)) {
-        $pub = upload_publish($v);
-        return $pub !== '' ? $pub : (is_file(__DIR__ . '/uploads/' . $pm[1]) ? 'uploads/' . $pm[1] : '');
+    if (preg_match('#^uploads/pending/(chat-[A-Za-z0-9_-]+\.(?:jpe?g|png|gif|webp))$#i', $v, $pm)) {
+        $held = upload_hold($v);
+        return $held !== '' ? $held : (photo_file('uploads/' . $pm[1]) !== '' ? 'uploads/' . $pm[1] : '');
     }
-    if (!preg_match('#^uploads/chat-[A-Za-z0-9._-]+\.(jpe?g|png|gif|webp)$#i', $v)) {
+    if (!preg_match('#^uploads/chat-[A-Za-z0-9_-]+\.(jpe?g|png|gif|webp)$#i', $v)) {
         return '';
     }
-    return is_file(__DIR__ . '/' . $v) ? $v : '';
+    return photo_file($v) !== '' ? $v : '';
 }
 // Set a message's attachment via a guarded UPDATE — kept off the INSERT so the
 // core send never breaks on a DB where the column hasn't migrated yet (there it's

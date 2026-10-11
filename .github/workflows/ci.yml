@@ -156,6 +156,10 @@ jobs:
         working-directory: "Cottage Holidays Blakeney"
         run: php test-devices.php
 
+      - name: Private photos and their signed links
+        working-directory: "Cottage Holidays Blakeney"
+        run: php test-photo.php
+
       - name: Status page judgements (warning verdicts, the week, the daily traces)
         working-directory: "Cottage Holidays Blakeney"
         run: php test-status.php

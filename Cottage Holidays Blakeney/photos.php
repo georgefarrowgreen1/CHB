@@ -8,6 +8,8 @@
 //
 //  Uploaded photos are validated + stored by image-save.php (same as upload.php),
 //  but a guest submission lands as 'pending' and only shows once the owner approves.
+//  Until then the file is PRIVATE (uploads/private/, photo-lib.php): the owner's
+//  list shows it through a signed link, and approving it is what makes it public.
 // ============================================================
 require_once __DIR__ . '/db.php';
 
@@ -83,10 +85,17 @@ if ($action === 'submit') {
     if (empty($_FILES['image'])) {
         json_out(['error' => 'No image received'], 400);
     }
-    $res = save_uploaded_image($_FILES['image'], 'guest', null, true);
+    // Staged, then held privately: a photo nobody has approved is nobody's to see.
+    $res = save_uploaded_image($_FILES['image'], 'guest', null, true, false);
     if (!empty($res['error'])) {
         json_out(['error' => $res['error']], $res['code'] ?? 400);
     }
+    $held = upload_hold($res['url']);
+    if ($held === '') {
+        upload_delete($res['url']);
+        json_out(['error' => 'Could not save the photo. Please try again.'], 500);
+    }
+    $res['url'] = $held;
 
     $caption = clean($_POST['caption'] ?? '');
     if (mb_strlen($caption) > 280) {
@@ -128,6 +137,14 @@ if ($action === 'list_admin') {
     } catch (\Throwable $e) {
         json_out(['error' => 'Could not read photos — run migrate.php (migration-guest-photos.sql).'], 500);
     }
+    // A photo waiting for approval is private: the list shows it through a signed
+    // link. An approved one is public at its own address.
+    foreach ($rows as &$r) {
+        if (($r['status'] ?? '') === 'pending') {
+            $r['url'] = photo_link($r['url']) ?: $r['url'];
+        }
+    }
+    unset($r);
     json_out(['ok' => true, 'photos' => $rows]);
 }
 
@@ -139,8 +156,9 @@ if ($action === 'approve' || $action === 'reject') {
     $url = (string) ($uq->fetchColumn() ?: '');
     // A photo turned down is never shown, so its file goes now: rejected rows are
     // hidden from the list, and the owner had no other way to remove it. Approving
-    // one whose file has gone would put a broken image on the wall.
-    if ($action === 'approve' && ($url === '' || !is_file(__DIR__ . '/' . $url))) {
+    // one moves it out of the private folder onto the wall; one whose file has gone
+    // would put a broken image there.
+    if ($action === 'approve' && ($url === '' || upload_publish($url) === '')) {
         json_out(['error' => 'That photo is no longer on the server.'], 409);
     }
     db()

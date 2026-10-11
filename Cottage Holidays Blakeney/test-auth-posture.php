@@ -138,6 +138,7 @@ $REGISTRY = [
     'enquiry-action.php' => ['token'],
     'ical-export.php' => ['token'],
     'invoice.php' => ['token'],
+    'photo.php' => ['token', ['photo_check(']], // a signed link that expires opens ONE private photo (photo-lib.php)
     'pay.php' => ['token', [$RATE]], // pay_token authorises paying THIS booking only
     'monzo-callback.php' => ['token', [$RATE]], // the single-use connect state (sha256, 15 min) authorises it, not a session
 
@@ -193,6 +194,7 @@ $REGISTRY = [
     'people-lib.php' => ['lib', [], 'who may do what: the pure rules db.php enforces (no routes of its own)'],
     'session-lib.php' => ['lib', [], 'the session lifetime + the daily sweep of the session folder; required by db.php (no entry)'],
     'devices-lib.php' => ['lib', [], 'every device a person is signed in on; required by db.php (no entry)'],
+    'photo-lib.php' => ['lib', [], 'private photos and their signed links; required by db.php and photo.php (no entry)'],
     'status-lib.php' => ['lib', [], 'status_week()/status_warn_kind() — the Status page\'s pure judgements'],
     'db.php' => ['lib', [], 'the bootstrap every endpoint includes (defines the auth helpers themselves)'],
     'enquiry-actions.php' => ['lib', [], 'shared approve/decline logic'],
@@ -235,6 +237,7 @@ $stale = array_diff(array_keys($REGISTRY), $files);
 ap_check('no stale registry entries' . ($stale ? ' — remove: ' . implode(', ', $stale) : ''), !$stale);
 
 // 2. Verify each claim's markers (and reasons where required).
+$photoCheckConstTime = (bool) preg_match('/function photo_check\(.*?hash_equals\(photo_sig\(/s', (string) @file_get_contents(__DIR__ . '/photo-lib.php'));
 foreach ($REGISTRY as $file => $entry) {
     if (!in_array($file, $files, true)) {
         continue; // already reported stale
@@ -245,10 +248,13 @@ foreach ($REGISTRY as $file => $entry) {
     $src = (string) file_get_contents(__DIR__ . '/' . $file);
     // require_guest_proven() (db.php) is require_guest() plus the email-proof check —
     // it satisfies the guest marker. require_full_access() (db.php) is require_admin()
-    // plus the full-access check — it satisfies the admin marker.
+    // plus the full-access check — it satisfies the admin marker. photo_check()
+    // (photo-lib.php) compares a photo link's signature in constant time — it
+    // satisfies the token marker, and only while it really does.
     $missing = array_values(array_filter($markers, fn($m) => strpos($src, $m) === false
         && !($m === $GUEST && strpos($src, 'require_guest_proven(') !== false)
-        && !($m === $ADMIN && strpos($src, 'require_full_access(') !== false)));
+        && !($m === $ADMIN && strpos($src, 'require_full_access(') !== false)
+        && !($m === $TOKEN && strpos($src, 'photo_check(') !== false && $photoCheckConstTime)));
     if ($missing) {
         ap_check("$file [$kind] — MISSING guard marker(s): " . implode(', ', $missing), false);
         continue;

@@ -7,7 +7,7 @@
 // the window properties when the bundle loads. Deploy checklist: bump ADMIN_V
 // whenever admin.js changes (it is the ?v= cache-buster).
 // ============================================================
-const ADMIN_BUNDLE_V = 787;
+const ADMIN_BUNDLE_V = 788;
 // admin.css is the owner-only stylesheet, split out of app.css so guests never
 // download it. Injected here (not a static <link>) and version-stamped on its
 // own — bump when admin.css changes. Kept OUT of the sw.js CORE precache.
@@ -12983,6 +12983,10 @@ function chatSeenSig(msgs) {
 function chatMsgSig(msgs) {
     if (!msgs || !msgs.length) return '0';
     const last = msgs[msgs.length - 1];
+    // A photo's link expires (photo.php), and the server hands out a new one each
+    // hour: when it changes, the thread is drawn again so an open chat never holds a
+    // link that has stopped working.
+    const photo = msgs.find((m) => m.attachment);
     return (
         msgs.length +
         ':' +
@@ -12990,7 +12994,9 @@ function chatMsgSig(msgs) {
         ':' +
         (last.role || '') +
         ':' +
-        (last.body || '').length
+        (last.body || '').length +
+        ':' +
+        (photo ? photo.attachment : '')
     );
 }
 let __chatEnterNext = false;
@@ -21735,7 +21741,7 @@ const CHB_SK_CARD = '<div class="card glass-panel sk-card"><div class="skeleton 
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'sec1reply';
+    const BUILD = 'sec2photos';
     /** @type {any} */ (window).__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;

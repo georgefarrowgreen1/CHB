@@ -11,6 +11,7 @@
 //  9. the computer's panes and its keyboard
 // 10. an email typed into the website chat is not proof: its own row until confirmed
 // 11. an Inbox not on screen builds its count, not its rows
+// 12. a chat photo opens from the conversation, through its signed link
 const { boot } = require('./ui-test-lib'); // pins TZ=Europe/London at require time
 const fs = require('fs');
 let fails = 0;
@@ -557,6 +558,19 @@ const SHOTS = process.env.IB_SHOTS || '';
     await page.evaluate(async () => { await window.openInbox(); });
     const drawn = await page.waitForFunction(() => !!document.querySelector('#ib-rows .ib-rowwrap[data-key="e:nell11@example.com"]'), null, { timeout: 8000 }).then(() => true, () => false);
     ok(drawn, 'opening the Inbox draws them at once');
+
+    // 12. A chat photo is private: the conversation shows a "Photo" link that opens
+    // it through the signed link the server handed out (photo.php), not a dead chip.
+    console.log('12. a chat photo opens from the conversation');
+    const photo12 = 'photo.php?f=chat-0123456789ab.jpg&exp=1999999999&sig=' + 'ab'.repeat(16);
+    threadMsgs.push({ id: 9, role: 'guest', body: '', at: at(0, '08:30'), seen: false, attachment: photo12 });
+    await page.evaluate(async () => { await window.openInbox(); await ibOpen('e:sofia@example.fr'); });
+    const ph12 = await page.waitForFunction(() => {
+        const a = [...document.querySelectorAll('#ib-thread a.ib-file')].find((x) => /^photo\.php\?/.test(x.getAttribute('href') || ''));
+        return a ? { href: a.getAttribute('href'), target: a.target, rel: a.rel, text: a.textContent.trim() } : null;
+    }, null, { timeout: 8000 }).then((h) => h.jsonValue(), () => null);
+    ok(!!ph12 && ph12.href === photo12, `the photo is a link to its signed address (${ph12 ? ph12.href.slice(0, 40) : 'none'})`);
+    ok(!!ph12 && ph12.target === '_blank' && /noopener/.test(ph12.rel) && ph12.text === 'Photo', '…opening in a new tab, named "Photo"');
 
     if (SHOTS) {
         await page.evaluate(() => { document.body.classList.toggle('light-mode'); });

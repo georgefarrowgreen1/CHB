@@ -4644,9 +4644,12 @@ $mpRaw = @file_get_contents($BASE . '/photos.php', false, stream_context_create(
     'header' => "Accept: application/json\r\nContent-Type: multipart/form-data; boundary=$mp62\r\nCookie: " . implode('; ', array_map(fn($k) => "$k={$gj62[$k]}", array_keys($gj62))),
     'content' => $mpBody]]));
 $url62 = (string) $rootDb->query("SELECT url FROM guest_photos WHERE guest_id = $gid62 ORDER BY id DESC LIMIT 1")->fetchColumn();
-$stored62 = $url62 !== '' && is_file($work . '/' . $url62) ? (string) file_get_contents($work . '/' . $url62) : '';
+// A wall photo waits for approval in the private folder (photo-lib.php).
+$priv62 = $work . '/uploads/private/' . basename($url62);
+$stored62 = $url62 !== '' && is_file($priv62) ? (string) file_get_contents($priv62) : '';
 it_check('§62 (fixture) the PNG sent carries a location in its metadata', strpos($png62, 'it62-secret') !== false, '');
 it_check('§62 a guest\'s PNG is stored without it, still a PNG', strpos((string) $mpRaw, '"ok":true') !== false && $stored62 !== '' && strpos($stored62, 'it62-secret') === false && (getimagesizefromstring($stored62)[2] ?? 0) === IMAGETYPE_PNG, (string) $mpRaw . ' ' . $url62);
+it_check('§62 …and kept privately until it is approved, never at its public address', $url62 !== '' && !is_file($work . '/' . $url62), $url62);
 // (e) The test centre's guest record is not public content.
 $rootDb->prepare("INSERT INTO content (item_key, item_value) VALUES ('testcentre-guest', ?) ON DUPLICATE KEY UPDATE item_value = VALUES(item_value)")->execute([json_encode(['id' => 1, 'email' => 'owner62@example.com'])]);
 $r = http($noJar, 'GET', '/content.php');
@@ -5108,12 +5111,12 @@ $r = http($anon75, 'POST', '/messages.php', ['action' => 'send', 'token' => $tok
 $aTid75 = (int) $rootDb->query('SELECT id FROM chat_threads WHERE token = ' . $rootDb->quote($tok75))->fetchColumn();
 $att75 = (string) $rootDb->query("SELECT attachment FROM messages WHERE thread_id = $aTid75 ORDER BY id DESC LIMIT 1")->fetchColumn();
 clearstatcache();
-it_check('§75 sending it publishes it: the message carries the public path', $r['code'] === 200 && $att75 === 'uploads/' . $name75 && is_file($work . '/uploads/' . $name75) && !is_file($work . '/' . $staged75), $r['raw'] . ' ' . $att75);
+it_check('§75 sending it keeps it private: the message carries its name, the file moves to the private folder', $r['code'] === 200 && $att75 === 'uploads/' . $name75 && is_file($work . '/uploads/private/' . $name75) && !is_file($work . '/uploads/' . $name75) && !is_file($work . '/' . $staged75), $r['raw'] . ' ' . $att75);
 $r = http($anon75, 'POST', '/messages.php', ['action' => 'send', 'token' => $tok75, 'body' => 'And again', 'attachment' => $staged75]);
 it_check('§75 …a send retried with the staged path still finds the photo', $r['code'] === 200 && (string) $rootDb->query("SELECT attachment FROM messages WHERE thread_id = $aTid75 ORDER BY id DESC LIMIT 1")->fetchColumn() === 'uploads/' . $name75, $r['raw']);
 $r = http($admin, 'POST', '/messages.php', ['action' => 'delete', 'thread_id' => $aTid75]);
 clearstatcache();
-it_check('§75 deleting the conversation deletes its photo, file and WebP copy', $r['code'] === 200 && !is_file($work . '/uploads/' . $name75) && !is_file($work . '/uploads/' . $name75 . '.webp'), $r['raw']);
+it_check('§75 deleting the conversation deletes its photo, file and WebP copy', $r['code'] === 200 && !is_file($work . '/uploads/private/' . $name75) && !is_file($work . '/uploads/private/' . $name75 . '.webp') && !is_file($work . '/uploads/' . $name75), $r['raw']);
 // Deleting an account takes its chat photos, its photos never shown and its unpublished
 // suggestions; an approved photo and a published card stay, without its name.
 $g75 = 'gwen75-' . bin2hex(random_bytes(3)) . '@gmail.com';
@@ -5142,7 +5145,17 @@ $rootDb->prepare("INSERT INTO experiences (title, body, image_url, category, sta
 $exPubId75 = (int) $rootDb->lastInsertId();
 $rootDb->prepare("INSERT INTO content (item_key, item_value) VALUES (?, ?) ON DUPLICATE KEY UPDATE item_value = VALUES(item_value)")->execute(['guest-ping-' . $gid75, json_encode(['title' => 'IT75-PING', 'body' => 'Your balance is due', 'at' => time()])]);
 clearstatcache();
-it_check('§75 (fixture) a sent chat photo, a photo waiting, one approved, two suggestions', $gFile75 !== '' && is_file($work . '/' . $gFile75) && is_file($work . '/' . $pend75), $gFile75 . ' ' . $gStaged75);
+it_check('§75 (fixture) a sent chat photo, a photo waiting, one approved, two suggestions', $gFile75 !== '' && is_file($work . '/uploads/private/' . basename($gFile75)) && is_file($work . '/' . $pend75), $gFile75 . ' ' . $gStaged75);
+// "Download my data" carries a week's link to each chat photo (the photo is private).
+$x75 = http($gj75, 'POST', '/auth.php', ['action' => 'guest_export_data']);
+$xl75 = '';
+foreach ($x75['json']['data']['messages'] ?? [] as $xm75) {
+    if (($xm75['attachment'] ?? '') === $gFile75) {
+        $xl75 = (string) ($xm75['attachment_link'] ?? '');
+    }
+}
+parse_str((string) parse_url($xl75, PHP_URL_QUERY), $xq75);
+it_check('§75 the data export carries a link to the chat photo that works for a week', strpos($xl75, '/photo.php?f=' . basename($gFile75)) !== false && (int) ($xq75['exp'] ?? 0) >= time() + 7 * 86400, $xl75);
 // A SITE PHOTO IS NOT A CHAT ATTACHMENT. Naming a cottage's gallery image (its path is
 // in the public content feed) as one put it on the guest's message, and deleting the
 // account then deleted it from the cottage page, resized copies and all.
@@ -5151,7 +5164,7 @@ $r = http($gj75, 'POST', '/messages.php', ['action' => 'send', 'body' => 'Not mi
 it_check('§75 a site photo named as a chat attachment is not attached', (int) $rootDb->query('SELECT COUNT(*) FROM messages WHERE attachment = ' . $rootDb->quote($site75))->fetchColumn() === 0, $r['raw']);
 $r = http($gj75, 'POST', '/auth.php', ['action' => 'guest_delete_account']);
 clearstatcache();
-it_check('§75 deleting the account deletes its chat photos', $r['code'] === 200 && !is_file($work . '/' . $gFile75), $r['raw']);
+it_check('§75 deleting the account deletes its chat photos', $r['code'] === 200 && !is_file($work . '/uploads/private/' . basename($gFile75)) && !is_file($work . '/' . $gFile75), $r['raw']);
 it_check('§75 …and leaves a site photo where it is', is_file($work . '/' . $site75), $site75);
 it_check('§75 …and a photo never shown, row and file, while an approved one stays on the wall without a name',
     !is_file($work . '/' . $pend75) && (int) $rootDb->query('SELECT COUNT(*) FROM guest_photos WHERE url = ' . $rootDb->quote($pend75))->fetchColumn() === 0
@@ -5192,9 +5205,10 @@ $rootDb->prepare("INSERT INTO messages (guest_id, thread_id, sender_role, body, 
 http($noJar, 'GET', '/self-repair.php?cron=' . $SECRET);
 clearstatcache();
 it_check('§75 self-repair empties a staged file nobody sent, and leaves a fresh one', !is_file($oldStaged75) && is_file($newStaged75), '');
-it_check('§75 …and deletes a chat photo no message carries, never one that a message does', !is_file($orph75) && is_file($work . '/uploads/' . $kept75), '');
+it_check('§75 …and deletes a chat photo no message carries, never one that a message does', !is_file($orph75) && !is_file($work . '/uploads/private/' . basename($orph75)) && is_file($work . '/uploads/private/' . $kept75), '');
+it_check('§75 …which it first moved out of public uploads/ into the private folder', !is_file($work . '/uploads/' . $kept75), '');
 @unlink($newStaged75);
-@unlink($work . '/uploads/' . $kept75);
+@unlink($work . '/uploads/private/' . $kept75);
 $rootDb->exec("DELETE FROM messages WHERE thread_id = $kTid75");
 $rootDb->exec("DELETE FROM chat_threads WHERE id = $kTid75");
 $rootDb->exec("DELETE FROM guest_photos WHERE url IN (" . $rootDb->quote($appr75) . ',' . $rootDb->quote($rej75) . ')');
@@ -6254,6 +6268,135 @@ $n84 = (string) $rootDb->query("SELECT name FROM guests WHERE email = " . $rootD
 it_check('§84 a refused address leaves the name unsaved too (nothing is half-written)', $r['code'] === 400 && $n84 === 'Corrected Name84', $r['raw'] . ' / ' . $n84);
 $r = http($noJar, 'POST', '/auth.php', ['action' => 'guest_update_profile', 'name' => 'Nobody']);
 it_check('§84 nobody signed in changes nothing', $r['code'] === 401, $r['raw']);
+
+// §85 PHOTOS STAY IN THE CHAT (the security leftovers, step 2). A chat photo opened
+// for anyone with its address, for as long as the conversation existed, and was
+// marked fine for shared caches to keep for 30 days; a guest's wall photo was public
+// from the moment it arrived, before anyone approved it. Now both wait in a private
+// folder and open only through photo.php with a signed link that expires.
+echo "\n== §85 photos stay in the chat ==\n";
+// The owner's session from §83 (§80 ended the suite's first one).
+$rootDb->exec("DELETE FROM login_attempts WHERE identifier IN ('chatupload', 'chatupload-new', 'chat')");
+// A raw GET that keeps the headers (http() drops them).
+$get85 = function ($path, $accept = 'image/jpeg') use ($BASE) {
+    $http_response_header = [];
+    $raw = @file_get_contents($BASE . $path, false, stream_context_create(['http' => ['method' => 'GET', 'ignore_errors' => true, 'timeout' => 30, 'header' => 'Accept: ' . $accept]]));
+    $code = 0;
+    $h = [];
+    foreach ($http_response_header as $line) {
+        if (preg_match('#^HTTP/\S+ (\d+)#', $line, $m)) {
+            $code = (int) $m[1];
+        } elseif (strpos($line, ':') !== false) {
+            [$k, $v] = explode(':', $line, 2);
+            $h[strtolower(trim($k))] = trim($v);
+        }
+    }
+    return ['code' => $code, 'raw' => (string) $raw, 'h' => $h];
+};
+$tok85 = bin2hex(random_bytes(12));
+$up85 = $mp75('/chat-upload.php', ['token' => $tok85], 'view.jpg', $jpg75);
+$staged85 = (string) ($up85['url'] ?? '');
+$anon85 = [];
+$r = http($anon85, 'POST', '/messages.php', ['action' => 'send', 'token' => $tok85, 'body' => 'The view from the quay', 'name' => 'Pia Eightyfive', 'email' => 'pia85@gmail.com', 'attachment' => $staged85]);
+$name85 = basename($staged85);
+clearstatcache();
+it_check('§85 (fixture) a chat photo sent from the website', $r['code'] === 200 && $name85 !== '' && is_file($work . '/uploads/private/' . $name85), $r['raw']);
+$t85 = http($anon85, 'POST', '/messages.php', ['action' => 'thread', 'token' => $tok85]);
+$link85 = (string) (($t85['json']['messages'][0] ?? [])['attachment'] ?? '');
+parse_str((string) parse_url($link85, PHP_URL_QUERY), $q85);
+it_check('§85 the chat hands the guest a signed link, not the photo\'s address', strpos($link85, 'photo.php?f=' . $name85 . '&exp=') === 0 && preg_match('/^[0-9a-f]{32}$/', (string) ($q85['sig'] ?? '')) === 1, $link85);
+it_check('§85 …that works for a few hours: three at least, four at most', (int) ($q85['exp'] ?? 0) >= time() + 3 * 3600 - 5 && (int) ($q85['exp'] ?? 0) <= time() + 4 * 3600 + 5, (string) ($q85['exp'] ?? ''));
+$t85b = http($anon85, 'POST', '/messages.php', ['action' => 'thread', 'token' => $tok85]);
+it_check('§85 …and is the same link on the next load, so the browser keeps its copy', (string) (($t85b['json']['messages'][0] ?? [])['attachment'] ?? '') === $link85 || (int) date('i') === 59, '');
+$g85 = $get85('/' . $link85);
+it_check('§85 the link opens the photo', $g85['code'] === 200 && strpos($g85['h']['content-type'] ?? '', 'image/') === 0 && getimagesizefromstring($g85['raw']) !== false, $g85['code'] . ' ' . ($g85['h']['content-type'] ?? ''));
+it_check('§85 …marked private, so a shared network keeps no copy, and never longer than the link lasts', preg_match('/^private, max-age=(\d+)$/', $g85['h']['cache-control'] ?? '', $cm85) === 1 && (int) $cm85[1] <= (int) $q85['exp'] - time() + 5, $g85['h']['cache-control'] ?? '');
+it_check('§85 …and it starts no session', !isset($g85['h']['set-cookie']), $g85['h']['set-cookie'] ?? '');
+// (php -S reads no .htaccess, so the private folder's own refusal is test-photo's to check.)
+it_check('§85 the photo\'s address on the site opens nothing', $get85('/uploads/' . $name85)['code'] === 404, '');
+it_check('§85 the image resizer refuses a chat photo', $get85('/img.php?src=uploads/' . $name85 . '&w=320')['code'] === 400, '');
+$sig85 = fn($n, $e) => substr(hash_hmac('sha256', 'photo|' . $n . '|' . $e, $SECRET), 0, 32);
+$past85 = time() - 60;
+$exp85 = $get85('/photo.php?f=' . $name85 . '&exp=' . $past85 . '&sig=' . $sig85($name85, $past85), 'text/html');
+it_check('§85 an expired link says so (410), in words', $exp85['code'] === 410 && stripos($exp85['raw'], 'expired') !== false, $exp85['code'] . ' ' . substr($exp85['raw'], 0, 80));
+$far85 = time() + 3600;
+it_check('§85 a forged signature opens nothing', $get85('/photo.php?f=' . $name85 . '&exp=' . $far85 . '&sig=' . str_repeat('ab', 16))['code'] === 404, '');
+it_check('§85 …nor a later expiry on a real signature', $get85('/photo.php?f=' . $name85 . '&exp=' . ((int) $q85['exp'] + 86400) . '&sig=' . $q85['sig'])['code'] === 404, '');
+$gal85 = 'gallery-' . bin2hex(random_bytes(6)) . '.jpg';
+file_put_contents($work . '/uploads/' . $gal85, $jpg75);
+it_check('§85 …nor any file but a chat or wall photo, whatever the signature', $get85('/photo.php?f=' . $gal85 . '&exp=' . $far85 . '&sig=' . $sig85($gal85, $far85))['code'] === 404 && $get85('/photo.php?f=' . rawurlencode('../config.php') . '&exp=' . $far85 . '&sig=' . $sig85('../config.php', $far85))['code'] === 404, '');
+@unlink($work . '/uploads/' . $gal85);
+$aTid85 = (int) $rootDb->query('SELECT id FROM chat_threads WHERE token = ' . $rootDb->quote($tok85))->fetchColumn();
+$ta85 = http($adm83, 'POST', '/messages.php', ['action' => 'thread', 'thread_id' => $aTid85]);
+$aLink85 = '';
+foreach ($ta85['json']['messages'] ?? [] as $am85) {
+    if (($am85['attachment'] ?? '') !== '') {
+        $aLink85 = (string) $am85['attachment'];
+    }
+}
+it_check('§85 the Inbox gets a signed link too', strpos($aLink85, 'photo.php?f=' . $name85 . '&') === 0 && $get85('/' . $aLink85)['code'] === 200, $aLink85);
+// A wall photo waits privately: the owner's list shows it through a signed link, and
+// approving it puts it on the wall at its public address.
+$w85 = 'guest-' . bin2hex(random_bytes(6)) . '.jpg';
+@mkdir($work . '/uploads/private', 0700, true);
+file_put_contents($work . '/uploads/private/' . $w85, $jpg75);
+$rootDb->prepare("INSERT INTO guest_photos (prop_key, guest_id, guest_name, url, caption, status) VALUES (?, NULL, 'Wall Eightyfive', ?, 'it85', 'pending')")->execute([$propKey, 'uploads/' . $w85]);
+$wId85 = (int) $rootDb->lastInsertId();
+$la85 = http($adm83, 'POST', '/photos.php', ['action' => 'list_admin']);
+$wUrl85 = '';
+foreach ($la85['json']['photos'] ?? [] as $lp85) {
+    if ((int) $lp85['id'] === $wId85) {
+        $wUrl85 = (string) $lp85['url'];
+    }
+}
+it_check('§85 the owner sees a waiting wall photo through a signed link', strpos($wUrl85, 'photo.php?f=' . $w85 . '&') === 0 && $get85('/' . $wUrl85)['code'] === 200 && $get85('/uploads/' . $w85)['code'] === 404, $wUrl85);
+$pub85 = http($noJar, 'GET', '/photos.php?prop=' . $propKey);
+it_check('§85 …and the public wall does not list it', strpos($pub85['raw'], $w85) === false, '');
+$r = http($adm83, 'POST', '/photos.php', ['action' => 'approve', 'id' => $wId85]);
+clearstatcache();
+$pub85 = http($noJar, 'GET', '/photos.php?prop=' . $propKey);
+it_check('§85 approving it moves it onto the wall, at its public address', $r['code'] === 200 && is_file($work . '/uploads/' . $w85) && !is_file($work . '/uploads/private/' . $w85) && strpos($pub85['raw'], 'uploads/' . $w85) !== false && $get85('/uploads/' . $w85)['code'] === 200, $r['raw']);
+// PHOTOS SENT BEFORE: a chat photo and a waiting wall photo still in public uploads/
+// move into the private folder after the deploy (migrate.php); an approved wall photo
+// stays where the wall shows it.
+$oldChat85 = 'chat-' . bin2hex(random_bytes(6)) . '.jpg';
+$oldWait85 = 'guest-' . bin2hex(random_bytes(6)) . '.jpg';
+$oldShown85 = 'guest-' . bin2hex(random_bytes(6)) . '.jpg';
+foreach ([$oldChat85, $oldWait85, $oldShown85] as $f85) {
+    file_put_contents($work . '/uploads/' . $f85, $jpg75);
+}
+file_put_contents($work . '/uploads/' . $oldChat85 . '.webp', 'w');
+$rootDb->prepare("INSERT INTO messages (guest_id, thread_id, sender_role, body, attachment) VALUES (NULL, ?, 'guest', 'old photo', ?)")->execute([$aTid85, 'uploads/' . $oldChat85]);
+$rootDb->prepare("INSERT INTO guest_photos (prop_key, guest_id, guest_name, url, caption, status) VALUES (?, NULL, 'Old Wait', ?, 'w', 'pending'), (?, NULL, 'Old Shown', ?, 's', 'approved')")->execute([$propKey, 'uploads/' . $oldWait85, $propKey, 'uploads/' . $oldShown85]);
+$mg85 = http($noJar, 'GET', '/migrate.php?cron=' . $SECRET);
+clearstatcache();
+it_check('§85 after the deploy, a chat photo sent before moves into the private folder, its WebP copy with it', !is_file($work . '/uploads/' . $oldChat85) && is_file($work . '/uploads/private/' . $oldChat85) && is_file($work . '/uploads/private/' . $oldChat85 . '.webp') && ($mg85['json']['photos_made_private'] ?? 0) >= 2, json_encode($mg85['json']['photos_made_private'] ?? null));
+it_check('§85 …a wall photo still waiting moves too, an approved one stays on the wall', !is_file($work . '/uploads/' . $oldWait85) && is_file($work . '/uploads/private/' . $oldWait85) && is_file($work . '/uploads/' . $oldShown85), '');
+$t85c = http($anon85, 'POST', '/messages.php', ['action' => 'thread', 'token' => $tok85]);
+$oldLink85 = '';
+foreach ($t85c['json']['messages'] ?? [] as $om85) {
+    if (strpos((string) ($om85['attachment'] ?? ''), $oldChat85) !== false) {
+        $oldLink85 = (string) $om85['attachment'];
+    }
+}
+it_check('§85 …and it opens from the chat through a signed link, as the new ones do', $oldLink85 !== '' && $get85('/' . $oldLink85)['code'] === 200 && $get85('/uploads/' . $oldChat85)['code'] === 404, $oldLink85);
+$mg85b = http($noJar, 'GET', '/migrate.php?cron=' . $SECRET);
+it_check('§85 the next deploy moves nothing', ($mg85b['json']['photos_made_private'] ?? -1) === 0, json_encode($mg85b['json']['photos_made_private'] ?? null));
+// A photo whose public copy is still there (the move missed it) is moved by the first
+// request for it, so its old address stops working then.
+$late85 = 'chat-' . bin2hex(random_bytes(6)) . '.jpg';
+file_put_contents($work . '/uploads/' . $late85, $jpg75);
+$lateExp85 = time() + 3600;
+$gl85 = $get85('/photo.php?f=' . $late85 . '&exp=' . $lateExp85 . '&sig=' . $sig85($late85, $lateExp85));
+clearstatcache();
+it_check('§85 a chat photo the move missed is moved by the first request for it', $gl85['code'] === 200 && !is_file($work . '/uploads/' . $late85) && is_file($work . '/uploads/private/' . $late85), (string) $gl85['code']);
+$r = http($adm83, 'POST', '/messages.php', ['action' => 'delete', 'thread_id' => $aTid85]);
+foreach ([$work . '/uploads/private/' . $late85, $work . '/uploads/' . $w85, $work . '/uploads/private/' . $oldWait85, $work . '/uploads/' . $oldShown85] as $f85) {
+    @unlink($f85);
+}
+$rootDb->exec("DELETE FROM guest_photos WHERE caption IN ('it85', 'w', 's') AND guest_name IN ('Wall Eightyfive', 'Old Wait', 'Old Shown')");
+clearstatcache();
+it_check('§85 deleting the conversation deletes its photos from the private folder', $r['code'] === 200 && !is_file($work . '/uploads/private/' . $name85) && !is_file($work . '/uploads/private/' . $oldChat85) && !is_file($work . '/uploads/private/' . $oldChat85 . '.webp'), $r['raw']);
 
 echo "\n== Summary ==\n";
 if ($fail) {
