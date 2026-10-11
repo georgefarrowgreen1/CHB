@@ -457,6 +457,38 @@ if (defined('REPLY_INBOX') && REPLY_INBOX) {
     );
 }
 
+// THE NARROWER OUTSIDE-CODE RULE ON TRIAL (the security leftovers, Step 5): what it
+// would have stopped in the last week, so it can be switched on with the facts in
+// front of you. Shown only while a trial runs (csp-trial.php, from htaccess.txt).
+$cspTrial = is_file(__DIR__ . '/csp-trial.php') ? (string) (@include __DIR__ . '/csp-trial.php') : '';
+if ($cspTrial !== '') {
+    $seen = [];
+    try {
+        $seen = db()
+            ->query("SELECT summary, MAX(created_at) AS at FROM activity_log WHERE action = 'csp.trial' AND created_at > (NOW() - INTERVAL 7 DAY) GROUP BY summary ORDER BY at DESC LIMIT 20")
+            ->fetchAll();
+    } catch (\Throwable $e) {
+    }
+    $what = function ($summary) {
+        $parts = explode(' → ', preg_replace('/^Narrower rule would stop /', '', (string) $summary), 2);
+        $dir = $parts[0] ?? '';
+        $noun = preg_match('/^(script|worker)/', $dir) ? 'a script' : (preg_match('/^style/', $dir) ? 'a stylesheet' : ($dir === 'img-src' ? 'an image' : ($dir === 'connect-src' ? 'a download' : ($dir === 'font-src' ? 'a font' : 'something'))));
+        return $noun . ' from ' . ($parts[1] ?? '?');
+    };
+    $list = array_map(fn($r) => $what($r['summary'] ?? ''), $seen);
+    $n = count($list);
+    add(
+        $checks,
+        'Security',
+        'Outside code rule (on trial)',
+        $n ? 'warn' : 'ok',
+        $n
+            ? ($n === 1 ? 'Would have stopped ' . $list[0] . ' in the last 7 days.' : 'Would have stopped ' . $n . ' things in the last 7 days, including ' . $list[0] . '. All of them: ' . implode('; ', $list) . '.')
+            : 'Nothing in the last 7 days would have been stopped by the narrower rule.',
+        $n ? 'If any of these is one of the site\'s own libraries, its address belongs in the rule before it is switched on.' : '',
+    );
+}
+
 // ---- Welcome book (content-backed, no table) ----------------------------
 add(
     $checks,

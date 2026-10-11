@@ -191,6 +191,7 @@ $REGISTRY = [
     'bank-lib.php' => ['lib', [], 'Square linked-bank-account cache + the can-money-move decision; required by accounts.php, self-repair.php and square-setup.php (no entry of its own)'],
     'payouts-lib.php' => ['lib', [], 'Square payout cache + landed/on-its-way decisions; required by accounts.php, self-repair.php and square-setup.php (no entry of its own)'],
     'csp-policy.php' => ['lib', [], 'generated: returns the live CSP string for csp-report.php (no entry)'],
+    'csp-trial.php' => ['lib', [], 'generated: returns the CSP on trial (Report-Only) for diagnostics.php (no entry)'],
     'customers-lib.php' => ['lib', [], 'customers_group()/customers_key() shared client/server rule'],
     'people-lib.php' => ['lib', [], 'who may do what: the pure rules db.php enforces (no routes of its own)'],
     'session-lib.php' => ['lib', [], 'the session lifetime + the daily sweep of the session folder; required by db.php (no entry)'],

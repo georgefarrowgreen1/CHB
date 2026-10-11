@@ -168,7 +168,7 @@ function activity_business_events($per = 12)
 
 // Machine reports: anyone can cause one (a browser's CSP report, a blocked
 // probe, a script error), so they are read apart from everything else.
-const ACTIVITY_NOISE_ACTIONS = ['csp.violation', 'request.blocked', 'client.error', 'client.swallow'];
+const ACTIVITY_NOISE_ACTIONS = ['csp.violation', 'csp.trial', 'request.blocked', 'client.error', 'client.swallow'];
 
 // Owner/admin actions + site changes from the activity_log table. $which: 'all',
 // 'real' (no machine reports) or 'noise' (only those).

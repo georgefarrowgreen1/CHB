@@ -20,8 +20,9 @@
 //  spay.samsung.com), both of which the post-fix policy permits.
 // ============================================================
 
-// Split "https://a.b/c" into ['scheme'=>'https','host'=>'a.b']. Scheme lower-cased;
-// host lower-cased and de-ported. Returns '' parts it can't determine.
+// Split "https://a.b/c/d.js?x" into ['scheme'=>'https','host'=>'a.b','path'=>'/c/d.js'].
+// Scheme and host lower-cased, host de-ported, the path percent-decoded (CSP compares
+// decoded paths) and '/' when a host has none. Returns '' parts it can't determine.
 function csp_uri_parts(string $uri): array
 {
     $uri = trim($uri);
@@ -34,7 +35,12 @@ function csp_uri_parts(string $uri): array
     if (is_string($h) && $h !== '') {
         $host = strtolower($h);
     }
-    return ['scheme' => $scheme, 'host' => $host];
+    $path = '';
+    if ($host !== '') {
+        $p = parse_url($uri, PHP_URL_PATH);
+        $path = is_string($p) && $p !== '' ? rawurldecode($p) : '/';
+    }
+    return ['scheme' => $scheme, 'host' => $host, 'path' => $path];
 }
 
 // Parse a CSP string into directive => [source, source, …], everything lower-cased.
@@ -63,6 +69,16 @@ function csp_parse_policy(string $policy): array
 function csp_extract_policy(string $htaccess): ?string
 {
     if (preg_match_all('/Header\s+(?:always\s+)?set\s+Content-Security-Policy\s+"([^"]*)"/i', $htaccess, $m) && $m[1]) {
+        return end($m[1]);
+    }
+    return null;
+}
+
+// The narrower rule on trial, sent as Content-Security-Policy-Report-Only (the browser
+// reports what it would stop and stops nothing). Null when no trial is running.
+function csp_extract_trial_policy(string $htaccess): ?string
+{
+    if (preg_match_all('/Header\s+(?:always\s+)?set\s+Content-Security-Policy-Report-Only\s+"([^"]*)"/i', $htaccess, $m) && $m[1]) {
         return end($m[1]);
     }
     return null;
@@ -140,7 +156,7 @@ function csp_live_policy(string $dir): ?array
 //    external host: 'self' is same-origin (which a stale-client downgrade must not
 //    over-claim without knowing our origin), and the inline/eval keywords are
 //    handled separately as their own 'info' class.
-function csp_source_permits(string $source, string $scheme, string $host): bool
+function csp_source_permits(string $source, string $scheme, string $host, ?string $path = null): bool
 {
     $source = strtolower(trim($source));
     if ($source === '' || $source === "'self'" || $source[0] === "'") {
@@ -160,16 +176,31 @@ function csp_source_permits(string $source, string $scheme, string $host): bool
     if ($srcScheme !== '' && $scheme !== '' && $srcScheme !== $scheme) {
         return false;
     }
-    // Strip any path/port from the source host part.
+    // Split the host from any port and path.
     $srcHost = preg_replace('#[/:].*$#', '', $rest);
     if ($srcHost === '' || $host === '') {
         return false;
     }
     if (strpos($srcHost, '*.') === 0) {
         $suffix = substr($srcHost, 1); // "*.google.com" → ".google.com" (subdomains only)
-        return $host !== '' && substr($host, -strlen($suffix)) === $suffix;
+        if (substr($host, -strlen($suffix)) !== $suffix) {
+            return false;
+        }
+    } elseif ($host !== $srcHost) {
+        return false;
     }
-    return $host === $srcHost;
+    // A source with a PATH pins it, as the browser does: one ending in '/' allows
+    // everything under it, any other must match exactly. Without the path a pinned
+    // jsDelivr source would read as allowing all of jsDelivr. A report that names only
+    // the origin cannot be shown to sit under a pinned path, so it does not.
+    $srcPath = preg_match('#^[^/]*(/.*)$#', $rest, $pm) ? rawurldecode($pm[1]) : '';
+    if ($srcPath === '' || $srcPath === '/') {
+        return true;
+    }
+    if ($path === null || $path === '') {
+        return false;
+    }
+    return substr($srcPath, -1) === '/' ? strpos($path, $srcPath) === 0 : $path === $srcPath;
 }
 
 // Does the whole policy permit this (directive, blocked-uri)? Fetch directives fall
@@ -182,20 +213,53 @@ function csp_policy_permits(array $parsed, string $directive, string $blockedUri
     if ($parts['scheme'] === '') {
         return false; // "inline" / "eval" / "" are not URIs — handled elsewhere
     }
+    // The first of these the policy states is the one that applies (CSP3). Browsers
+    // report a script as script-src-elem, which falls back to script-src; reading it
+    // against default-src alone judged every allowed script as forbidden.
+    $chains = [
+        'script-src-elem' => ['script-src-elem', 'script-src', 'default-src'],
+        'script-src-attr' => ['script-src-attr', 'script-src', 'default-src'],
+        'style-src-elem' => ['style-src-elem', 'style-src', 'default-src'],
+        'style-src-attr' => ['style-src-attr', 'style-src', 'default-src'],
+        'worker-src' => ['worker-src', 'child-src', 'script-src', 'default-src'],
+    ];
     $noFallback = ['form-action', 'frame-src', 'frame-ancestors', 'base-uri', 'navigate-to'];
-    $sources = $parsed[$directive] ?? null;
-    if ($sources === null && !in_array($directive, $noFallback, true)) {
-        $sources = $parsed['default-src'] ?? null; // fetch-directive fallback
+    $chain = $chains[$directive] ?? (in_array($directive, $noFallback, true) ? [$directive] : [$directive, 'default-src']);
+    $sources = null;
+    foreach ($chain as $d) {
+        if (isset($parsed[$d])) {
+            $sources = $parsed[$d];
+            break;
+        }
     }
     if (!$sources) {
         return false;
     }
     foreach ($sources as $s) {
-        if (csp_source_permits($s, $parts['scheme'], $parts['host'])) {
+        if (csp_source_permits($s, $parts['scheme'], $parts['host'], $parts['path'])) {
             return true;
         }
     }
     return false;
+}
+
+// A report from the TRIAL policy (?trial=1) is worth keeping only when the narrowing
+// is what stops it: the enforced rule allows it today. Anything the enforced rule also
+// stops is already reported by it; inline / eval / empty are not addresses.
+function csp_trial_worth_recording(string $directive, string $blockedUri, ?array $enforced): bool
+{
+    if (csp_uri_parts($blockedUri)['host'] === '') {
+        return false;
+    }
+    return $enforced === null || csp_policy_permits($enforced, $directive, $blockedUri);
+}
+
+// How a trial report is de-duplicated and shown: the directive and the address without
+// its query (a query can carry a per-request id).
+function csp_trial_sig(string $directive, string $blockedUri): string
+{
+    $p = csp_uri_parts($blockedUri);
+    return strtolower(trim($directive)) . ' → ' . $p['host'] . $p['path'];
 }
 
 // The whole severity decision, in one testable place. 'info' = keep for forensics,
