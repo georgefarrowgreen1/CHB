@@ -243,7 +243,10 @@ function stub(page) {
     await page.close();
     page = await open({ standalone: true, touch: true });
     const cdp = await page.context().newCDPSession(page);
-    const touch = (type, x, y) => cdp.send('Input.dispatchTouchEvent', { type, touchPoints: type === 'touchEnd' ? [] : [{ x, y }] });
+    // `at` stamps the event (ms since epoch): a flick is judged by the events' own
+    // timeStamps, and on a loaded machine the round trips between CDP sends spread
+    // a 50ms flick over 300ms and read it as a slow drag.
+    const touch = (type, x, y, at) => cdp.send('Input.dispatchTouchEvent', Object.assign({ type, touchPoints: type === 'touchEnd' ? [] : [{ x, y }] }, at ? { timestamp: at / 1000 } : {}));
     await page.evaluate(() => openGuestAccount());
     await page.waitForTimeout(300);
     await page.evaluate(() => toggleChat());
@@ -288,17 +291,17 @@ function stub(page) {
     // A flick goes back.
     await page.evaluate(() => toggleChat());
     await atRest(page);
-    await touch('touchStart', 4, 500);
-    await touch('touchMove', 30, 500);
-    await page.waitForTimeout(16);
-    await touch('touchMove', 70, 500);
-    await page.waitForTimeout(16);
-    await touch('touchMove', 110, 500);
-    await touch('touchEnd');
+    const t0 = Date.now();
+    await touch('touchStart', 4, 500, t0);
+    await touch('touchMove', 30, 500, t0 + 16);
+    await touch('touchMove', 70, 500, t0 + 32);
+    await touch('touchMove', 110, 500, t0 + 48);
+    await touch('touchEnd', 0, 0, t0 + 52);
     await gone(page);
     check(!(await state(page)).open, 'a short fast flick goes back');
-    // A vertical drag on the strip is not a swipe.
-    await page.evaluate(() => toggleChat());
+    // A vertical drag on the strip is not a swipe. (Opened only if the flick above
+    // left it closed, so a failed flick is one failure, not two.)
+    await page.evaluate(() => { if (!document.getElementById('chat-widget').classList.contains('open')) toggleChat(); });
     await atRest(page);
     await touch('touchStart', 6, 400);
     for (let y = 410; y <= 520; y += 10) {
