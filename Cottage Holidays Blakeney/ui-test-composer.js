@@ -253,6 +253,26 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
       return r.height > 0 && r.top >= -1 && r.bottom <= innerHeight + 1;
     }, null, { timeout: 15000 }).then(() => true, () => false);
     ok(rested, `the sheet came to rest on screen (${what})`);
+    // CI has seen this fail with the sheet held 105% down (the drag exit's end point),
+    // and it has never failed on this machine. Say what is holding it, so the next
+    // failure names its cause instead of only its symptom.
+    if (!rested) {
+      console.log('    sheet state: ' + await page.evaluate(() => {
+        const m = document.getElementById('enq-email-modal');
+        const sh = document.getElementById('cmp-sheet');
+        if (!m || !sh) return 'no sheet';
+        const r = sh.getBoundingClientRect();
+        return JSON.stringify({
+          cls: m.className, inline: sh.style.transform, computed: getComputedStyle(sh).transform,
+          top: Math.round(r.top), bottom: Math.round(r.bottom), vh: innerHeight,
+          anims: sh.getAnimations().map((a) => ({
+            kind: a.constructor.name, name: /** @type {any} */ (a).animationName || '', state: a.playState,
+            at: a.currentTime == null ? null : Math.round(Number(a.currentTime)),
+            to: a.effect && /** @type {any} */ (a.effect).getKeyframes ? /** @type {any} */ (a.effect).getKeyframes().map((f) => f.transform || f.opacity || '').join(' > ') : '',
+          })),
+        });
+      }).catch((e) => 'unreadable: ' + e.message));
+    }
     return rested;
   };
   const grabAt = () => page.evaluate(() => { const r = document.querySelector('.cmp-grab').getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + 2 }; });
@@ -285,6 +305,46 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
     return document.getElementById('enq-email-modal').classList.contains('open');
   });
   ok(batched, 'a slow drag handed over in one batch (a busy phone) still springs back');
+
+  // A drag-close's clean-up belongs to THAT close. It ran 340ms later and cancelled
+  // whatever the sheet was doing by then, so an owner who let go and tapped the
+  // envelope straight away saw the new sheet's rise cut off mid-way. Reopened in the
+  // same breath as the close (a mutation observer, so no clock decides it), the rise
+  // must run to its end, and the backdrop must come back with it.
+  await atRest('before a quick reopen');
+  const quick = await page.evaluate(async () => {
+    const sheet = document.getElementById('cmp-sheet');
+    const modal = document.getElementById('enq-email-modal');
+    const scrim = /** @type {HTMLElement} */ (document.querySelector('#enq-email-modal .cmp-scrim'));
+    const t = document.getElementById('cmp-top');
+    let reopened = false, cut = 0, risen = 0, leftover = -1;
+    sheet.addEventListener('animationcancel', (e) => { if (e.target === sheet && e.animationName === 'cmpUp') cut++; });
+    sheet.addEventListener('animationend', (e) => { if (e.target === sheet && e.animationName === 'cmpUp') risen++; });
+    const mo = new MutationObserver(() => {
+      if (reopened || modal.classList.contains('open')) return;
+      reopened = true;
+      mo.disconnect();
+      openBookingEmail('b50');
+      // The exit's own slide and fade, still filling: nothing of the last close may
+      // outlive the opening (the backdrop's fade held it at 0 for 340ms more).
+      leftover = [sheet, scrim].reduce((n, el) => n + el.getAnimations().filter((x) => !(typeof CSSAnimation !== 'undefined' && x instanceof CSSAnimation)).length, 0);
+    });
+    mo.observe(modal, { attributes: true, attributeFilter: ['class'] });
+    const g = document.querySelector('.cmp-grab').getBoundingClientRect();
+    const x = g.left + g.width / 2, y = g.top + 2;
+    const ev = (type, cy) => new PointerEvent(type, { bubbles: true, cancelable: true, clientX: x, clientY: cy, pointerId: 9, pointerType: 'touch', isPrimary: true, button: 0, buttons: type === 'pointerup' ? 0 : 1 });
+    t.dispatchEvent(ev('pointerdown', y));
+    t.dispatchEvent(ev('pointermove', y + 400)); // a long, fast drag: it closes
+    t.dispatchEvent(ev('pointerup', y + 400));
+    await new Promise((r) => setTimeout(r, 2000)); // past the close, the 340ms clean-up and the 520ms rise
+    return { reopened, cut, risen, leftover, open: modal.classList.contains('open'), scrim: getComputedStyle(scrim).opacity, held: sheet.getAnimations().length };
+  });
+  ok(quick.reopened && quick.open, `a drag-close reopened at once is open (${JSON.stringify(quick)})`);
+  ok(quick.leftover === 0, `…and the last close's exit is gone the moment it opens (${quick.leftover} left)`);
+  ok(quick.cut === 0 && quick.risen === 1, `…and its rise runs to the end, not cut off by the last close's clean-up (cut ${quick.cut}, finished ${quick.risen})`);
+  ok(Number(quick.scrim) === 1 && quick.held === 0, `…with the backdrop back and nothing left holding the sheet (scrim ${quick.scrim}, animations ${quick.held})`);
+  await atRest('after a quick reopen');
+
   await page.evaluate(() => closeEnquiryEmailModal());
   await page.waitForTimeout(400);
 

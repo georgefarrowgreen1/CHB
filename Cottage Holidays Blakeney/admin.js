@@ -35358,6 +35358,22 @@ let __cmpPvT = null;
 let __cmpPvStamp = 0;
 let __cmpSavedT = null;
 let __cmpToastT = null;
+// A drag-to-close's own exit { a, sa, timer }. The next opening stands it down: left
+// to fire 340ms later, its clean-up cut a quick reopen's rise off mid-way.
+let __cmpDragExit = null;
+function cmpDragExitClear(exit) {
+    if (!exit || __cmpDragExit !== exit) return;
+    __cmpDragExit = null;
+    clearTimeout(exit.timer);
+    try { exit.a.cancel(); } catch (e) {}
+    try { if (exit.sa) exit.sa.cancel(); } catch (e) {}
+    const sheet = document.getElementById('cmp-sheet');
+    if (sheet) sheet.style.transform = '';
+    const scrim = /** @type {HTMLElement|null} */ (document.querySelector('#enq-email-modal .cmp-scrim'));
+    if (scrim) scrim.style.opacity = '';
+    const m = document.getElementById('enq-email-modal');
+    if (m) m.classList.remove('cmp-dragged');
+}
 // The send waiting out its five seconds: { timer, tick, commit, snap }.
 let __cmpHold = null;
 
@@ -35672,6 +35688,7 @@ function cmpOpen(t, restore) {
     cmpSetPane('write', true);
     // A drag's own exit may still hold the sheet off screen: let it go first, so
     // the CSS rise below starts from the bottom edge.
+    cmpDragExitClear(__cmpDragExit);
     const sheet = document.getElementById('cmp-sheet');
     if (sheet) {
         sheet.style.transform = '';
@@ -36177,15 +36194,13 @@ document.addEventListener('keydown', (e) => {
             const m = document.getElementById('enq-email-modal');
             if (m) m.classList.add('cmp-dragged'); // its own exit, from where the finger left it
             const a = sheet.animate([{ transform: from }, { transform: 'translateY(105%)' }], { duration: cmpReduced() ? 1 : 260, easing: 'cubic-bezier(0.4, 0, 1, 1)', fill: 'forwards' });
-            if (scrim) scrim.animate([{ opacity: scrim.style.opacity || '1' }, { opacity: '0' }], { duration: cmpReduced() ? 1 : 260, fill: 'forwards' });
+            const sa = scrim ? scrim.animate([{ opacity: scrim.style.opacity || '1' }, { opacity: '0' }], { duration: cmpReduced() ? 1 : 260, fill: 'forwards' }) : null;
+            const exit = { a, sa, timer: 0 };
+            __cmpDragExit = exit;
             a.finished.then(() => {
+                if (__cmpDragExit !== exit) return;
                 closeEnquiryEmailModal();
-                setTimeout(() => {
-                    sheet.getAnimations().forEach((x) => x.cancel());
-                    if (scrim) { scrim.getAnimations().forEach((x) => x.cancel()); scrim.style.opacity = ''; }
-                    sheet.style.transform = '';
-                    if (m) m.classList.remove('cmp-dragged');
-                }, 340);
+                exit.timer = setTimeout(() => cmpDragExitClear(exit), 340);
             }, () => {});
         } else {
             sheet.style.transform = '';
