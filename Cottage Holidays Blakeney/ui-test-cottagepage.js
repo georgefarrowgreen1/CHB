@@ -259,7 +259,7 @@ let base;
             await page.evaluate((g) => { document.getElementById('prop-map').style.background = g; }, TILE_GROUND[theme]);
             await bringIntoView(page, '#prop-map', 100);
             await page.waitForTimeout(250);
-            const boxes = await page.evaluate(() => {
+            const measure = () => page.evaluate(() => {
                 const zin = document.querySelector('.leaflet-control-zoom-in');
                 const attr = document.querySelector('.leaflet-control-attribution');
                 const map = document.getElementById('prop-map');
@@ -267,8 +267,21 @@ let base;
                 return { zin: zin && r(zin), attr: attr && r(attr), map: map && r(map),
                     ink: zin && getComputedStyle(zin).color, sub: attr && getComputedStyle(attr).color };
             });
+            // The boxes and the screenshot are two moments: on a loaded machine the page
+            // can still be settling between them, so a sample is only kept when the boxes
+            // measured either side of the screenshot agree.
+            let boxes = await measure();
+            let png = null;
+            for (let i = 0; i < 6; i++) {
+                const shot = decodePng(await page.screenshot());
+                const after = await measure();
+                if (JSON.stringify(after) === JSON.stringify(boxes)) { png = shot; break; }
+                boxes = after;
+                await page.waitForTimeout(250);
+            }
             ok(!!boxes.zin && !!boxes.attr, `[${theme}] the zoom control and the attribution strip are on the map`);
-            const png = decodePng(await page.screenshot());
+            ok(!!png, `[${theme}] the map stood still for its screenshot`);
+            if (!png) { await page.close(); continue; }
             const at = (x, y) => png.px(Math.round(x), Math.round(y));
             // Inside the button, clear of the glyph: a sixth in from its edge.
             const fill = at(boxes.zin.x + boxes.zin.w * 0.16, boxes.zin.y + boxes.zin.h * 0.5);
@@ -497,7 +510,7 @@ let base;
             await page.waitForTimeout(600);
             await page.evaluate(() => openProperty('21a'));
             await page.waitForTimeout(700);
-            for (const [name, sel] of [['the facts line', '#prop-subtitle'], ['the waitlist link', '[data-fn="openWaitlistHere"]']]) {
+            for (const [name, sel] of [['the facts line', '#prop-subtitle'], ['the waitlist link', '[data-act="openWaitlistHere"]']]) {
                 const lines = await page.evaluate(lineSplit(sel));
                 ok(Array.isArray(lines) && lines.length >= 1, `[${theme}] read ${name} (${lines ? lines.length : 0} line(s))`);
                 if (!lines) continue;
@@ -518,6 +531,30 @@ let base;
             ok(!hangingO.length, `[${theme}] the owner-typed <prop>-subtitle gets the same binding` + (hangingO.length ? ` — "${hangingO[0]}"` : ''));
             await page.close();
         }
+    }
+
+    // ================= §6b THE WAITLIST LINK OPENS, ON THIS COTTAGE =================
+    // It was wired to a global that does not exist (#1311), so tapping it did
+    // nothing; and the cottage it passed was window.activeFrontProperty, which a
+    // top-level let never sets. Opened from a cottage other than the first, so the
+    // picker's default cannot pass for the right answer.
+    console.log('\n== §6b The waitlist link opens the waitlist on the cottage you are looking at ==');
+    {
+        const page = await openPage(browser, { width: 390, theme: 'dark' });
+        await page.waitForTimeout(600);
+        await page.evaluate(() => openProperty('jollyboat'));
+        await page.waitForTimeout(700);
+        const first = await page.evaluate(() => (document.querySelector('#wl-prop option') || {}).value || '');
+        await page.click('[data-act="openWaitlistHere"]');
+        await page.waitForTimeout(500);
+        const wl = await page.evaluate(() => ({
+            open: document.getElementById('waitlist-modal').classList.contains('open'),
+            prop: (document.getElementById('wl-prop') || {}).value,
+            url: location.hash,
+        }));
+        ok(wl.open, `tapping the link opens the waitlist (${JSON.stringify(wl)})`);
+        ok(wl.prop === 'jollyboat' && first !== 'jollyboat', `…on the cottage the page is about, not the first in the list (${wl.prop}; first ${first || 'none yet'})`);
+        await page.close();
     }
 
     // ================= §7 A SCOPED LIST DOES NOT NAME THE COTTAGE =================

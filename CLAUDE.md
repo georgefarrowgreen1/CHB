@@ -5455,8 +5455,9 @@ section".** The "Your details" and "Account & security" pop-ups are GONE (markup
   says why; `gaResetLink`). **`guest_send_reset` now also serves a signed-in GUEST**, to their
   OWN address only — the body's email is ignored for a guest (test-integration §45).
   Passkeys are rows (`__gaPasskeys`, filled by `loadPasskeys`).
-- **Call us exists only when `contact-phone` is configured** — the CONTACT_PHONE_* fallbacks
-  are placeholders, and a row dialling them is worse than none.
+- **Call us exists only when `contact-phone` is configured** — a row dialling a made-up number is worse than none.
+  The enquiry form's "Call to discuss" follows the same rule (round 8: it dialled +440000000000; the fallback
+  constants are gone).
 - **Sign out and Delete ask first**; backing out sends nothing.
 - **My stays**: `#gb-seg` is an Upcoming | Past switch (`gbSeg`, `__gbSeg`) shown ONLY when
   both sides have stays; the panes are `#gb-pane-up` / `#gb-pane-past` (hidden, so textContent
@@ -10621,6 +10622,15 @@ permission given). Seven read-only audit lenses ran beside a full local gauntlet
 - **The back-office bundle ships without its comments** (`strip-comments.js` TARGETS gained admin.js and admin.css:
   -228.5KB gz per owner download, the same token-for-token verification; smoke-test §12g reads the list).
 - **The activity log clears a row's IP after 90 days** (§56).
+- **No ghost Messages panel on navigation.** `nav()` closes Messages before it switches the page, and
+  `chbCloseOverlay` played the exit animation on whatever it was given, so every navigation painted the closed chat
+  panel sliding away. It now returns at once unless the overlay is open or already closing (ui-test-overlays §8, a
+  MutationObserver across four navigations; break-tested).
+- **"Get notified if dates free up" opens on the cottage the guest is reading.** The link was wired as a phone
+  call (`data-act="pdCall"` with a `data-fn`), so it opened the waitlist on the first cottage in the list. It is
+  `data-act="openWaitlistHere"` now, reading `activeFrontProperty` (ui-test-cottagepage §6b).
+- **"Call to discuss" only with a real number**: `wireCallButtons` reads `gaPhone()` and hides the button when no
+  `contact-phone` is set; the placeholder constants are gone (smoke-test scans for them).
 
 ## Self-repair & error reporting
 - Errors: client capture (app.js, third-party webview noise filtered, sends
