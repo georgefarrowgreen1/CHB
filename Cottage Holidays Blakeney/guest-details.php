@@ -153,6 +153,8 @@ function render_guest_form_html($d)
         '.hint{font-weight:400;color:#655D50;font-size:11px;}' .
         'input[type=text]{display:block;width:100%;margin-top:5px;padding:11px 12px;border:1px solid #ddd4c2;border-radius:10px;font-size:16px;font-family:inherit;color:#1b2a34;background:#fff;}' .
         'input[type=text]:focus{outline:none;border-color:' . $accent . ';}' .
+        // A phone's autofill paints the field yellow; an inset of the field's own white covers it.
+        'input:-webkit-autofill{-webkit-text-fill-color:#1b2a34;caret-color:#1b2a34;box-shadow:inset 0 0 0 100vmax #fff;}' .
         '.natwrap{position:relative;margin-top:5px;}' .
         '.natwrap input{margin-top:0;}' .
         'input.nat{padding-right:34px;background-image:url("data:image/svg+xml;utf8,<svg xmlns=\'http://www.w3.org/2000/svg\' width=\'16\' height=\'16\' viewBox=\'0 0 24 24\' fill=\'none\' stroke=\'%238a8378\' stroke-width=\'2\' stroke-linecap=\'round\' stroke-linejoin=\'round\'><polyline points=\'6 9 12 15 18 9\'/></svg>");background-repeat:no-repeat;background-position:right 12px center;}' .

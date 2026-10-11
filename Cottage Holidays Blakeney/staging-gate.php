@@ -99,6 +99,7 @@ $esc = fn($s) => htmlspecialchars((string) $s, ENT_QUOTES, 'UTF-8');
   p.sub{color:#aeb2c0;margin:0 0 22px;font-size:0.95rem;line-height:1.5}
   label{display:block;text-align:left;font-size:0.8rem;color:#aeb2c0;margin:0 0 4px}
   input{width:100%;box-sizing:border-box;padding:13px 14px;margin:0 0 14px;border-radius:12px;border:1px solid #2c2f38;background:#15161b;color:#f4f5f7;font-size:1rem}
+  input:-webkit-autofill{-webkit-text-fill-color:#f4f5f7;caret-color:#f4f5f7;box-shadow:inset 0 0 0 100vmax #15161b}
   button{width:100%;padding:14px;border:0;border-radius:12px;background:#D6A785;color:#1a191b;font-weight:700;font-size:1rem;cursor:pointer}
   .err{color:#ff9b9b;font-size:0.85rem;margin:0 0 14px}
 </style></head>

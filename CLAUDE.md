@@ -5949,6 +5949,17 @@ are GONE (`switchGuestTab` survives as a compat opener).
   clear, not to land on. **`a11y-test.js`** gates all of it (see Testing / CI).
 - Guest mobile shell CSS/JS is gated to `body.guest-app:not(.owner-mode)` so admin
   (`owner-mode`) and desktop are never affected. Keep new shell rules gated the same way.
+- **An autofilled field keeps its look** (app.css, `@layer chb-autofill`; reported from a phone: iOS
+  painted the booking sheet's Name/Email/Phone yellow). The browser's colour comes from UA `!important`
+  rules no page can outrank, so `background-clip: text` hides it and `-webkit-text-fill-color` /
+  `caret-color` keep the theme's ink (the UA's black text vanished on the dark theme). The layer is
+  load-bearing: a layered `!important` beats a field's own `background: … !important` shorthand, which
+  resets the clip (the newsletter field and the one-look fields both have one). A field with its own
+  fill gets it back as an inset shadow: `.input-glass` (app.css), the one-look fields and the password
+  sheet (admin.css); a see-through field (booking sheet, sign-in, newsletter) stays see-through.
+  guest-details.php and staging-gate.php carry their own stylesheet and use an opaque inset of their
+  field's ground. Checked in Chromium with real autofill (CDP `Autofill.trigger` fills a card form);
+  WebKit is not available here, so iOS rests on the same mechanism.
 - The site deploys from `main`; the repo is cloned fresh each session (ephemeral
   container), so anything that must persist has to be committed.
 

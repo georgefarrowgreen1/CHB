@@ -5278,6 +5278,35 @@ body.owner-mode #reserve-enquire-btn {
   outline: none;
   border-color: var(--text-light);
 }
+/* AN AUTOFILLED FIELD KEEPS ITS LOOK. Browsers paint it their own colour (yellow on
+   iOS, blue in Chrome) with black text, from !important rules no page can outrank.
+   Clipping the background to the text hides that paint; the text and caret keep the
+   theme's ink. In a layer, because a layered !important beats a field's own
+   `background: … !important`, which would put the clip back. A field with a fill of
+   its own gets it back as an inset shadow (over the background, under the text). */
+@layer chb-autofill {
+  input:-webkit-autofill,
+  textarea:-webkit-autofill,
+  select:-webkit-autofill {
+    -webkit-background-clip: text !important;
+    background-clip: text !important;
+    -webkit-text-fill-color: var(--text-light) !important;
+    caret-color: var(--text-light);
+    filter: none;
+  }
+  /* Safari's states for a password it suggested: their own rule, because a browser
+     drops a whole selector list when it can't read one of them. */
+  input:-webkit-autofill-strong-password,
+  input:-webkit-autofill-strong-password-viewable {
+    -webkit-background-clip: text !important;
+    background-clip: text !important;
+    -webkit-text-fill-color: var(--text-light) !important;
+    caret-color: var(--text-light);
+  }
+}
+.input-glass:-webkit-autofill { box-shadow: inset 0 0 0 100vmax rgba(0, 0, 0, 0.14); }
+body.light-mode .input-glass:-webkit-autofill { box-shadow: inset 0 0 0 100vmax rgba(255, 255, 255, 0.5); }
+.footer-newsletter .input-glass:-webkit-autofill { box-shadow: none !important; }
 /* Inline date-rule warning shown live under the date picker (overrides the inline muted colour). */
 .hint-warn {
   color: var(--warn-text) !important; /* theme-tuned amber (was raw #f0a33a, illegible on the light ground) */
