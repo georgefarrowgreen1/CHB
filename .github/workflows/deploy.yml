@@ -78,14 +78,16 @@ jobs:
             find "$OUT/uploads" -type f ! -name '.htaccess' ! -name 'README.txt' -delete
           fi
 
-          # STRIP FULL-LINE COMMENTS from the four assets every anonymous visitor
-          # downloads — 143KB gz of a 461KB payload, and ~245KB of raw JS a phone
-          # no longer parses. LINE-PRESERVING (blanked, never deleted) so every
-          # stack-trace line reported to client-error.php stays exact, and
-          # --verify parses both versions with the repo's own TypeScript and
-          # compares token streams, so the deploy STOPS rather than shipping a
-          # program that differs by so much as an identifier. index.html (CSP
-          # hash), sw.js and admin.* are deliberately untouched.
+          # STRIP FULL-LINE COMMENTS from the assets in strip-comments.js's TARGETS:
+          # the four every anonymous visitor downloads (143KB gz of a 461KB
+          # payload, ~245KB of raw JS a phone no longer parses) and the back-office
+          # bundle the owner re-downloads after each release (-228KB gz).
+          # LINE-PRESERVING (blanked, never deleted) so every stack-trace line
+          # reported to client-error.php stays exact, and --verify parses both
+          # versions with the repo's own TypeScript and compares token streams,
+          # so the deploy STOPS rather than shipping a program that differs by so
+          # much as an identifier. index.html (CSP hash) and sw.js are
+          # deliberately untouched.
           # typescript is what --verify parses with. NOT `|| true`: if it cannot be
           # installed the verification cannot run, and shipping an unverified
           # strip is the one outcome this whole step exists to prevent. $OUT is a
@@ -228,14 +230,16 @@ jobs:
           if [ -d "$OUT/uploads" ]; then
             find "$OUT/uploads" -type f ! -name '.htaccess' ! -name 'README.txt' -delete
           fi
-          # STRIP FULL-LINE COMMENTS from the four assets every anonymous visitor
-          # downloads — 143KB gz of a 461KB payload, and ~245KB of raw JS a phone
-          # no longer parses. LINE-PRESERVING (blanked, never deleted) so every
-          # stack-trace line reported to client-error.php stays exact, and
-          # --verify parses both versions with the repo's own TypeScript and
-          # compares token streams, so the deploy STOPS rather than shipping a
-          # program that differs by so much as an identifier. index.html (CSP
-          # hash), sw.js and admin.* are deliberately untouched.
+          # STRIP FULL-LINE COMMENTS from the assets in strip-comments.js's TARGETS:
+          # the four every anonymous visitor downloads (143KB gz of a 461KB
+          # payload, ~245KB of raw JS a phone no longer parses) and the back-office
+          # bundle the owner re-downloads after each release (-228KB gz).
+          # LINE-PRESERVING (blanked, never deleted) so every stack-trace line
+          # reported to client-error.php stays exact, and --verify parses both
+          # versions with the repo's own TypeScript and compares token streams,
+          # so the deploy STOPS rather than shipping a program that differs by so
+          # much as an identifier. index.html (CSP hash) and sw.js are
+          # deliberately untouched.
           # typescript is what --verify parses with. NOT `|| true`: if it cannot be
           # installed the verification cannot run, and shipping an unverified
           # strip is the one outcome this whole step exists to prevent. $OUT is a
