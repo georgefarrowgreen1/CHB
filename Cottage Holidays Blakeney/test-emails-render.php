@@ -277,6 +277,7 @@ $JOBS = [
       $m = newsletter_body('Autumn on the north Norfolk coast', 'The seals are back at Blakeney Point.', 'The seals are back at Blakeney Point.', site_base_url() . 'index.html?unsub=tok');
       return smtp_send('g@x.co', 'Subscriber', $m['subject'], $m['text'], $m['html']);
   }],
+  ['newsletter-confirm', 'guest', fn() => send_newsletter_confirm('g@x.co', 'Hannah Wells', site_base_url() . 'index.html?nlconfirm=0123456789abcdef0123456789abcdef&t=1791734100&k=0123456789abcdef0123456789abcdef')],
   ['autopay-notice', 'guest', fn() => send_autopay_notice($B, $PAYURL)],
   ['autopay-failure', 'guest', fn() => send_autopay_failure($B, 'card_declined', false, '2026-07-20')],
   ['refund', 'guest', fn() => send_refund_email($B)],

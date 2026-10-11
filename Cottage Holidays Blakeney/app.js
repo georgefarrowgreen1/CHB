@@ -7,7 +7,7 @@
 // the window properties when the bundle loads. Deploy checklist: bump ADMIN_V
 // whenever admin.js changes (it is the ?v= cache-buster).
 // ============================================================
-const ADMIN_BUNDLE_V = 788;
+const ADMIN_BUNDLE_V = 789;
 // admin.css is the owner-only stylesheet, split out of app.css so guests never
 // download it. Injected here (not a static <link>) and version-stamped on its
 // own — bump when admin.css changes. Kept OUT of the sw.js CORE precache.
@@ -10079,6 +10079,11 @@ window.addEventListener('DOMContentLoaded', async () => {
             console.error(e);
         } // ?unsub=… → newsletter opt-out
         try {
+            maybeHandleNewsletterConfirm();
+        } catch (e) {
+            console.error(e);
+        } // ?nlconfirm=… → the newsletter sign-up's emailed link
+        try {
             maybeHandleNotificationOpen();
         } catch (e) {
             console.error(e);
@@ -13911,7 +13916,10 @@ async function submitNewsletter(ev) {
             source: 'footer',
         });
         if (el) el.value = '';
-        show("You're in — thank you. We'll only email occasionally.", true);
+        // Nobody joins until the inbox says so, and the answer is the same for every
+        // address, so this covers someone already on the list too. The address is said
+        // back so a typo shows. See CLAUDE.md.
+        show(`Check your inbox: tap the link we’ve sent to ${email} to confirm. Already on our list? Then you’re all set.`, true);
     } catch (e) {
         show(e.message || 'Could not sign you up just now.', false);
     }
@@ -13961,7 +13969,7 @@ async function maybeRestoreView(entry) {
     // An EXPLICIT destination always wins over a remembered one.
     try {
         const usp = new URLSearchParams(window.location.search);
-        if (usp.get('open') || usp.get('unsub') || usp.get('pay') || usp.get('acctpreview') || usp.get('invite') || usp.get('areset')) return false;
+        if (usp.get('open') || usp.get('unsub') || usp.get('nlconfirm') || usp.get('pay') || usp.get('acctpreview') || usp.get('invite') || usp.get('areset')) return false;
     } catch (e) {}
     const saved = entry === undefined ? __chbNavAtLoad : entry;
     if (!saved || !saved.t || !saved.at) return false;
@@ -14101,6 +14109,22 @@ async function maybeHandleUnsubscribe() {
         toast("You've been unsubscribed — sorry to see you go.");
     } catch (e) {}
     // Tidy the URL so a refresh doesn't repeat it.
+    try {
+        history.replaceState(null, '', window.location.pathname);
+    } catch (e) {}
+}
+// The newsletter's emailed link, opened (?nlconfirm=TOKEN&t=…&k=…). The page posts
+// it, so a mail scanner that only fetches the link confirms nothing.
+async function maybeHandleNewsletterConfirm() {
+    const usp = new URLSearchParams(window.location.search);
+    const token = usp.get('nlconfirm');
+    if (!token) return;
+    try {
+        await apiPost('newsletter.php', { action: 'confirm', token, t: usp.get('t') || '', k: usp.get('k') || '' });
+        toast('You’re on the list — thank you. We’ll only email occasionally.');
+    } catch (e) {
+        toast((e && e.message) || 'Couldn’t confirm just now. Try the link again in a minute.', 'error');
+    }
     try {
         history.replaceState(null, '', window.location.pathname);
     } catch (e) {}
@@ -21897,7 +21921,7 @@ const CHB_SK_CARD = '<div class="card glass-panel sk-card"><div class="skeleton 
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'sec3follow';
+    const BUILD = 'sec4news';
     /** @type {any} */ (window).__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;

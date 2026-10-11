@@ -523,6 +523,13 @@ try {
     db()->exec('DELETE FROM guest_codes WHERE created_at < DATE_SUB(NOW(), INTERVAL 1 DAY)');
 } catch (\Throwable $e) {
 }
+// A newsletter sign-up nobody confirmed is only an address someone typed: its link
+// lasts a week, so a month after the last one was sent it goes (an unsubscribed row
+// stays, as the record of the unsubscribe).
+try {
+    db()->exec('DELETE FROM newsletter_subscribers WHERE confirmed_at IS NULL AND unsubscribed_at IS NULL AND COALESCE(confirm_sent_at, created_at) < DATE_SUB(NOW(), INTERVAL 30 DAY)');
+} catch (\Throwable $e) {
+}
 // A guest's notification text waits for their phone for five minutes (guest_ping_read
 // ignores anything older); the row stayed for good, one per guest ever notified.
 try {

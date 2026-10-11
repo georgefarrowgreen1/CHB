@@ -1241,7 +1241,8 @@ function email_outbox_wanted($row)
             return (bool) $one('SELECT id FROM enquiries WHERE id = ? AND declined_at IS NULL', [(int) $rest]);
         }
         if ($kind === 'newsletter') {
-            return (bool) $one('SELECT id FROM newsletter_subscribers WHERE email = ? AND unsubscribed_at IS NULL', [$rest]);
+            // Only a CONFIRMED subscriber is still sent a queued copy (migration-146).
+            return (bool) $one('SELECT id FROM newsletter_subscribers WHERE email = ? AND unsubscribed_at IS NULL AND confirmed_at IS NOT NULL', [$rest]);
         }
         if ($kind === 'person') {
             return (bool) $one('SELECT id FROM admins WHERE id = ? AND removed_at IS NULL', [(int) $rest]);
@@ -5516,6 +5517,41 @@ function newsletter_body($subject, $bodyText, $bodyHtml, $unsubUrl)
             'footer' => $foot,
         ]),
     ];
+}
+
+/**
+ * The newsletter sign-up's confirmation (double opt-in). PURE: the link is made by the
+ * caller (newsletter-lib.php). Nobody is added to the list until it is opened, so this
+ * is not marketing: it says what was asked for, and that ignoring it is the way out.
+ */
+function newsletter_confirm_body($name, $link)
+{
+    $esc = fn($s) => htmlspecialchars((string) $s, ENT_QUOTES, 'UTF-8');
+    $first = first_name((string) $name, 'there');
+    $subject = 'Confirm you’d like our news';
+    $text =
+        "Hello {$first},\n\n" .
+        "Tap the link below to start getting news from the cottages:\n" .
+        $link .
+        "\n\n" .
+        "The link works for 7 days. If you didn't ask for this, ignore this email and nothing else will be sent.\n\n" .
+        'Cottage Holidays Blakeney';
+    $inner =
+        email_h('Confirm you’d like our news') .
+        email_p('Hello ' . $esc($first) . ', tap below to start getting news from the cottages.') .
+        email_btn($link, 'Yes, sign me up') .
+        email_footnote(
+            'Button not working? Copy this link into your browser:<br>' .
+                '<a href="' . $esc($link) . '" style="color:' . email_accent_ink() . ';text-decoration:underline;word-break:break-all;">' . $esc($link) . '</a>',
+        ) .
+        email_footnote('The link works for 7 days. If you didn&rsquo;t ask for this, ignore this email and nothing else will be sent.');
+    return ['subject' => $subject, 'text' => $text, 'html' => email_shell('One tap to start getting news from the cottages', $inner)];
+}
+
+function send_newsletter_confirm($email, $name, $link)
+{
+    $m = newsletter_confirm_body($name, $link);
+    return smtp_send((string) $email, (string) $name, $m['subject'], $m['text'], $m['html']);
 }
 
 /**

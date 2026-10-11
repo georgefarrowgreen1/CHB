@@ -71,7 +71,7 @@ build step**); PHP backend files sit alongside it. App-style guest shell lives i
 
 ## The emails are a design system, and mailer.php is it
 
-Thirty-eight templates, one look, every one composed from the helpers at the top of
+Every template (test-emails-render §1 counts them: 53), one look, every one composed from the helpers at the top of
 `mailer.php` — never hand-rolled table markup, which is how the enquiry reply and the
 owner's new-enquiry notification each grew their own label-value table and looked like a
 different product from the confirmation that follows them.
@@ -156,7 +156,7 @@ the batch one — patch only the first and every owner email renders as "nothing
 captured"), stubs the db.php helpers, and lets `db()` THROW, so a composer that grows a
 `content_value()` call fails loudly rather than quietly needing a database. Sections:
 - **§0** every `test-*.php` is stripped from BOTH deploy passes (production AND staging).
-- **§1** all 38 render with a subject, a text half and a full HTML document, plus a
+- **§1** every one renders with a subject, a text half and a full HTML document, plus a
   coverage check that no composer in mailer.php is left unreached.
 - **§2** contrast by arithmetic on the rendered output, **walking a background stack**
   because an ink is only legible against the ground it ACTUALLY sits on (measuring
@@ -228,8 +228,8 @@ captured"), stubs the db.php helpers, and lets `db()` THROW, so a composer that 
 had drifted to 13 of 19 senders — omitting BOTH automatic-payment emails (the newest and
 most complex money emails, where a wrong figure is least recoverable), the enquiry
 acknowledgement and the owner's own new-enquiry notification. It looked decided and was
-accidental, which is what a registry does when nothing checks it. It is **38 entries**
-now and §1 renders all 38. NB the coverage check's exclusion list is written out IN FULL
+accidental, which is what a registry does when nothing checks it. Every sender has an
+entry now, and §1 renders them all. NB the coverage check's exclusion list is written out IN FULL
 and must not be derived from §1's — deriving it was vacuous, because §1 legitimately
 excludes the two autopay senders and those were exactly the previews that were missing.
 
@@ -10639,9 +10639,10 @@ shipped and the rules it set:
   the password's hash (changing it revokes every cookie) and a wrong guess costs
   a second.
 - Status flags a reply-by-email webhook still authenticating with APP_SECRET.
-- NOT done, deliberately: double opt-in for newsletter/drafts/leads (product
-  change), DNS pinning for the admin-only iCal fetch, and deleting orphan chat
-  uploads (self-repair still only flags them).
+- NOT done, deliberately: double opt-in for drafts/leads (product change; the
+  newsletter's came with the security leftovers' Step 4), DNS pinning for the
+  admin-only iCal fetch, and deleting orphan chat uploads (self-repair still only
+  flags them).
 
 ## The round-4 audit (concurrency, input, abuse, output)
 
@@ -11093,6 +11094,45 @@ ships as its own PR.
   code step, five digits, a wrong code, the account made with the details, the identical screen when an old server
   still says `account_exists`, Welcome back), ui-test-signin (one try left), ui-test-nodogs (no email, no step).
   Eight mutations break-tested, each failing its own named check.
+
+### Step 4: newsletter sign-ups are confirmed by email
+
+- **NOBODY JOINS UNTIL THE INBOX SAYS SO** (`newsletter-lib.php`, pure; migration-146 `confirmed_at`,
+  `confirm_sent_at`). The footer form put any address on the list at once, and re-subscribing an address that had
+  unsubscribed switched it straight back on. A sign-up now waits until the link emailed to it is opened, and the
+  broadcast goes to confirmed addresses only. Everyone already on the list stays on (the migration dates their
+  consent to when they signed up); an unsubscribed address stays off.
+- **THE LINK** is `index.html?nlconfirm=<token>&t=<unix>&k=<32 hex>`, an HMAC over `nlconfirm|token|t`, so the
+  subscriber's token alone (it is in every unsubscribe link) cannot make one. It lasts 7 days
+  (`NEWSLETTER_CONFIRM_SECONDS`; older answers 410 `expired`, a link from the future or a wrong signature 400
+  `invalid`, a row since cleared 404 `gone`). **The page POSTs it** (`maybeHandleNewsletterConfirm`, beside
+  `maybeHandleUnsubscribe`), so a mail scanner that only fetches the link confirms nothing. Confirming an
+  unsubscribed address puts it back on, its consent dated now: the UPDATE sets `confirmed_at` BEFORE clearing
+  `unsubscribed_at`, because MySQL assigns left to right (break-tested by swapping them).
+- **THE FORM ANSWERS THE SAME FOR EVERY ADDRESS**: `newsletter_signup_plan` adds and asks a new address, asks again
+  for one still waiting or unsubscribed, and sends nothing to one already on the list. The page says "Check your
+  inbox: tap the link we've sent to <the address> to confirm. Already on our list? Then you're all set." At most 3
+  confirmation emails a day to one address (`NEWSLETTER_CONFIRM_MAILS_PER_DAY`, counted in login_attempts as
+  `nlmail:<sha1>`, whoever asks), and over that the answer is unchanged. A failed send is logged as a warning
+  (`newsletter.confirm_fail`), never told to the form; "Mail disabled" logs nothing. Not queued: the guest is
+  looking at the form and can ask again.
+- **The email** is `newsletter_confirm_body`/`send_newsletter_confirm` in mailer.php (pure; "Confirm you'd like our
+  news", the one button "Yes, sign me up", the link printed below, "nothing else will be sent" if ignored), with a
+  sample (`newsletter_confirm`) and a render job.
+- **A queued newsletter copy** (`email_outbox_wanted`) goes only to an address still confirmed. **Self-repair** clears
+  a sign-up nobody confirmed a month after its last link (`COALESCE(confirm_sent_at, created_at)`, so a fresh link
+  keeps it); an unsubscribe stays as the record of it.
+- **Manage → Newsletter**: the tiles are Active subscribers and Waiting to confirm; "Who's subscribed" lists confirmed
+  addresses with the unsubscribed count as its sub, and a "Waiting to confirm" fold lists who has still to open the
+  link. The send confirm still counts confirmed subscribers only. The activity log says "Newsletter sign-up, not
+  confirmed yet" until it is.
+- **Left as they were, as demoed**: the review-link follow-up and the abandoned-enquiry note, each one email with an
+  unsubscribe to an address typed while booking or reviewing.
+- Gates: **test-newsletter.php** (35 checks: the link at both ends of the week, forgery, the plan, the wiring;
+  counter `nlc()`), integration **§86** (the backfill statement itself, the same answer three ways, the cap, the
+  counts, the broadcast, the outbox, a scanner's GET, every refusal, the dated return, the tidy) and
+  **ui-test-newsletter.js** (the footer message, the link opened, an expired link, the Newsletter page and its send
+  confirm). Fourteen mutations break-tested (nine server, five page), each failing its own named check.
 
 ## Self-repair & error reporting
 - Errors: client capture (app.js, third-party webview noise filtered, sends
