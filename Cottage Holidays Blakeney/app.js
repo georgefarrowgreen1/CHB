@@ -7,7 +7,7 @@
 // the window properties when the bundle loads. Deploy checklist: bump ADMIN_V
 // whenever admin.js changes (it is the ?v= cache-buster).
 // ============================================================
-const ADMIN_BUNDLE_V = 792;
+const ADMIN_BUNDLE_V = 793;
 // admin.css is the owner-only stylesheet, split out of app.css so guests never
 // download it. Injected here (not a static <link>) and version-stamped on its
 // own — bump when admin.css changes. Kept OUT of the sw.js CORE precache.
@@ -64,6 +64,19 @@ function ensureAdminViews() {
                         document.body.appendChild(t.content.cloneNode(true));
                         injected++;
                     }
+                    return;
+                }
+                // data-host="before:<selector>": the owner's windows, each put back where
+                // index.html had it, because overlays of equal z-index stack by document
+                // order. Present already (its first id is in the page) = done.
+                const at = t.getAttribute('data-host') || '';
+                if (at.indexOf('before:') === 0) {
+                    const first = t.content.firstElementChild;
+                    if (first && first.id && document.getElementById(first.id)) return;
+                    const anchor = document.querySelector(at.slice(7));
+                    if (anchor && anchor.parentNode) anchor.parentNode.insertBefore(t.content.cloneNode(true), anchor);
+                    else document.body.appendChild(t.content.cloneNode(true));
+                    injected++;
                     return;
                 }
                 const host = document.getElementById(t.getAttribute('data-view'));
@@ -20527,6 +20540,9 @@ function decodeEntities(str) {
 // ===================================================================
 function openModal() {
     const em = document.getElementById('edit-modal');
+    // The sheet arrives with the back office (admin-views.html), so before that there is
+    // nothing to open.
+    if (!em) return;
     // BACK CLOSES THE FORM, as it does every guest sheet: without its own history
     // entry Back replayed the admin view underneath and left the form stranded on top.
     if (!em.classList.contains('open')) overlayHistPush();
@@ -20551,7 +20567,8 @@ function closeModal() {
     const em = document.getElementById('edit-modal');
     if (em && em.classList.contains('open')) overlayHistConsume();
     chbCloseOverlay(em);
-    document.getElementById('modal-error').style.display = 'none';
+    const me = document.getElementById('modal-error');
+    if (me) me.style.display = 'none';
     // Dismiss the guest typeahead dropdown (pure DOM — no admin dependency).
     const sg = document.getElementById('modal-name-suggest');
     if (sg) { sg.style.display = 'none'; sg.innerHTML = ''; }
@@ -22275,7 +22292,7 @@ const CHB_SK_CARD = '<div class="card glass-panel sk-card"><div class="skeleton 
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'chatfaces1';
+    const BUILD = 'ownerwin1';
     /** @type {any} */ (window).__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;

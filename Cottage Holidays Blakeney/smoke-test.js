@@ -115,6 +115,21 @@ let adminViews = '';
 try { adminViews = fs.readFileSync(path.join(path.dirname(HTML_PATH), 'admin-views.html'), 'utf8'); } catch (e) {}
 check('admin-views.html present (the back-office markup bundle)', adminViews.length > 1000);
 const markup = html + '\n' + adminViews;
+// The owner's windows (composer, booking sheet) arrive with the back office: each
+// template names the element it goes back in front of, because overlays of equal
+// z-index stack by document order. An anchor that is missing from index.html would
+// drop the window at the end of <body> and change what covers what, with nothing
+// failing. And none of them may creep back into the page every guest downloads.
+{
+    const hosted = [...adminViews.matchAll(/<template data-view="([^"]+)" data-host="before:([^"]+)">(?:\s*<!--[\s\S]*?-->)*\s*<([a-z]+)[^>]*\bid="([^"]+)"/g)];
+    check('the owner windows are templates that go back before a named element (2 or more)', hosted.length >= 2);
+    for (const [, name, sel, , firstId] of hosted) {
+        const m = sel.match(/^#([\w-]+)$/) || sel.match(/^([a-z]+)\.([\w-]+)$/);
+        const there = !m ? false : m.length === 2 ? new RegExp('\\bid="' + m[1] + '"').test(html) : new RegExp('<' + m[1] + '\\b[^>]*class="[^"]*\\b' + m[2] + '\\b').test(html);
+        check(`${name}: its anchor (${sel}) is in index.html`, there);
+        check(`${name}: its window (#${firstId}) is not in index.html`, !new RegExp('\\bid="' + firstId + '"').test(html));
+    }
+}
 if (adminScript) {
     try {
         vm.runInContext(adminScript, ctx, { filename: 'admin.js', timeout: 5000 });
