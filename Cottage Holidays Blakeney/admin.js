@@ -346,7 +346,7 @@ function cmdkActions(q) {
         A('addbooking', 'Add a booking', 'Take a booking into the diary', 'book customer guest reservation manual new take enter create put', /(add|new|create|make|manual|take|enter|put).{0,14}(booking|reservation|stay|customer|guest)|book (a|in|someone|my)/, () => { closeCmdK(); openAddBooking(); }),
         A('block', 'Block out dates', 'Mark dates unavailable', 'block off close unavailable maintenance reserve hold', /block.{0,10}(date|off|out|calendar|time)|(add|make).{0,10}block|close.{0,8}date/, () => { closeCmdK(); openBlockDates(); }),
         A('rates', 'Change prices & rates', 'Nightly and seasonal pricing', 'price rate nightly cost charge seasonal summer holiday raise lower adjust set fee', /(change|edit|update|set|adjust|raise|lower|manage|amend).{0,14}(price|rate|pricing|cost|nightly|charge|fee)|season(al)? (rate|price)|price.{0,6}(change|update)/, toManage('seasongrid')),
-        A('email', 'Email a guest', 'Find them in the Inbox and write in their conversation', 'send write mail email message compose new create make', /(send|compose|write|new|draft|create|make).{0,14}(email|mail|message)/, () => { closeCmdK(); Promise.resolve(openInbox()).then(() => { const q = document.getElementById('ib-q'); if (q) q.focus(); }); }),
+        A('email', 'New email', 'Write to a guest, or someone new', 'send write mail email message compose new create make guest', /(send|compose|write|new|draft|create|make).{0,14}(email|mail|message)/, () => { closeCmdK(); composeNew(); }),
         A('welcome', cName ? `Welcome guide — ${cName}` : 'Edit the welcome guide', 'In-stay guide: Wi-Fi, appliances, bins, tips', 'welcome book guide in stay wifi manual instructions house information handbook', /(edit|change|update|write|add).{0,18}(welcome|guide|in.?stay|house ?book|handbook)/, toAccom('welcome')),
         // TWO sections, two answers: the rules a guest OBSERVES, and the times
         // and limits the booking form ENFORCES. Asking for "house rules" used
@@ -5672,8 +5672,8 @@ function helpTopics() {
             related: ['send-email'] },
         { id: 'send-email', title: 'Email a guest', cat: 'Inbox',
             kw: 'send email guest message compose write mail contact confirmation',
-            steps: ['On a booking’s page, tap the envelope beside the guest’s name to write to them.', 'For anyone else, open the Inbox, tap the person and reply in their conversation.'],
-            doIt: { label: 'Open the Inbox', run: view(() => openInbox()) },
+            steps: ['On a booking’s page, tap the envelope beside the guest’s name to write to them.', 'To write to anyone else, tap the pencil at the top of the Inbox, then type a name to pick someone you know, or type their email address.'],
+            doIt: { label: 'New email', run: view(() => composeNew()) },
             related: ['reply-enquiry'] },
         { id: 'guest-messages', title: 'Read & reply to guest chats', cat: 'Inbox',
             kw: 'message messages chat guest reply conversation thread talk respond',
@@ -33256,7 +33256,7 @@ function ibBuild() {
     const get = (key) => {
         let p = map.get(key);
         if (!p) {
-            p = { key, name: '', nameRank: 0, emails: [], phone: '', bookings: [], enq: null, declined: [], threads: [], mails: [], sent: [] };
+            p = { key, name: '', nameRank: 0, emails: [], phone: '', bookings: [], enq: null, declined: [], threads: [], mails: [], sent: [], merged: [] };
             map.set(key, p);
         }
         return p;
@@ -33289,6 +33289,7 @@ function ibBuild() {
         named(p, q.name, 2);
     });
     const seenT = new Set();
+    const byThread = new Map();
     (Array.isArray(__msgThreads) ? __msgThreads : []).concat((__ibArchived || []).map((t) => Object.assign({}, t, { archived: 1 }))).forEach((t) => {
         if (!t || seenT.has(t.thread_id)) return;
         seenT.add(t.thread_id);
@@ -33297,11 +33298,25 @@ function ibBuild() {
         const unproven = t.verified === false;
         const p = get(unproven ? ibState().links['t:' + t.thread_id] || 't:' + t.thread_id : ibKeyOf(t.email, '', 't:' + t.thread_id));
         p.threads.push(t);
+        byThread.set(Number(t.thread_id), p);
         if (unproven && !ibState().links['t:' + t.thread_id]) p.unconfirmed = true;
         addEmail(p, t.email);
         named(p, t.name, 1);
     });
+    // AN EMAIL THAT IS IN A CHAT IS PART OF THAT CONVERSATION, never a second message:
+    // the list left it out (merged), or the poll posted it after the list was read and
+    // the chat, loaded since, shows its words. Kept with the chat's person only so that
+    // deleting the conversation deletes it from the mailbox too.
+    const inChat = (tid, uid) => {
+        const p = byThread.get(Number(tid));
+        if (p && uid != null && p.merged.indexOf(String(uid)) < 0) p.merged.push(String(uid));
+    };
+    (Array.isArray(__mbxMerged) ? __mbxMerged : []).forEach((x) => { if (x && x.uid != null) inChat(x.chat, x.uid); });
     (Array.isArray(__mbxMessages) ? __mbxMessages : []).forEach((m) => {
+        if (ibMailInChat(m)) {
+            inChat(m.chat, m.uid);
+            return;
+        }
         const from = ibEmail(m.from);
         if (!from) return;
         const p = get(ibKeyOf(from, '', 'e:' + from));
@@ -33315,6 +33330,8 @@ function ibBuild() {
         const p = get(ibKeyOf(to, '', 'e:' + to));
         p.sent.push(s);
         addEmail(p, to);
+        // The name a New email was sent to, the weakest word on who they are.
+        named(p, s.to_name, 0);
     });
     const people = [...map.values()];
     // Who is who. A name alone NEVER joins two people; it only suggests a link.
@@ -33352,6 +33369,16 @@ function ibBuild() {
     __ibPeopleMap = new Map(__ibPeople.map((p) => [p.key, p]));
     return __ibPeople;
 }
+// An email the reply poll posted into a chat after the list was read: the list sends
+// the chat it goes to and the words it will carry, and once that chat is loaded here
+// with those words from the guest, the email is the same message.
+function ibMailInChat(m) {
+    const tid = Number(m && m.chat) || 0;
+    const w = String((m && m.words) || '').trim();
+    if (!tid || !w) return false;
+    const full = __ibThreadMsgs[tid];
+    return !!full && full.some((x) => !!x && x.role === 'guest' && String(x.body || '').trim() === w);
+}
 // Who wrote an owner-side chat message when it was not you: a teammate's first
 // name, or the away reply. '' for your own, and for every reply from before
 // replies recorded who wrote them.
@@ -33379,7 +33406,8 @@ function ibItems(p) {
     p.threads.forEach((t) => {
         const full = __ibThreadMsgs[t.thread_id];
         if (full) {
-            full.forEach((m) => it.push({ who: m.role === 'guest' ? 'them' : 'me', ch: 'chat', t: ibT(m.at), text: m.body || (m.attachment ? 'Sent a photo.' : ''), seen: !!m.seen, attach: m.attachment ? 'Photo' : '', photo: m.attachment || '', by: ibChatBy(m) }));
+            // A reply that came in by email is a chat message that says so (via).
+            full.forEach((m) => it.push({ who: m.role === 'guest' ? 'them' : 'me', ch: 'chat', via: m.kind === 'mail' ? 'email' : '', t: ibT(m.at), text: m.body || (m.attachment ? 'Sent a photo.' : ''), seen: !!m.seen, attach: m.attachment ? 'Photo' : '', photo: m.attachment || '', by: ibChatBy(m) }));
         } else if (t.last_at) {
             it.push({ who: t.last_role === 'guest' ? 'them' : 'me', ch: 'chat', t: ibT(t.last_at), text: t.last_body || '', summary: true });
         }
@@ -33617,10 +33645,10 @@ function ibRowHtml(p, mode) {
     const hit = __ibQ ? ibHit(p, __ibQ) : null;
     let prev = '';
     if (draft.trim() && !__ibQ) prev = `<span class="ib-draftw">Draft</span><span>${ibEsc(draft)}</span>`;
-    else if (hit) prev = `${ibChIcon(hit.ch)}<span>${hit.who === 'me' ? 'You: ' : ''}${ibHighlight(ibSnippet(hit.text || hit.subj, __ibQ), __ibQ)}</span>`;
+    else if (hit) prev = `${ibChIcon(hit.via || hit.ch)}<span>${hit.who === 'me' ? 'You: ' : ''}${ibHighlight(ibSnippet(hit.text || hit.subj, __ibQ), __ibQ)}</span>`;
     else {
         const h = p.lastHuman || p.items[p.items.length - 1];
-        if (h) prev = `${ibChIcon(h.ch)}<span>${h.who === 'me' ? 'You: ' : ''}${ibEsc((quiet || !h.text) && h.subj ? h.subj : h.text)}</span>`;
+        if (h) prev = `${ibChIcon(h.via || h.ch)}<span>${h.who === 'me' ? 'You: ' : ''}${ibEsc((quiet || !h.text) && h.subj ? h.subj : h.text)}</span>`;
     }
     const unread = ibUnread(p) && !quiet;
     const label = [p.name, tag && tag.text, d >= 1 && `waiting ${d} day${d === 1 ? '' : 's'}`, unread && 'unread', draft.trim() && 'draft saved'].filter(Boolean).join(', ');
@@ -33812,7 +33840,7 @@ function ibPill(wait) {
 function ibThreadHtml(p) {
     let out = '', lastDay = null, prevCh = null;
     const items = p.items;
-    const same = (a, b) => a && b && a.who !== 'sys' && b.who !== 'sys' && a.who === b.who && a.ch === b.ch && (a.by || '') === (b.by || '') && Math.abs(b.t - a.t) < 15 * 60000 && ibDayStart(a.t) === ibDayStart(b.t);
+    const same = (a, b) => a && b && a.who !== 'sys' && b.who !== 'sys' && a.who === b.who && a.ch === b.ch && (a.via || '') === (b.via || '') && (a.by || '') === (b.by || '') && Math.abs(b.t - a.t) < 15 * 60000 && ibDayStart(a.t) === ibDayStart(b.t);
     items.forEach((it, idx) => {
         if (ibDayStart(it.t) !== lastDay) { out += `<div class="ib-daysep">${ibSep(it.t)}</div>`; lastDay = ibDayStart(it.t); }
         const fresh = __ibFreshMsgs.has(it) ? ' is-new' : '';
@@ -33839,14 +33867,17 @@ function ibThreadHtml(p) {
             const qid = `ib-q-${idx}`;
             body += `<button type="button" class="ib-quotebtn" data-ib="quote" data-arg="${qid}" aria-expanded="false" aria-controls="${qid}">Show the rest of the email</button><div class="ib-quoted" id="${qid}" hidden>${ibEsc(it.quoted)}</div>`;
         }
+        // The channel it was WRITTEN in: a reply that came in by email is in the chat
+        // and says "Email".
+        const chv = it.via || it.ch;
         let meta = '';
         if (tail) {
-            const word = it.ch !== prevCh ? ibChWord(it.ch) + ' · ' : '';
+            const word = chv !== prevCh ? ibChWord(chv) + ' · ' : '';
             const state = it.pending ? 'Sending… <button type="button" class="ib-undo" data-ib="undo-pending" aria-label="Undo: don’t send this">Undo</button>' : it.failed ? '<span class="ib-failed">Not sent</span>' : ibClock(it.t);
             const seen = it.who === 'me' && it.ch === 'chat' && !it.pending && !it.failed && !it.summary ? (it.seen ? ' · <span class="ib-seen">Seen</span>' : ' · Delivered') : '';
-            meta = `<div class="ib-meta">${ibChIcon(it.ch)}${word}${it.by ? ibEsc(it.by) + ' · ' : ''}${state}${seen}</div>`;
+            meta = `<div class="ib-meta">${ibChIcon(chv)}${word}${it.by ? ibEsc(it.by) + ' · ' : ''}${state}${seen}</div>`;
         }
-        prevCh = it.ch;
+        prevCh = chv;
         out += `<div class="ib-msg is-${it.who}${cont ? ' is-cont' : ''}${tail ? ' is-tail' : ''}${it.pending ? ' is-pending' : ''}${fresh}" data-i="${idx}"><div class="ib-bub">${body}</div>${meta}</div>`;
     });
     __ibFreshMsgs.clear();
@@ -34010,7 +34041,8 @@ function ibMenuHtml(p) {
 // an approval still inside its Undo window is never deleted out from under it.
 function ibDeletePlan(p) {
     const threads = p.threads.map((t) => t.thread_id).filter(Boolean);
-    const uids = p.mails.map((m) => m.uid).filter(Boolean);
+    // With the emails that are in their chat (merged): deleted from the mailbox too.
+    const uids = p.mails.map((m) => m.uid).concat(p.merged || []).filter(Boolean);
     const sentTo = p.sent.length ? p.emails.filter((e) => p.sent.some((s) => ibEmail(s.to_email) === e)) : [];
     const enqs = (p.enq ? [p.enq] : []).concat(p.declined).map((q) => q.dbId).filter((x) => x != null);
     const any = !p.approving && !!(threads.length || uids.length || sentTo.length || enqs.length);
@@ -34025,7 +34057,7 @@ function ibDeleteWords(p) {
     if (p.enq) parts.push('their enquiry');
     if (p.declined.length) parts.push(n(p.declined.length, 'their declined enquiry', 'declined enquiries'));
     const list = parts.length > 1 ? parts.slice(0, -1).join(', ') + ' and ' + parts[parts.length - 1] : parts[0] || '';
-    const lines = [list.charAt(0).toUpperCase() + list.slice(1) + (parts.length > 1 || /^\d/.test(list) ? ' are' : ' is') + ' deleted for good' + (p.mails.length ? ', from the mailbox too.' : '.')];
+    const lines = [list.charAt(0).toUpperCase() + list.slice(1) + (parts.length > 1 || /^\d/.test(list) ? ' are' : ' is') + ' deleted for good' + (p.mails.length || (p.merged && p.merged.length) ? ', from the mailbox too.' : '.')];
     if (p.kind !== 'auto') lines[0] += ` Nothing is sent to ${ibFirst(p)}.`;
     const s = ibCurrentStay(p);
     if (s) lines.push(`Their booking at ${ibPropName(s.pk)} stays, with the emails sent about it.`);
@@ -35359,7 +35391,8 @@ function renderEnquiryHub() {
 // sheet drags down to close. Element ids the rest of the app reads are unchanged:
 // enq-email-modal / -subject / -body / -send / -title / -preview-frame, arv-facts-host.
 
-// Which record the sheet is for: { kind: 'booking'|'enquiry', b|enq, propKey, arrival? }.
+// Which record the sheet is for: { kind: 'booking'|'enquiry', b|enq, propKey, arrival? },
+// or a NEW email to anyone: { kind: 'new', to, name } (the Inbox's New email).
 let __composeTarget = null;
 let __composeAttachments = [];
 const COMPOSE_ATTACH_MAX = 4;
@@ -35398,7 +35431,7 @@ const CMP_FILE_IC = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" 
 const CMP_X_IC = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg>';
 
 function cmpRec(t) {
-    return t ? (t.kind === 'booking' ? t.b : t.enq) : null;
+    return t ? (t.kind === 'booking' ? t.b : t.kind === 'new' ? t : t.enq) : null;
 }
 function cmpFirst(name) {
     return String(name || '').trim().split(/\s+/)[0] || 'Guest';
@@ -35455,6 +35488,11 @@ function cmpSigner() {
 
 // ---- What the sheet knows about the record: the To block and the two switches ----
 function cmpFactsFor(t) {
+    // A new email has no stay and no money to add: just who it is to.
+    if (t.kind === 'new') {
+        const name = String(t.name || '').trim();
+        return { name, first: name ? cmpFirst(name) : '', email: String(t.to || ''), propName: '', dot: '', rows: [], stayLbl: '', staySub: '', stayOn: false, stayOff: '', moneyLbl: '', moneySub: '', moneyOn: false, moneyOff: '', hasMoney: false };
+    }
     const rec = cmpRec(t);
     const pk = t.kind === 'booking' ? t.propKey : rec.propKey;
     const meta = propertyMeta[pk] || {};
@@ -35533,6 +35571,7 @@ function cmpFactsFor(t) {
 // Keyed by the record, so a half-written email waits for that guest alone. The
 // arrival review never drafts: its message is prefilled from the server each time.
 function cmpDraftKey(t) {
+    if (t && t.kind === 'new') return 'chb-cmp-draft:new'; // one new email waits at a time
     const rec = cmpRec(t);
     return t && rec && rec.dbId && !t.arrival ? 'chb-cmp-draft:' + t.kind + ':' + rec.dbId : '';
 }
@@ -35557,7 +35596,7 @@ function cmpDraftWrite() {
     const msg = cmpVal('enq-email-body');
     try {
         if (!msg.trim()) localStorage.removeItem(key);
-        else localStorage.setItem(key, JSON.stringify({ subj: cmpVal('enq-email-subject'), msg, stay: __cmpInc.stay, money: __cmpInc.money, at: Date.now() }));
+        else localStorage.setItem(key, JSON.stringify(Object.assign({ subj: cmpVal('enq-email-subject'), msg, stay: __cmpInc.stay, money: __cmpInc.money, at: Date.now() }, t.kind === 'new' ? { to: cmpVal('cmp-new-to'), name: cmpVal('cmp-new-name') } : {})));
     } catch (e) {}
 }
 function cmpDraftDrop(key) {
@@ -35658,8 +35697,10 @@ function cmpOpen(t, restore) {
     // read-only subject, the facts panel and the hidden extras.
     const modal = document.getElementById('enq-email-modal');
     if (modal) modal.classList.toggle('cmp-arrival', !!t.arrival);
+    // A new email: the address and name fields stand in for the To row.
+    if (modal) modal.classList.toggle('cmp-new', t.kind === 'new');
     const ttl = document.getElementById('enq-email-title');
-    if (ttl) ttl.textContent = t.arrival ? 'Arrival email' : 'Email ' + f.first;
+    if (ttl) ttl.textContent = t.arrival ? 'Arrival email' : t.kind === 'new' ? 'New email' : 'Email ' + f.first;
     const fh = document.getElementById('arv-facts-host');
     if (fh) fh.innerHTML = restore && restore.arvHtml ? restore.arvHtml : '';
     const subj = /** @type {HTMLTextAreaElement|null} */ (document.getElementById('enq-email-subject'));
@@ -35684,14 +35725,29 @@ function cmpOpen(t, restore) {
     const draft = restore ? null : cmpDraftRead(cmpDraftKey(t));
     const src = restore || draft;
     __cmpInc = {
-        stay: src && typeof src.stay === 'boolean' ? src.stay : f.stayOn,
+        stay: t.kind !== 'new' && (src && typeof src.stay === 'boolean' ? src.stay : f.stayOn),
         money: f.hasMoney && (src && typeof src.money === 'boolean' ? src.money : f.moneyOn),
     };
-    if (subj) subj.value = src && src.subj != null ? src.subj : t.kind === 'booking' ? `Your stay at ${f.propName}` : `Your enquiry about ${f.propName}`;
+    const toEl = /** @type {HTMLInputElement|null} */ (document.getElementById('cmp-new-to'));
+    const nameEl = /** @type {HTMLInputElement|null} */ (document.getElementById('cmp-new-name'));
+    if (t.kind === 'new') {
+        const to0 = src && typeof src.to === 'string' ? src.to : String(t.to || '');
+        const name0 = src && typeof src.name === 'string' ? src.name : String(t.name || '');
+        if (toEl) toEl.value = to0;
+        if (nameEl) nameEl.value = name0;
+        t.to = to0.trim();
+        t.name = name0.trim();
+        const sg = document.getElementById('cmp-new-sugg');
+        if (sg) { sg.hidden = true; sg.innerHTML = ''; }
+        if (toEl) toEl.setAttribute('aria-expanded', 'false');
+    }
+    if (subj) subj.value = src && src.subj != null ? src.subj : t.kind === 'new' ? '' : t.kind === 'booking' ? `Your stay at ${f.propName}` : `Your enquiry about ${f.propName}`;
     const body = /** @type {HTMLTextAreaElement|null} */ (document.getElementById('enq-email-body'));
     if (body) body.value = src ? src.msg || '' : '';
     __composeAttachments = restore && restore.atts ? restore.atts.slice() : [];
-    set('cmp-greet', 'Hello ' + f.first + ',');
+    // A new email greets them only once there is a name to greet.
+    set('cmp-greet', t.kind === 'new' ? (t.name ? 'Hello ' + cmpFirst(t.name) + ',' : '') : 'Hello ' + f.first + ',');
+    set('cmp-adds-cap', t.kind === 'new' ? 'Files' : 'Added below your message');
     const signer = cmpSigner();
     const sign = document.getElementById('cmp-sign');
     if (sign) sign.innerHTML = signer ? `${escapeHtml(signer)}<small>· signed as you</small>` : 'Cottage Holidays Blakeney';
@@ -35722,8 +35778,96 @@ function cmpOpen(t, restore) {
         cmpGrow(body);
         cmpSeat(document.getElementById('cmp-pane-seg'));
     });
-    if (body) setTimeout(() => { try { body.focus({ preventScroll: true }); } catch (e) { body.focus(); } }, 150);
+    // The first thing still to fill: a new email's address, then its subject, else the message.
+    const first = t.kind === 'new' && toEl && !toEl.value.trim() ? toEl : t.kind === 'new' && subj && !subj.value.trim() ? subj : body;
+    if (first) setTimeout(() => { try { first.focus({ preventScroll: true }); } catch (e) { first.focus(); } }, 150);
     composeDraftDots();
+}
+// THE INBOX'S NEW EMAIL: the same sheet, to anyone. Type a name and the people the app
+// knows are offered: a guest with a stay or an enquiry opens their own email (their
+// stay and payment can go in it); anyone else, or an address typed out, gets a plain
+// email that greets them by the name given. It joins their conversation once sent.
+function composeNew(prefill) {
+    const o = prefill && typeof prefill === 'object' ? prefill : {};
+    cmpOpen({ kind: 'new', to: String(o.to || ''), name: String(o.name || '') });
+}
+function cmpNewGreet() {
+    const t = __composeTarget;
+    if (!t || t.kind !== 'new') return;
+    t.name = cmpVal('cmp-new-name').trim();
+    const g = document.getElementById('cmp-greet');
+    if (g) g.textContent = t.name ? 'Hello ' + cmpFirst(t.name) + ',' : '';
+}
+function composeNewName() {
+    cmpNewGreet();
+    composeTyped();
+}
+function composeNewTo() {
+    const t = __composeTarget;
+    if (!t || t.kind !== 'new') return;
+    t.to = cmpVal('cmp-new-to').trim();
+    cmpNewSuggest();
+    composeTyped();
+}
+// The people the app knows whose name or address holds what is typed, latest first.
+function cmpNewPeople(q) {
+    const s = String(q || '').trim().toLowerCase();
+    if (s.length < 2) return [];
+    let people = __ibPeople;
+    if (!people || !people.length) {
+        try { people = ibBuild(); } catch (e) { people = []; }
+    }
+    return people
+        .filter((p) => p.kind !== 'auto' && p.emails.length && (String(p.name || '').toLowerCase().includes(s) || p.emails.some((e) => e.includes(s))))
+        .sort((a, b) => b.lastAt - a.lastAt)
+        .slice(0, 5);
+}
+function cmpNewSub(p) {
+    const s = ibCurrentStay(p);
+    if (s) return `${ibPropName(s.pk)} · ${ibRange(s.b.checkIn, s.b.checkOut)}`;
+    if (p.enq) return `Enquiry · ${ibPropName(p.enq.propKey)} · ${ibRange(p.enq.checkIn, p.enq.checkOut)}`;
+    return p.emails[0];
+}
+function cmpNewSuggest() {
+    const box = document.getElementById('cmp-new-sugg');
+    const inp = document.getElementById('cmp-new-to');
+    if (!box) return;
+    const q = cmpVal('cmp-new-to').trim();
+    const list = cmpNewPeople(q);
+    let html = '';
+    if (list.length) {
+        html = list.map((p) => `<button type="button" class="cmp-sugg-row" ${chbAttrs('composeNewPick', p.key)}><span class="cmp-ava" aria-hidden="true">${escapeHtml(ibInitials(p))}</span><span class="cmp-to-txt"><b>${escapeHtml(p.name)}</b><span>${escapeHtml(cmpNewSub(p))}</span></span></button>`).join('');
+    } else if (q.length >= 2 && q.indexOf('@') < 0) {
+        html = '<p class="cmp-sugg-none">Nobody here by that name. Type their email address.</p>';
+    }
+    box.innerHTML = html;
+    box.hidden = !html;
+    if (inp) inp.setAttribute('aria-expanded', list.length ? 'true' : 'false');
+}
+function composeNewPick(key) {
+    const t = __composeTarget;
+    const p = __ibPeopleMap.get(String(key));
+    if (!t || t.kind !== 'new' || !p) return;
+    const s = ibCurrentStay(p);
+    if (s || p.enq) {
+        // Their own email, with what was written so far carried across.
+        const carry = { subj: cmpVal('enq-email-subject').trim() || null, msg: cmpVal('enq-email-body'), atts: __composeAttachments.slice(), err: '' };
+        cmpDraftDrop(cmpDraftKey(t));
+        cmpOpen(s ? { kind: 'booking', b: s.b, propKey: s.pk } : { kind: 'enquiry', enq: p.enq }, carry);
+        return;
+    }
+    const toEl = /** @type {HTMLInputElement|null} */ (document.getElementById('cmp-new-to'));
+    const nameEl = /** @type {HTMLInputElement|null} */ (document.getElementById('cmp-new-name'));
+    if (toEl) toEl.value = p.emails[0];
+    if (nameEl && !nameEl.value.trim() && p.name && p.name.indexOf('@') < 0) nameEl.value = p.name;
+    t.to = p.emails[0];
+    cmpNewGreet();
+    const box = document.getElementById('cmp-new-sugg');
+    if (box) { box.hidden = true; box.innerHTML = ''; }
+    if (toEl) toEl.setAttribute('aria-expanded', 'false');
+    composeTyped();
+    const subj = document.getElementById('enq-email-subject');
+    if (subj) subj.focus();
 }
 // Takes an id OR the enquiry itself. The object form is load-bearing: declining
 // is a soft delete, so once loadData() has run the row is out of `enquiries`
@@ -35771,7 +35915,8 @@ function closeEnquiryEmailModal(quiet) {
         if (msg && !t.arrival && cmpDraftKey(t)) {
             const f = __cmpFacts || { first: 'them' };
             const key = cmpDraftKey(t);
-            composeToast(`<span class="cmp-tt">Draft kept for ${escapeHtml(f.first)}<small>Tap the envelope to carry on</small></span><button type="button" id="cmp-discard">Discard</button>`, 4500);
+            const kept = t.kind === 'new' ? 'Draft kept<small>Tap New email to carry on</small>' : `Draft kept for ${escapeHtml(f.first)}<small>Tap the envelope to carry on</small>`;
+            composeToast(`<span class="cmp-tt">${kept}</span><button type="button" id="cmp-discard">Discard</button>`, 4500);
             const d = document.getElementById('cmp-discard');
             if (d) d.onclick = () => {
                 cmpDraftDrop(key);
@@ -35858,7 +36003,7 @@ async function composeRenderPreview(now) {
     const msg = cmpVal('enq-email-body').trim();
     const f = __cmpFacts || { propName: '' };
     const ps = document.getElementById('cmp-pv-subj');
-    if (ps) ps.textContent = subj || (t.kind === 'booking' ? `Your stay at ${f.propName}` : `Your enquiry about ${f.propName}`);
+    if (ps) ps.textContent = subj || (t.kind === 'new' ? 'No subject' : t.kind === 'booking' ? `Your stay at ${f.propName}` : `Your enquiry about ${f.propName}`);
     const pp = document.getElementById('cmp-pv-pre');
     if (pp) pp.textContent = msg.replace(/\s+/g, ' ').slice(0, 140) || 'Your message';
     clearTimeout(__cmpPvT);
@@ -35867,16 +36012,19 @@ async function composeRenderPreview(now) {
     const run = async () => {
         const rec = cmpRec(t);
         try {
-            const r = await apiPost(t.kind === 'booking' ? 'bookings.php' : 'enquiries.php', {
-                action: 'email_preview',
-                id: rec.dbId,
-                subject: subj,
-                message: msg,
-                include_stay: __cmpInc.stay ? 1 : 0,
-                include_money: __cmpInc.money ? 1 : 0,
-                // THE ARRIVAL REVIEW PREVIEWS ITS OWN TEMPLATE, as it sends through it.
-                ...(t.arrival ? { arrival: true } : {}),
-            });
+            // A new email is built by the composer that sends it (mailbox_new_body).
+            const r = t.kind === 'new'
+                ? await apiPost('mailbox.php', { action: 'preview', to: cmpVal('cmp-new-to').trim(), name: cmpVal('cmp-new-name').trim(), subject: subj, body: msg })
+                : await apiPost(t.kind === 'booking' ? 'bookings.php' : 'enquiries.php', {
+                      action: 'email_preview',
+                      id: rec.dbId,
+                      subject: subj,
+                      message: msg,
+                      include_stay: __cmpInc.stay ? 1 : 0,
+                      include_money: __cmpInc.money ? 1 : 0,
+                      // THE ARRIVAL REVIEW PREVIEWS ITS OWN TEMPLATE, as it sends through it.
+                      ...(t.arrival ? { arrival: true } : {}),
+                  });
             if (stamp !== __cmpPvStamp || __composeTarget !== t) return;
             if (r && r.subject && ps) ps.textContent = r.subject;
             const frame = /** @type {HTMLIFrameElement|null} */ (document.getElementById('enq-email-preview-frame'));
@@ -36017,6 +36165,20 @@ function cmpToastHide() {
 function sendEnquiryEmail() {
     const t = __composeTarget;
     if (!t) return;
+    // A new email needs somewhere to go and a subject, asked for in the order they sit.
+    const fix = (id, words) => {
+        cmpSay(words);
+        const el = /** @type {HTMLElement|null} */ (document.getElementById(id));
+        if (el) {
+            cmpReplay(el.closest('.cmp-fld'), 'cmp-nudge');
+            el.focus();
+        }
+    };
+    if (t.kind === 'new') {
+        const to = cmpVal('cmp-new-to').trim();
+        if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(to)) return fix('cmp-new-to', to ? 'That isn’t an email address.' : 'Add who it’s to.');
+        if (!cmpVal('enq-email-subject').trim()) return fix('enq-email-subject', 'Add a subject.');
+    }
     const msg = cmpVal('enq-email-body').trim();
     if (!msg) {
         cmpSay('Write a message first.');
@@ -36028,6 +36190,8 @@ function sendEnquiryEmail() {
     composeFlush(); // one email waits at a time
     const rec = cmpRec(t);
     const f = __cmpFacts || { first: cmpFirst(rec.name) };
+    const newTo = t.kind === 'new' ? cmpVal('cmp-new-to').trim() : '';
+    const newName = t.kind === 'new' ? cmpVal('cmp-new-name').trim() : '';
     const snap = {
         t,
         subj: cmpVal('enq-email-subject'),
@@ -36037,7 +36201,10 @@ function sendEnquiryEmail() {
         atts: __composeAttachments.slice(),
         arvHtml: (document.getElementById('arv-facts-host') || { innerHTML: '' }).innerHTML,
         draftKey: cmpDraftKey(t),
-        first: f.first,
+        // Who it is to, for the toast: a new email's name, else its address.
+        first: t.kind === 'new' ? (newName ? cmpFirst(newName) : newTo) : f.first,
+        to: newTo,
+        name: newName,
         err: '',
     };
     cmpDraftWrite(); // kept until the email has really gone
@@ -36089,6 +36256,21 @@ async function cmpDeliver(snap) {
         // address, map link and "Open my booking" button are still generated.
         if (t.arrival) {
             await apiPost('bookings.php', { action: 'send_arrival', id: rec.dbId, note: snap.msg.trim() });
+        } else if (t.kind === 'new') {
+            // A NEW EMAIL goes through the mailbox, logged in Sent, so it joins their
+            // conversation in the Inbox. Sent again after a lost answer, it goes once.
+            const send = {
+                action: 'send',
+                compose: 'new',
+                to: snap.to,
+                name: snap.name,
+                subject: snap.subj.trim(),
+                body: snap.msg.trim(),
+                attachments: snap.atts.map((a) => ({ filename: a.filename, mime: a.mime, content: a.content })),
+            };
+            send.op_id = chbOpFor({ k: 'new', to: send.to, n: send.name, s: send.subject, m: send.body, f: snap.atts.map((a) => a.filename + ':' + String(a.content || '').length) });
+            await apiPost('mailbox.php', send);
+            chbOpBump();
         } else {
             const send = {
                 action: 'email_guest',
@@ -36126,6 +36308,13 @@ async function cmpDeliver(snap) {
             // The per-booking email log shows the new send straight away.
             await loadBookingEmailLogs();
             if ((document.querySelector('.page-view.active') || {}).id === 'view-backoffice') renderBookings();
+        } else if (t.kind === 'new') {
+            // The Sent list again, so they appear in the Inbox with what was just sent.
+            const s = await apiPost('mailbox.php', { action: 'sent' });
+            if (s && Array.isArray(s.messages)) {
+                __mbxSent = s.messages;
+                ibSoon();
+            }
         }
     } catch (e) {}
 }
@@ -36228,6 +36417,57 @@ document.addEventListener('keydown', (e) => {
     top.addEventListener('pointerup', end);
     top.addEventListener('pointercancel', end);
     try { new ResizeObserver(() => { cmpSeat(document.getElementById('cmp-pane-seg')); cmpSeat(document.getElementById('cmp-pv-mode')); }).observe(sheet); } catch (e) {}
+})();
+// A new email's fields by keyboard: Down from the address reaches the people offered,
+// the arrows walk them, Escape folds them away (and only them: it stops here, before
+// the handler that would close the sheet), and Return moves on to the next field.
+(function cmpNewWire() {
+    const inp = /** @type {HTMLInputElement|null} */ (document.getElementById('cmp-new-to'));
+    const box = document.getElementById('cmp-new-sugg');
+    const nameEl = document.getElementById('cmp-new-name');
+    if (!inp || !box) return;
+    const rows = () => /** @type {HTMLElement[]} */ (Array.from(box.querySelectorAll('.cmp-sugg-row')));
+    const fold = () => {
+        box.hidden = true;
+        box.innerHTML = '';
+        inp.setAttribute('aria-expanded', 'false');
+    };
+    inp.addEventListener('keydown', (e) => {
+        if (e.key === 'ArrowDown' && rows().length) {
+            e.preventDefault();
+            rows()[0].focus();
+        } else if (e.key === 'Escape' && !box.hidden) {
+            e.preventDefault();
+            e.stopPropagation();
+            fold();
+        } else if (e.key === 'Enter' && !(e.metaKey || e.ctrlKey)) {
+            e.preventDefault();
+            if (nameEl) nameEl.focus();
+        }
+    });
+    box.addEventListener('keydown', (e) => {
+        const r = rows();
+        const i = r.indexOf(/** @type {HTMLElement} */ (document.activeElement));
+        if (e.key === 'ArrowDown' && i >= 0) {
+            e.preventDefault();
+            (r[i + 1] || r[i]).focus();
+        } else if (e.key === 'ArrowUp' && i >= 0) {
+            e.preventDefault();
+            (i > 0 ? r[i - 1] : inp).focus();
+        } else if (e.key === 'Escape') {
+            e.preventDefault();
+            e.stopPropagation();
+            fold();
+            inp.focus();
+        }
+    });
+    if (nameEl) nameEl.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' && !(e.metaKey || e.ctrlKey)) {
+            e.preventDefault();
+            const s = document.getElementById('enq-email-subject');
+            if (s) s.focus();
+        }
+    });
 })();
 
 // ============================================================================
@@ -37915,6 +38155,9 @@ async function expMove(id, dir) {
 //  against bookings + enquiries and links straight to their hubs.
 // ============================================================
 let __mbxMessages = [];
+// Emails the list left out because they are in a chat ({uid, chat}): a guest's reply
+// by email, an owner's reply to a chat alert. Deleting that conversation deletes them.
+let __mbxMerged = [];
 let __mbxSent = [];
 let __mbxTab = 'inbox';
 let __mbxQuery = '';
@@ -38196,6 +38439,7 @@ async function loadMailbox() {
             apiPost('mailbox.php', { action: 'sent' }).catch(() => ({ messages: [] })),
         ]);
         __mbxMessages = inbox.messages || [];
+        __mbxMerged = Array.isArray(inbox.merged) ? inbox.merged : [];
         __mbxHasMore = !!inbox.hasMore;
         __mbxSent = sent.messages || [];
         __mbxFailed = false;
@@ -38217,6 +38461,7 @@ async function mailboxOlder() {
     try {
         const r = await apiPost('mailbox.php', { action: 'list', offset: __mbxMessages.length });
         __mbxMessages = __mbxMessages.concat(r.messages || []);
+        if (Array.isArray(r.merged)) __mbxMerged = __mbxMerged.concat(r.merged);
         __mbxHasMore = !!r.hasMore;
         renderMailboxList();
     } catch (e) {

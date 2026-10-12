@@ -145,18 +145,46 @@ if (!function_exists('strip_quoted_reply')) {
 // Idempotency guard: is $body already the most recent message in this thread?
 // Used by BOTH inbound paths (POP3 poll + webhook) so a provider retry or a poll
 // race can't post the same reply twice. Back-office sends stay unguarded (those
-// are intentional).
+// are intentional). With $role ('admin' | 'guest') it must also be that side's: a
+// guest answering with the owner's own words is a new message, and the poll counts
+// a reply as in the chat once this says so.
 if (!function_exists('chat_last_message_is')) {
-    function chat_last_message_is($threadId, $body)
+    function chat_last_message_is($threadId, $body, $role = '')
     {
         try {
-            $s = db()->prepare('SELECT body FROM messages WHERE thread_id = ? ORDER BY id DESC LIMIT 1');
+            $s = db()->prepare('SELECT body, sender_role FROM messages WHERE thread_id = ? ORDER BY id DESC LIMIT 1');
             $s->execute([(int) $threadId]);
-            $last = $s->fetchColumn();
-            return $last !== false && trim((string) $last) === trim((string) $body);
+            $last = $s->fetch(PDO::FETCH_ASSOC);
+            return $last !== false && trim((string) $last['body']) === trim((string) $body) && ($role === '' || $last['sender_role'] === $role);
         } catch (\Throwable $e) {
             return false;
         }
+    }
+}
+
+// Are these words already one of the guest's messages in this thread? How the Inbox's
+// mail list knows a guest's emailed reply is in their chat when nothing recorded it:
+// every reply posted before the poll kept a record, and one the webhook posted. Read
+// and compared here, exactly, rather than by SQL equality, which this collation makes
+// blind to case and trailing spaces.
+if (!function_exists('chat_has_guest_words')) {
+    function chat_has_guest_words($threadId, $words)
+    {
+        $words = mb_substr(trim((string) $words), 0, 4000);
+        if ((int) $threadId <= 0 || $words === '') {
+            return false;
+        }
+        try {
+            $s = db()->prepare("SELECT body FROM messages WHERE thread_id = ? AND sender_role = 'guest' ORDER BY id DESC LIMIT 200");
+            $s->execute([(int) $threadId]);
+            foreach ($s->fetchAll(PDO::FETCH_COLUMN) as $b) {
+                if (trim((string) $b) === $words) {
+                    return true;
+                }
+            }
+        } catch (\Throwable $e) {
+        }
+        return false;
     }
 }
 
@@ -375,9 +403,10 @@ if (!function_exists('chat_author_name')) {
     }
 }
 // Write an owner-side message: typed by $adminId (0: no one's sign-in), of $kind ''
-// (typed), 'auto' (the away reply) or 'event' (something emailed from the chat). On a
-// database without the two columns yet it is written as before, unsigned, rather
-// than not at all. Returns the new message's id.
+// (typed), 'auto' (the away reply), 'event' (something emailed from the chat) or
+// 'mail' (a reply that came in by email). On a database without the two columns yet
+// it is written as before, unsigned, rather than not at all. Returns the new
+// message's id.
 if (!function_exists('chat_insert_owner_message')) {
     function chat_insert_owner_message($threadId, $body, $adminId = 0, $kind = '')
     {
@@ -408,8 +437,9 @@ if (!function_exists('chat_insert_owner_message')) {
 if (!function_exists('chat_admin_reply')) {
     // $actor: who replied ('admin:<id>'), which signs the message. '' leaves it signed
     // by the business (the crown), and the activity log then credits whoever is
-    // signed in, else the owner.
-    function chat_admin_reply($threadId, $bodyTxt, $attachment = '', $actor = '')
+    // signed in, else the owner. $kind 'mail': it was written as an email (a reply to
+    // a chat alert), which the conversation says.
+    function chat_admin_reply($threadId, $bodyTxt, $attachment = '', $actor = '', $kind = '')
     {
         $threadId = (int) $threadId;
         $bodyTxt = mb_substr(trim((string) $bodyTxt), 0, 4000);
@@ -427,7 +457,7 @@ if (!function_exists('chat_admin_reply')) {
         // session: a reply by email from an extra address, polled while someone else
         // is signed in, would otherwise go out under their name. Unknown is the crown.
         $adminId = preg_match('/^admin:(\d+)$/', (string) $actor, $am) ? (int) $am[1] : 0;
-        $mid = chat_insert_owner_message($threadId, $bodyTxt, $adminId);
+        $mid = chat_insert_owner_message($threadId, $bodyTxt, $adminId, $kind === 'mail' ? 'mail' : '');
         if ($attachment !== '') {
             // Guarded so a pre-migration DB (no attachment column) still delivers the reply.
             try {
@@ -511,6 +541,8 @@ if (!function_exists('mailbox_reply_is_guest')) {
 // Post a GUEST reply (arrived by email) into the thread + alert the owner, exactly
 // as if the guest had typed it in the website chat. Mirrors messages.php's
 // chat_notify_owner (which we can't include — it runs the endpoint on include).
+// Marked 'mail', so the conversation says it came as an email: the Inbox leaves the
+// email itself out, and this is the copy that shows.
 if (!function_exists('chat_guest_reply')) {
     function chat_guest_reply($threadId, $bodyTxt)
     {
@@ -519,11 +551,22 @@ if (!function_exists('chat_guest_reply')) {
         if ($threadId <= 0 || $bodyTxt === '') {
             return false;
         }
-        db()
-            ->prepare(
-                "INSERT INTO messages (thread_id, sender_role, body, read_by_admin, read_by_guest) VALUES (?, 'guest', ?, 0, 1)",
-            )
-            ->execute([$threadId, $bodyTxt]);
+        try {
+            db()
+                ->prepare(
+                    "INSERT INTO messages (thread_id, sender_role, body, read_by_admin, read_by_guest, kind) VALUES (?, 'guest', ?, 0, 1, 'mail')",
+                )
+                ->execute([$threadId, $bodyTxt]);
+        } catch (\Throwable $e) {
+            if (!db_schema_missing($e)) {
+                throw $e;
+            }
+            db()
+                ->prepare(
+                    "INSERT INTO messages (thread_id, sender_role, body, read_by_admin, read_by_guest) VALUES (?, 'guest', ?, 0, 1)",
+                )
+                ->execute([$threadId, $bodyTxt]);
+        }
         db()
             ->prepare('UPDATE chat_threads SET updated_at = NOW() WHERE id = ?')
             ->execute([$threadId]);

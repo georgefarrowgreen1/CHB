@@ -73,7 +73,8 @@ function chat_msgs($threadId, $forAdmin = false)
             // photo itself is private), fresh each time the conversation loads.
             'attachment' => chat_photo_out($r['attachment'] ?? ''),
             // Who wrote an owner-side message (0: the crown) and what it is: '' typed,
-            // 'auto' the away reply, 'event' something emailed from the chat.
+            // 'auto' the away reply, 'event' something emailed from the chat, 'mail' a
+            // reply that came in by email (either side).
             'by' => $by,
             'kind' => (string) ($r['kind'] ?? ''),
         ];

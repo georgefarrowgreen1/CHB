@@ -161,10 +161,10 @@ if ($body === '') {
 // ---- Post to the website thread + email the guest (shared helper) ----
 // Idempotency: a provider retry (or a double-fire) re-POSTs the same reply, so
 // skip it if it's already the newest message in the thread.
-if (!chat_last_message_is($threadId, $body)) {
+if (!chat_last_message_is($threadId, $body, $asOwner ? 'admin' : 'guest')) {
     if ($asOwner) {
         $who = function_exists('people_mail_sender_row') ? people_mail_sender_row($fromAddr) : null;
-        chat_admin_reply($threadId, $body, '', $who ? 'admin:' . (int) $who['id'] : '');
+        chat_admin_reply($threadId, $body, '', $who ? 'admin:' . (int) $who['id'] : '', 'mail');
     } else {
         chat_guest_reply($threadId, $body);
     }

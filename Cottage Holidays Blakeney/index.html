@@ -1304,6 +1304,16 @@
                             </button>
                         </div>
                         <div class="cmp-ctx" id="cmp-ctx"><div><dl class="cmp-ctx-in" id="enq-email-context"></dl></div></div>
+                        <!-- A NEW email (the Inbox's New email): the address, typed or picked from the
+                             people the app knows, and the name the email greets. -->
+                        <div class="cmp-fld cmp-fld-new">
+                            <label class="cmp-fl" for="cmp-new-to">To</label>
+                            <div class="cmp-new-to">
+                                <input id="cmp-new-to" type="text" inputmode="email" autocomplete="off" autocapitalize="none" spellcheck="false" maxlength="200" placeholder="Name or email address" aria-controls="cmp-new-sugg" aria-expanded="false" data-act-input="composeNewTo">
+                                <div class="cmp-sugg" id="cmp-new-sugg" role="group" aria-label="People you know" hidden></div>
+                            </div>
+                        </div>
+                        <div class="cmp-fld cmp-fld-new"><label class="cmp-fl" for="cmp-new-name">Name</label><input id="cmp-new-name" type="text" autocomplete="off" autocapitalize="words" maxlength="80" placeholder="Their name" data-act-input="composeNewName"></div>
                     </div>
                     <div class="cmp-fld"><label class="cmp-fl" for="enq-email-subject">Subject</label><textarea id="enq-email-subject" rows="1" maxlength="150" data-act-input="composeTyped"></textarea></div>
                     <div class="cmp-letter" id="cmp-letter">
@@ -1318,14 +1328,14 @@
                     <p class="cmp-err" id="enq-email-msg" role="alert"></p>
                     <div id="arv-facts-host"></div>
                     <div id="cmp-adds-wrap">
-                        <p class="cmp-cap">Added below your message</p>
+                        <p class="cmp-cap" id="cmp-adds-cap">Added below your message</p>
                         <div class="cmp-card" id="cmp-adds">
-                            <div class="cmp-row">
+                            <div class="cmp-row" id="cmp-stay-row">
                                 <span class="cmp-tile" id="cmp-stay-tile" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="3.5" y="5" width="17" height="15" rx="3"/><path d="M3.5 10h17M8 3v4M16 3v4"/></svg></span>
                                 <span class="cmp-rt"><b id="cmp-stay-lbl">Their stay</b><span class="cmp-sub" id="cmp-stay-sub"></span></span>
                                 <label class="chb-switch"><input type="checkbox" id="cmp-inc-stay" role="switch" data-act-change="composeIncToggle" data-args='["stay"]' data-pass="checked"><span class="chb-switch-track" aria-hidden="true"></span><span class="sr-only" id="cmp-stay-sr">Include their stay</span></label>
                             </div>
-                            <div class="cmp-row">
+                            <div class="cmp-row" id="cmp-money-row">
                                 <span class="cmp-tile" id="cmp-money-tile" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M16 7.5A4 4 0 0 0 9 10v8M7 13.5h6M7 18h10"/></svg></span>
                                 <span class="cmp-rt"><b id="cmp-money-lbl">Payment</b><span class="cmp-sub" id="cmp-money-sub"></span></span>
                                 <label class="chb-switch"><input type="checkbox" id="cmp-inc-money" role="switch" data-act-change="composeIncToggle" data-args='["money"]' data-pass="checked"><span class="chb-switch-track" aria-hidden="true"></span><span class="sr-only" id="cmp-money-sr">Include the payment</span></label>
@@ -1784,7 +1794,7 @@
     <div id="changeover-toasts" class="toast-stack"></div>
 
     <!-- --- JAVASCRIPT --- -->
-    <script defer src="app.js?v=1216"></script>
+    <script defer src="app.js?v=1217"></script>
 
     <!-- App-style guest shell (bottom tab bar + install chip). External so the
          single-page index.html stays reviewable; gated to guests via CSS. -->

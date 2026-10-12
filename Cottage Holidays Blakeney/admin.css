@@ -8453,8 +8453,10 @@ body.owner-mode.light-mode #ib {
 #ib .ib-list { min-width: 0; padding: 0 0 40px; }
 /* The refresh button beside the status pill: Payments' + circle, the arrows turning while it asks. */
 .ib-head-r { display: flex; align-items: center; gap: 8px; }
-.ib-refresh { width: 44px; height: 44px; border-radius: 50%; border: 1px solid var(--u-pill-edge); background: none; display: grid; place-items: center; color: var(--text-light); flex: none; cursor: pointer; padding: 0; transition: transform 0.32s var(--settle); }
-.ib-refresh svg { width: 20px; height: 20px; }
+/* New email sits beside the refresh, the same outlined circle. */
+:is(.ib-refresh, .ib-compose) { width: 44px; height: 44px; border-radius: 50%; border: 1px solid var(--u-pill-edge); background: none; display: grid; place-items: center; color: var(--text-light); flex: none; cursor: pointer; padding: 0; transition: transform 0.32s var(--settle); }
+:is(.ib-refresh, .ib-compose) svg { width: 20px; height: 20px; }
+.ib-compose:active { transform: scale(var(--sc, 0.97)); transition-duration: 0.08s; transition-timing-function: var(--in); }
 .ib-refresh .ib-rf-tick { display: none; }
 .ib-refresh.is-busy svg { animation: ibSpin 0.8s linear infinite; }
 .ib-refresh.is-done { color: var(--ok-text); }
@@ -9216,7 +9218,7 @@ body.light-mode :is(#enq-email-subject, #enq-email-body) { background-color: tra
 
 /* The letter: the email's own greeting and sign-off sit around what you write. */
 .cmp-letter { padding: 16px 0 8px; }
-.cmp-letter.cmp-nudge { animation: cmpNudge 380ms var(--out); }
+.cmp-letter.cmp-nudge, .cmp-fld.cmp-nudge { animation: cmpNudge 380ms var(--out); }
 @keyframes cmpNudge { 25% { transform: translateX(-4px); } 75% { transform: translateX(4px); } }
 .cmp-frame { margin: 0; color: var(--text-muted); }
 .cmp-frame small { margin-left: 8px; font-size: var(--fs-caption); }
@@ -9257,6 +9259,30 @@ button.cmp-row { cursor: pointer; }
 /* The arrival review: its own email greets and signs, and adds its own facts. */
 #enq-email-modal.cmp-arrival :is(#cmp-adds-wrap, #cmp-greet, #cmp-sign) { display: none; }
 #enq-email-modal.cmp-arrival .cmp-letter-foot { justify-content: flex-end; }
+/* A NEW email: the address and the name it greets stand in the To row's place, there is
+   no stay or payment to add, and with no name there is no greeting. */
+#enq-email-modal:not(.cmp-new) .cmp-fld-new,
+#enq-email-modal.cmp-new :is(.cmp-fld-to, #cmp-ctx, #cmp-stay-row, #cmp-money-row) { display: none; }
+#enq-email-modal.cmp-new #cmp-greet:empty { display: none; }
+.cmp-fld-new { align-items: center; }
+.cmp-fld-new .cmp-fl { padding-top: 0; }
+.cmp-fld-new:has(.cmp-sugg:not([hidden])) { align-items: start; }
+.cmp-fld-new:has(.cmp-sugg:not([hidden])) .cmp-fl { padding-top: 12px; }
+.cmp-new-to { min-width: 0; }
+#cmp-new-to, #cmp-new-name {
+  display: block; width: 100%; min-height: 44px; margin: 0; padding: 0; border: 0; background: none; outline: none;
+  color: inherit; font-family: var(--font-sans); font-size: var(--fs-body);
+}
+body.light-mode :is(#cmp-new-to, #cmp-new-name) { background-color: transparent !important; }
+#cmp-new-to::placeholder, #cmp-new-name::placeholder { color: var(--text-muted); opacity: 0.8; }
+/* The people the app knows, under the field as you type. */
+.cmp-sugg { display: grid; margin: 4px 0 8px; overflow: hidden; background: var(--u-ground); border: 1px solid var(--u-edge); border-radius: var(--r-sm); }
+.cmp-sugg[hidden] { display: none; }
+.cmp-sugg-row { display: flex; align-items: center; gap: 12px; width: 100%; min-height: 52px; padding: 8px 12px; border: 0; background: none; color: inherit; font: inherit; text-align: left; cursor: pointer; transition: transform 320ms var(--out); }
+.cmp-sugg-row + .cmp-sugg-row { border-top: 1px solid var(--u-edge); }
+.cmp-sugg-row:active { transform: scale(0.98); transition-duration: 80ms; }
+.cmp-sugg-row:focus-visible { outline: 2px solid var(--accent-text); outline-offset: -2px; }
+.cmp-sugg-none { margin: 0; padding: 12px; font-size: var(--fs-sub); color: var(--text-muted); }
 
 /* Preview: their inbox line first, then the email itself. */
 .cmp-pv-bar { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin: 4px 0 8px; }

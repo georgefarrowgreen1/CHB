@@ -425,6 +425,21 @@ function chb_send_sample_emails($which = 'all', $prefix = '[SAMPLE] ')
                 return send_owner($m['subject'], $m['text'], $m['html']);
             },
         ],
+        // The Inbox's New email: to anyone, greeted by the name typed beside the address
+        // and signed by whoever is signed in (reply_email_opts, as the send resolves it).
+        'mailbox_new' => [
+            'A new email from the Inbox',
+            function () use ($owner) {
+                $m = mailbox_new_body(
+                    'Pete Holt',
+                    'Linen for the winter',
+                    "Could you quote for sheets and towels for three cottages over the winter?\n\n" .
+                        '(This is sample text — your own words go here.)',
+                    reply_email_opts([])['from'],
+                );
+                return smtp_send($owner, 'Pete Holt', $m['subject'], $m['text'], $m['html']);
+            },
+        ],
         'mailbox_reply' => [
             'Your reply from Manage → Email',
             function () use ($owner) {

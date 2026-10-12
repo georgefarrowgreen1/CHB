@@ -14,7 +14,9 @@
 //              rendered (a hostile email must not become script in the
 //              owner's admin session) — the client shows escaped text.
 //    send    — compose/reply. Plain text + the branded email_shell HTML
-//              part, exactly like the site's transactional emails.
+//              part, exactly like the site's transactional emails. With
+//              compose:'new' it is the Inbox's New email (mailbox_new_body).
+//    preview — that new email as it will look, sending nothing.
 //    delete  — DELE one message (client confirms first; QUIT commits).
 //
 //  POP3 numbering is per-session, so every mutating action re-lists UIDLs
@@ -154,16 +156,14 @@ function mbx_parse_attachments($body, $ctype)
     }
     return $out;
 }
-// Fetch one raw message by UIDL (shared by read / attachment).
 // The first words of a message, for the Inbox row, from the same TOP the list
 // read its headers from (one round trip per message, not two): the tested MIME
-// parser decodes the head and the first dozens of body lines, and the reply's own
-// words are kept (quoted history and signatures dropped). Never fatal: a message
-// that does not parse this way simply has no preview.
-function mbx_preview($raw)
+// parser decodes the head and the first dozens of body lines (parsed once, by the
+// list), and the reply's own words are kept (quoted history and signatures dropped).
+// Never fatal: a message that does not parse this way simply has no preview.
+function mbx_preview(array $parsed)
 {
     try {
-        $parsed = parse_email_message($raw);
         $body = str_replace("\r\n", "\n", (string) ($parsed['body'] ?? ''));
         $keep = [];
         foreach (explode("\n", $body) as $line) {
@@ -184,6 +184,7 @@ function mbx_preview($raw)
         return '';
     }
 }
+// Fetch one raw message by UIDL (shared by read / attachment).
 function mbx_retr($uid)
 {
     [$fp, $uidl] = mbx_open_listed();
@@ -229,7 +230,14 @@ if ($action === 'list') {
     $out = [];
     $ownHidden = 0;
     $robotHidden = 0;
+    $chatHidden = 0;
+    // Every copy left out because it is in a chat, with the chat it is in: deleting
+    // that conversation in the Inbox deletes these from the mailbox too.
+    $merged = [];
     $mbxSenders = null;
+    // The mail the reply poll has put into a chat (mailbox-read.php records it).
+    $pollState = content_json('mailbox-poll', []);
+    $routedSet = isset($pollState['routed']) && is_array($pollState['routed']) ? array_fill_keys(array_map('strval', $pollState['routed']), true) : [];
     foreach ($nos as $no) {
         // ONE command per message: the headers and the first 40 body lines for the
         // preview together (it was TOP n 0, then TOP n 40 again for the preview).
@@ -293,6 +301,9 @@ if ($action === 'list') {
             }
             if ($rAside) {
                 $ownHidden++;
+                if ($rAud === 'owner' && (int) $rTid > 0 && $rChk['state'] === 'ok') {
+                    $merged[] = ['uid' => $uidl[$no], 'chat' => (int) $rTid];
+                }
                 continue;
             }
         }
@@ -304,15 +315,41 @@ if ($action === 'list') {
             $robotHidden++;
             continue;
         }
-        $out[] = [
+        $parsed = null;
+        try {
+            $parsed = parse_email_message($raw);
+        } catch (\Throwable $e) {
+        }
+        $item = [
             'uid' => $uidl[$no],
-            'preview' => mbx_preview($raw),
+            'preview' => $parsed ? mbx_preview($parsed) : '',
             'from' => $fromAddr,
             'fromRaw' => mailbox_decode_subject(mbx_header($head, 'From')),
             'subject' => mailbox_decode_subject(mbx_header($head, 'Subject')) ?: '(no subject)',
             'date' => mbx_date_iso(mbx_header($head, 'Date')),
             'seen' => in_array($uidl[$no], $seen, true),
         ];
+        // A GUEST'S REPLY BY EMAIL IS ONE MESSAGE. The poll posts it into their chat
+        // and the email stays in the mailbox, so the conversation showed it twice. The
+        // chat's copy is the one that shows (it says it came by email), so this one is
+        // left out once the chat has it: the poll recorded it, or its words are already
+        // there (one posted before the poll kept a record, or by the webhook). Asked
+        // through the poll's own rule, so the two cannot disagree about which mail.
+        if ($parsed) {
+            $rt = mailbox_reply_route($parsed, $head, $mbxSenders ??= people_mail_senders());
+            if ($rt['route'] === 'guest') {
+                if (isset($routedSet[(string) $uidl[$no]]) || chat_has_guest_words($rt['tid'], $rt['body'])) {
+                    $chatHidden++;
+                    $merged[] = ['uid' => $uidl[$no], 'chat' => (int) $rt['tid']];
+                    continue;
+                }
+                // Not posted yet: the Inbox leaves it out as soon as the chat it has
+                // loaded shows these words.
+                $item['chat'] = (int) $rt['tid'];
+                $item['words'] = mb_substr(trim($rt['body']), 0, 4000);
+            }
+        }
+        $out[] = $item;
     }
     mbx_quit($fp);
     json_out([
@@ -322,6 +359,8 @@ if ($action === 'list') {
         'hasMore' => $hasMore,
         'ownHidden' => $ownHidden,
         'robotHidden' => $robotHidden,
+        'chatHidden' => $chatHidden,
+        'merged' => $merged,
     ]);
 }
 
@@ -398,15 +437,38 @@ if ($action === 'mark_unread') {
 }
 
 if ($action === 'sent') {
-    try {
-        $rows = db()
-            ->query('SELECT id, to_email, cc_email, subject, body, sent_at FROM mail_sent ORDER BY sent_at DESC, id DESC LIMIT 200')
-            ->fetchAll();
-    } catch (\Throwable $e) {
-        // Table appears after the next migrate run — an empty Sent beats a 500.
-        $rows = [];
+    $rows = [];
+    // to_name (migration-147) names a new email's person; before it, the same list without.
+    foreach (['id, to_email, to_name, cc_email, subject, body, sent_at', 'id, to_email, cc_email, subject, body, sent_at'] as $cols) {
+        try {
+            $rows = db()
+                ->query("SELECT $cols FROM mail_sent ORDER BY sent_at DESC, id DESC LIMIT 200")
+                ->fetchAll();
+            break;
+        } catch (\Throwable $e) {
+            // Table appears after the next migrate run — an empty Sent beats a 500.
+            $rows = [];
+            if (!db_schema_missing($e)) {
+                break;
+            }
+        }
     }
     json_out(['ok' => true, 'messages' => $rows]);
+}
+
+// THE NEW EMAIL (the Inbox's "New email" sheet) is built by mailbox_new_body(), its
+// greeting and sign-off around the owner's words, exactly as the sheet shows them.
+// The name, when given, greets them and names them on the envelope.
+function mbx_new_name($in)
+{
+    return mb_substr(trim(clean($in['name'] ?? '')), 0, 80);
+}
+
+// What the new email will look like, built by the composer that sends it.
+if ($action === 'preview') {
+    $subject = trim((string) ($in['subject'] ?? ''));
+    $m = mailbox_new_body(mbx_new_name($in), $subject !== '' ? $subject : '(no subject)', trim((string) ($in['body'] ?? '')), reply_email_opts($in)['from']);
+    json_out(['ok' => true, 'subject' => $m['subject'], 'html' => $m['html']]);
 }
 
 if ($action === 'send') {
@@ -415,6 +477,8 @@ if ($action === 'send') {
     $subject = trim((string) ($in['subject'] ?? ''));
     $bodyText = trim((string) ($in['body'] ?? ''));
     $cc = clean($in['cc'] ?? '');
+    $isNew = ($in['compose'] ?? '') === 'new';
+    $name = $isNew ? mbx_new_name($in) : '';
     if (!filter_var($to, FILTER_VALIDATE_EMAIL)) {
         json_out(['error' => 'Please enter a valid "To" email address.'], 400);
     }
@@ -427,11 +491,12 @@ if ($action === 'send') {
     if (strlen($subject) > 300 || strlen($bodyText) > 20000) {
         json_out(['error' => 'That message is too long.'], 400);
     }
-    // Composed by mailbox_reply_body() in mailer.php — previewable, and the render gate
-    // proves it builds.
-    $m = mailbox_reply_body($subject, $bodyText);
+    // Composed by mailbox_new_body() / mailbox_reply_body() in mailer.php — previewable,
+    // and the render gate proves both build.
+    $m = $isNew ? mailbox_new_body($name, $subject, $bodyText, reply_email_opts($in)['from']) : mailbox_reply_body($subject, $bodyText);
     $html = $m['html'];
-    $r = smtp_send($to, '', $m['subject'], $m['text'], $html);
+    $atts = sanitize_email_attachments($in['attachments'] ?? []);
+    $r = smtp_send($to, $name, $m['subject'], $m['text'], $html, $atts);
     if (empty($r['ok'])) {
         json_out(['error' => "Couldn't send: " . ($r['error'] ?? 'unknown error')], 502);
     }
@@ -439,13 +504,23 @@ if ($action === 'send') {
         smtp_send($cc, '', $subject, $bodyText, $html); // best-effort copy
     }
     try {
-        db()
-            ->prepare('INSERT INTO mail_sent (to_email, cc_email, subject, body) VALUES (?, ?, ?, ?)')
-            ->execute([$to, $cc !== '' ? $cc : null, $subject, $bodyText]);
+        try {
+            // A new email keeps the name it was sent to, so the Inbox names the person.
+            db()
+                ->prepare('INSERT INTO mail_sent (to_email, to_name, cc_email, subject, body) VALUES (?, ?, ?, ?, ?)')
+                ->execute([$to, $name !== '' ? $name : null, $cc !== '' ? $cc : null, $subject, $bodyText]);
+        } catch (\Throwable $e) {
+            if (!db_schema_missing($e)) {
+                throw $e;
+            }
+            db()
+                ->prepare('INSERT INTO mail_sent (to_email, cc_email, subject, body) VALUES (?, ?, ?, ?)')
+                ->execute([$to, $cc !== '' ? $cc : null, $subject, $bodyText]);
+        }
     } catch (\Throwable $e) {
         // Sent ledger appears after the next migrate run; the send itself succeeded.
     }
-    log_activity('email', 'email.mailbox_send', 'Email sent from the admin mailbox to ' . $to, [
+    log_activity('email', 'email.mailbox_send', ($isNew ? 'New email sent to ' : 'Email sent from the admin mailbox to ') . $to, [
         'entity' => 'mailbox',
         'entity_id' => $to,
     ]);

@@ -300,8 +300,88 @@ function pop3_multiline($fp, &$clean = null, $maxBytes = 262144)
     return $data;
 }
 
+// ---- What the poll does with one email -------------------------------------
+// Decided here once, for the poll and for the Inbox's mail list: the list leaves out
+// a copy the poll has posted into a chat, so a reply never shows twice, and it must
+// agree with the poll about which those are. $p is parse_email_message()'s result and
+// $head the raw header block. The route is 'admin' (the owner's reply, posted as
+// theirs), 'guest' (the thread's own guest, posted as theirs), 'expired' (the owner's
+// reply on a code past its lifetime: a note goes back) or 'drop' (it stays as mail).
+function mailbox_reply_route(array $p, string $head, array $allowed): array
+{
+    $tok = mailbox_token_in($p);
+    // Either audience routes a reply to its thread; only an OWNER token may make it
+    // an admin reply (a guest holds only their own token). A token past its lifetime
+    // routes nothing (msg_reply_check).
+    $tokChk = msg_reply_check($tok, true);
+    [$tid, $tokAud] = $tokChk['state'] === 'ok' ? [(int) $tokChk['tid'], (string) $tokChk['aud']] : [0, ''];
+    $fromAddr = mailbox_from_addr($p['from'] ?? '');
+    $senderOk = in_array($fromAddr, $allowed, true);
+    $body = $tid > 0 ? strip_quoted_reply($p['body'] ?? '') : '';
+    // NEVER INGEST OUR OWN VOICE. The site sends as the same address the owner reads,
+    // and that address is on the allow-list, so a notification carrying a thread token
+    // would route as an "admin reply" and post the site's own alert into the guest's
+    // chat. The SITE'S own mail is known by its fingerprint: an email the owner typed
+    // from the same address (a reply to a chat alert) must still route.
+    $isSelf = mailbox_is_self_notification($fromAddr, $head);
+    // A THREAD THAT NO LONGER EXISTS takes no reply. The owner's emailed answer to a
+    // deleted chat was inserted as an orphan message, emailed to no one and marked
+    // handled: they believed they had replied. Left as ordinary mail instead, so it
+    // lands in their Inbox where they can see it.
+    $threadGone = false;
+    if ($tid > 0) {
+        try {
+            $tq = db()->prepare('SELECT 1 FROM chat_threads WHERE id = ?');
+            $tq->execute([$tid]);
+            $threadGone = !$tq->fetchColumn();
+        } catch (\Throwable $e) {
+        }
+    }
+    // The owner/co-host → admin reply; the thread's OWN guest (they were invited to
+    // "just reply to this email") → guest message; else it stays as mail.
+    $route = 'drop';
+    if ($tid > 0 && $body !== '' && !$isSelf && !$threadGone) {
+        if ($senderOk && $tokAud === 'owner') {
+            $route = 'admin';
+        } elseif (mailbox_reply_is_guest($tid, $fromAddr)) {
+            $route = 'guest';
+        }
+    }
+    // A REPLY ON AN EXPIRED TOKEN POSTS NOTHING, AND IS NOT LOST. Yours (an owner
+    // token, from one of your addresses) earns a note back saying so, and the Inbox
+    // sets it aside as it does a routed reply; a guest's is left as mail, so it reaches
+    // the Inbox from their address.
+    $expired = !$isSelf && $tokChk['state'] === 'expired';
+    if ($expired && $tokChk['aud'] === 'owner' && $senderOk) {
+        $route = 'expired';
+    }
+    $reason = $isSelf
+        ? 'self-notification'
+        : ($expired
+            ? 'token-expired'
+            : ($tid <= 0
+                ? 'no-thread-token'
+                : ($threadGone
+                    ? 'thread-gone'
+                    : ($body === ''
+                        ? 'empty-after-strip'
+                        : ($route === 'admin' ? 'delivered' : ($route === 'guest' ? 'delivered-guest' : 'sender-not-recognised'))))));
+    return [
+        'route' => $route,
+        'tid' => $tid,
+        'lateTid' => (int) ($tokChk['tid'] ?? 0),
+        'body' => $body,
+        'from' => $fromAddr,
+        'tok' => $tok,
+        'senderOk' => $senderOk,
+        'isSelf' => $isSelf,
+        'reason' => $reason,
+    ];
+}
+
 // ---- The poll: pull new replies and route them ------------------------------
-// Throttled + watermarked via content 'mailbox-poll' = {at, uids:[…]}.
+// Throttled + watermarked via content 'mailbox-poll' = {at, uids:[…], routed:[…]}:
+// routed is the mail it has put into a chat, which the Inbox's mail list leaves out.
 // $preview = true → read-only: don't deliver, don't mark processed, and return a
 // per-message trace (used by the ?debug view to see exactly what's arriving).
 function poll_mailbox_replies($force = false, $preview = false)
@@ -319,6 +399,7 @@ function poll_mailbox_replies($force = false, $preview = false)
     }
     $state = content_json('mailbox-poll', []); // array-valued key — NOT content_value()
     $processed = isset($state['uids']) && is_array($state['uids']) ? $state['uids'] : [];
+    $routed = isset($state['routed']) && is_array($state['routed']) ? $state['routed'] : [];
     if (!$preview && !$force && !empty($state['at']) && time() - (int) $state['at'] < 25) {
         return ['ok' => true, 'skipped' => 'throttled'];
     }
@@ -342,7 +423,7 @@ function poll_mailbox_replies($force = false, $preview = false)
     $conn = pop3_open();
     if (isset($conn['error'])) {
         if (!$preview) {
-            mailbox_poll_save($processed, $conn['error'], null);
+            mailbox_poll_save($processed, $conn['error'], null, $routed);
             poll_unlock($lock);
         }
         return ['ok' => false, 'error' => $conn['error']];
@@ -383,79 +464,24 @@ function poll_mailbox_replies($force = false, $preview = false)
                 break;
             } // partial read / desync → stop; uid NOT marked, retry next poll
             $p = parse_email_message($raw);
-            $tok = mailbox_token_in($p);
-            // Either audience routes a reply to its thread; only an OWNER token may
-            // make it an admin reply (a guest holds only their own token). A token past
-            // its lifetime routes nothing (msg_reply_check), and is answered below.
-            $tokChk = msg_reply_check($tok, true);
-            [$tid, $tokAud] = $tokChk['state'] === 'ok' ? [$tokChk['tid'], $tokChk['aud']] : [0, ''];
-            $fromAddr = mailbox_from_addr($p['from']);
-            $senderOk = in_array($fromAddr, $allowed, true);
-            $body = $tid > 0 ? strip_quoted_reply($p['body']) : '';
-            // Route: the owner/co-host → admin reply; the thread's OWN guest (they
-            // were invited to "just reply to this email") → guest message; else drop.
-            // NEVER INGEST OUR OWN VOICE. The site sends as the same address the
-            // owner reads, and that address is on the allow-list — so a
-            // notification carrying a thread token would route as an "admin
-            // reply" and post the site's own alert into the guest's chat. The
-            // sender test comes first, before any routing.
-            // The SITE'S own mail, by its fingerprint: an email the owner typed from
-            // the same address (a reply to a chat alert) must still route.
-            $isSelf = mailbox_is_self_notification($fromAddr, explode("\n\n", str_replace("\r\n", "\n", (string) $raw), 2)[0]);
-            $route = 'drop';
-            // A THREAD THAT NO LONGER EXISTS takes no reply. The owner's emailed answer
-            // to a deleted chat was inserted as an orphan message, emailed to no one
-            // and marked handled — they believed they had replied. Left as ordinary
-            // mail instead, so it lands in their Inbox where they can see it.
-            $threadGone = false;
-            if ($tid > 0) {
-                try {
-                    $tq = db()->prepare('SELECT 1 FROM chat_threads WHERE id = ?');
-                    $tq->execute([$tid]);
-                    $threadGone = !$tq->fetchColumn();
-                } catch (\Throwable $e) {
-                }
-            }
-            if ($tid > 0 && $body !== '' && !$isSelf && !$threadGone) {
-                if ($senderOk && $tokAud === 'owner') {
-                    $route = 'admin';
-                } elseif (mailbox_reply_is_guest($tid, $fromAddr)) {
-                    $route = 'guest';
-                }
-            }
-            // A REPLY ON AN EXPIRED TOKEN POSTS NOTHING, AND IS NOT LOST. Yours (an
-            // owner token, from one of your addresses) earns a note back saying so,
-            // and the Inbox sets it aside as it does a routed reply; a guest's is left
-            // as mail, so it reaches the Inbox from their address.
-            $expired = !$isSelf && $tokChk['state'] === 'expired';
-            if ($expired && $tokChk['aud'] === 'owner' && $senderOk) {
-                $route = 'expired';
-            }
-            $reason = $isSelf
-                ? 'self-notification'
-                : ($expired
-                    ? 'token-expired'
-                    : ($tid <= 0
-                    ? 'no-thread-token'
-                    : ($threadGone
-                    ? 'thread-gone'
-                    : ($body === ''
-                        ? 'empty-after-strip'
-                        : ($route === 'admin'
-                            ? 'delivered'
-                            : ($route === 'guest'
-                                ? 'delivered-guest'
-                                : 'sender-not-recognised'))))));
+            // The route is decided in one place (mailbox_reply_route above), which the
+            // Inbox's mail list asks too.
+            $rt = mailbox_reply_route($p, explode("\n\n", str_replace("\r\n", "\n", (string) $raw), 2)[0], $allowed);
+            $route = $rt['route'];
+            $tid = $rt['tid'];
+            $body = $rt['body'];
+            $fromAddr = $rt['from'];
+            $isSelf = $rt['isSelf'];
             $info = [
                 'from' => $fromAddr,
                 'subject' => mb_substr($p['subject'], 0, 120),
-                'tokenFound' => $tok !== '',
+                'tokenFound' => $rt['tok'] !== '',
                 'thread' => $tid,
-                'senderOk' => $senderOk,
+                'senderOk' => $rt['senderOk'],
                 'route' => $route,
                 'bodyLen' => strlen($p['body']),
                 'strippedLen' => strlen($body),
-                'reason' => $reason,
+                'reason' => $rt['reason'],
             ];
             if ($preview) {
                 $info['strippedPreview'] = mb_substr($body ?: $p['body'], 0, 200);
@@ -467,11 +493,12 @@ function poll_mailbox_replies($force = false, $preview = false)
             // Idempotency guard: never post a reply that's already the thread's newest
             // message (covers a watermark hiccup or a webhook+poll overlap).
             $deliverOk = true;
-            if (($route === 'admin' || $route === 'guest') && !chat_last_message_is($tid, $body)) {
+            if (($route === 'admin' || $route === 'guest') && !chat_last_message_is($tid, $body, $route)) {
                 try {
+                    // Marked as having come by email, so the conversation says so.
                     if ($route === 'admin') {
                         $who = function_exists('people_mail_sender_row') ? people_mail_sender_row($fromAddr) : null;
-                        chat_admin_reply($tid, $body, '', $who ? 'admin:' . (int) $who['id'] : '');
+                        chat_admin_reply($tid, $body, '', $who ? 'admin:' . (int) $who['id'] : '', 'mail');
                     } else {
                         chat_guest_reply($tid, $body);
                     }
@@ -480,11 +507,17 @@ function poll_mailbox_replies($force = false, $preview = false)
                     $deliverOk = false;
                 }
             }
+            // IN THE CHAT NOW (posted, or already its newest message), so the Inbox's
+            // mail list leaves this copy out: a guest's reply showed twice, once in the
+            // chat and once as the email it came in.
+            if ($deliverOk && ($route === 'admin' || $route === 'guest')) {
+                $routed[] = $uid;
+            }
             // Your late reply: one note back, to the address it came from (the uid is
             // marked handled below, so it is never sent twice for one email).
             if ($route === 'expired') {
                 try {
-                    chat_late_reply_owner($fromAddr, (int) $tokChk['tid']);
+                    chat_late_reply_owner($fromAddr, (int) $rt['lateTid']);
                 } catch (\Throwable $e) {
                 }
             }
@@ -519,6 +552,7 @@ function poll_mailbox_replies($force = false, $preview = false)
         // Only from a listing read in full (a partial one would forget too much).
         if ($uclean) {
             $processed = mailbox_handled_keep($processed, $uidls);
+            $routed = mailbox_handled_keep($routed, $uidls);
         }
     } catch (\Throwable $e) {
         @fclose($fp);
@@ -526,7 +560,7 @@ function poll_mailbox_replies($force = false, $preview = false)
         if ($preview) {
             return ['ok' => false, 'error' => $e->getMessage()];
         }
-        mailbox_poll_save($processed, '', $last);
+        mailbox_poll_save($processed, '', $last, $routed);
         poll_unlock($lock);
         return ['ok' => false, 'error' => $e->getMessage(), 'handled' => $handled];
     }
@@ -535,7 +569,7 @@ function poll_mailbox_replies($force = false, $preview = false)
     if ($preview) {
         return ['ok' => true, 'messages' => $trace, 'host' => mailbox_pop_host(), 'allowed' => $allowed ?? []];
     }
-    mailbox_poll_save($processed, '', $last);
+    mailbox_poll_save($processed, '', $last, $routed);
     $noticed = mailbox_new_record($fresh);
     poll_unlock($lock);
     return ['ok' => true, 'handled' => $handled, 'last' => $last, 'noticed' => $noticed];
@@ -721,24 +755,29 @@ function mailbox_poll_recent(): bool
     }
     return $ago !== false && $ago !== null && (int) $ago >= 0 && (int) $ago < 25;
 }
-function mailbox_poll_save($processed, $error, $last)
+// $routed: the mail now in a chat (null keeps what is stored).
+function mailbox_poll_save($processed, $error, $last, $routed = null)
 {
-    // The list is pruned to the inbox's own listing by the poll (see above), so it is
-    // as long as the inbox. A far ceiling only guards against a listing that never
+    // The lists are pruned to the inbox's own listing by the poll (see above), so they
+    // are as long as the inbox. A far ceiling only guards against a listing that never
     // arrives in full; it is not the rule that decides what is remembered.
     if (count($processed) > 50000) {
         $processed = array_slice($processed, -50000);
     }
-    $val = ['at' => time(), 'uids' => array_values($processed), 'error' => $error];
+    $prev = $last === null || $routed === null ? content_json('mailbox-poll', []) : [];
+    if ($routed === null) {
+        $routed = isset($prev['routed']) && is_array($prev['routed']) ? $prev['routed'] : [];
+    }
+    if (count($routed) > 50000) {
+        $routed = array_slice($routed, -50000);
+    }
+    $val = ['at' => time(), 'uids' => array_values($processed), 'routed' => array_values($routed), 'error' => $error];
     if ($last !== null) {
         $val['last'] = $last;
         $val['lastAt'] = time();
-    } else {
-        $prev = content_json('mailbox-poll', []);
-        if (isset($prev['last'])) {
-            $val['last'] = $prev['last'];
-            $val['lastAt'] = $prev['lastAt'] ?? null;
-        }
+    } elseif (isset($prev['last'])) {
+        $val['last'] = $prev['last'];
+        $val['lastAt'] = $prev['lastAt'] ?? null;
     }
     try {
         // Stored SINGLE-encoded and read back with content_json() (content_value()
