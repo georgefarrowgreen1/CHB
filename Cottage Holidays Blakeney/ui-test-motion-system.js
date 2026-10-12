@@ -116,7 +116,8 @@ const EXPS = [
         ['admin.css', ADMIN_CSS, '.rail-ind', /\.rail-ind\s*\{[^}]*translate\s+([^,;]+)/],
         ['admin.css', ADMIN_CSS, '.chb-switch-track::after', /\.chb-switch-track::after\s*\{[^}]*transition:\s*transform\s+([^;}]+)/],
         ['app.css', APP_CSS, '.admin-dock-indicator', /\.admin-dock-indicator\s*\{[^}]*translate\s+([^,;]+)/],
-        ['app.css', APP_CSS, '.settings-row-chev', /\.settings-row \.settings-row-chev\s*\{[^}]*transform\s+([^,;]+)/],
+        // The Manage row's chevron moved to admin.css with the other owner-only rules.
+        ['admin.css', ADMIN_CSS, '.settings-row-chev', /\.settings-row \.settings-row-chev\s*\{[^}]*transform\s+([^,;]+)/],
         ['guest-app.css', GUEST_CSS, '.guest-dock-indicator', /\.guest-dock-indicator\s*\{[^}]*translate\s+([^,;]+)/],
     ];
     const sprung = travellers.filter(([, css, , re]) => { const m = noComments(css).match(re); return !m || /--spring/.test(m[1]); })
