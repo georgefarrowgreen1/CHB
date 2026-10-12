@@ -204,8 +204,10 @@ function pk_admin_sign_in($cred, $data, array $extra = [])
     } else {
         log_activity('account', 'admin.login', people_display_name($row) . ' signed in with a passkey');
     }
-    $me = people_public($row, (int) $row['id']);
-    json_out(['ok' => true, 'me' => $me, 'ownerFirst' => admin_owner_first()] + $extra);
+    // The same description of the person as every other way in (db.php), read
+    // after the sign-in as admin_complete_login reads it.
+    $row = admin_row((int) $row['id'], true) ?: $row;
+    json_out(['ok' => true, 'me' => admin_me_payload(admin_backfill_owner($row)), 'ownerFirst' => admin_owner_first()] + $extra);
 }
 
 // Mirror of the guest flow, but for the admin account. The admin PASSWORD
@@ -409,11 +411,7 @@ if ($action === 'any_login_finish') {
     guest_session_begin((int) $cred['guest_id']);
     unset($_SESSION['admin_id']); // one role at a time
     unset($_SESSION['pk_any_login_challenge']);
-    json_out([
-        'ok' => true,
-        'role' => 'guest',
-        'guest' => ['name' => $cred['name'], 'email' => $cred['email'], 'phone' => $cred['phone']],
-    ]);
+    json_out(['ok' => true, 'role' => 'guest', 'guest' => guest_me_payload((int) $cred['guest_id'])]);
 }
 
 json_out(['error' => 'Unknown action'], 400);

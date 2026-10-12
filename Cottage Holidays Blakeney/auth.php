@@ -271,40 +271,6 @@ function admin_switched_off()
     $o = admin_owner_first();
     return 'This sign-in has been switched off. Ask ' . ($o !== '' ? $o : 'the owner') . ' if you need it back.';
 }
-// What the browser is told about the person signed in.
-function admin_me_payload($row)
-{
-    $me = people_public($row, (int) $row['id']);
-    $me['contact'] = admin_contact_email($row);
-    $me['twofa'] = admin_twofa_wanted($row);
-    $me['twofaLive'] = admin_twofa_on($row);
-    $me['original'] = (int) $row['id'] === admin_original_owner_id();
-    $me['notify'] = notify_prefs_for($row);
-    $me += people_mail_payload($row);
-    return $me;
-}
-// The first owner's row predates the email column: fill it once from the owner
-// address the server already knows, unless someone else is using it.
-function admin_backfill_owner($row)
-{
-    if (!is_array($row) || !array_key_exists('email', $row) || (string) $row['email'] !== '') {
-        return $row;
-    }
-    if ((int) $row['id'] !== admin_original_owner_id() || !defined('OWNER_NOTIFY_EMAIL') || !OWNER_NOTIFY_EMAIL) {
-        return $row;
-    }
-    $e = strtolower((string) OWNER_NOTIFY_EMAIL);
-    try {
-        $q = db()->prepare('SELECT COUNT(*) FROM admins WHERE email = ? AND id <> ?');
-        $q->execute([$e, (int) $row['id']]);
-        if ((int) $q->fetchColumn() === 0) {
-            db()->prepare("UPDATE admins SET email = ? WHERE id = ? AND email = ''")->execute([$e, (int) $row['id']]);
-            $row['email'] = $e;
-        }
-    } catch (\Throwable $e2) {
-    }
-    return $row;
-}
 // Finish a sign-in (a password, an emailed code, a new-device code, an invite or
 // reset, and the staging seat): a new session id, the person's own session, and a
 // note in the log saying how, a warning when the device or place is new to THIS person.
@@ -953,16 +919,7 @@ switch ($action) {
         session_regenerate_id(true); // new session id on login — prevents session fixation
         guest_session_begin((int) $row['id']);
         unset($_SESSION['admin_id']); // one role at a time: a guest session ends any admin session
-        json_out([
-            'ok' => true,
-            'guest' => [
-                'name' => $row['name'],
-                'email' => $row['email'],
-                'phone' => $row['phone'],
-                'address' => $row['address'],
-                'postcode' => $row['postcode'],
-            ],
-        ]);
+        json_out(['ok' => true, 'guest' => guest_me_payload((int) $row['id'])]);
 
     // Passwordless sign-in: email the guest a one-tap magic link. We ALWAYS
     // reply ok (even if no such account) so the endpoint can't be used to probe
@@ -1142,9 +1099,7 @@ switch ($action) {
         guest_session_begin((int) $row['id']);
         unset($_SESSION['admin_id']);
         log_activity('account', 'guest.code_login', 'Guest signed in with an emailed code', ['actor' => 'guest', 'entity' => 'guest', 'entity_id' => (string) $row['id']]);
-        $row['avatar'] = guest_avatar_v((int) $row['id']);
-        unset($row['id']);
-        json_out(['ok' => true, 'reset' => $reset, 'guest' => $row]);
+        json_out(['ok' => true, 'reset' => $reset, 'guest' => guest_me_payload((int) $row['id'])]);
 
     case 'guest_code_register':
         $email = (string) ($_SESSION['code_email'] ?? '');
@@ -1176,9 +1131,7 @@ switch ($action) {
         unset($_SESSION['code_email'], $_SESSION['code_at']);
         guest_session_begin($gid);
         unset($_SESSION['admin_id']);
-        $stmt = db()->prepare('SELECT name, email, phone, address, postcode FROM guests WHERE id = ?');
-        $stmt->execute([$gid]);
-        json_out(['ok' => true, 'guest' => $stmt->fetch()]);
+        json_out(['ok' => true, 'guest' => guest_me_payload($gid)]);
 
     // Consume a magic link: verify the HMAC and that it's fresh (30 min), then
     // sign the guest in exactly like guest_login.
@@ -1222,18 +1175,7 @@ switch ($action) {
         if ($pwReset) {
             $_SESSION['pw_reset_at'] = time();
         }
-        json_out([
-            'ok' => true,
-            'reset' => $reset,
-            'choose_password' => $pwReset,
-            'guest' => [
-                'name' => $row['name'],
-                'email' => $row['email'],
-                'phone' => $row['phone'],
-                'address' => $row['address'],
-                'postcode' => $row['postcode'],
-            ],
-        ]);
+        json_out(['ok' => true, 'reset' => $reset, 'choose_password' => $pwReset, 'guest' => guest_me_payload((int) $row['id'])]);
 
     case 'guest_logout':
         if (!empty($_SESSION['guest_id']) && is_string($in['push_endpoint'] ?? null) && $in['push_endpoint'] !== '') {
@@ -1246,16 +1188,7 @@ switch ($action) {
         if (empty($_SESSION['guest_id'])) {
             json_out(['guest' => null]);
         }
-        $stmt = db()->prepare("SELECT name, email, phone, address, postcode, password_hash <> '' AS has_password FROM guests WHERE id = ?");
-        $stmt->execute([$_SESSION['guest_id']]);
-        $gRow = $stmt->fetch() ?: null;
-        if ($gRow) {
-            $gRow['avatar'] = guest_avatar_v((int) $_SESSION['guest_id']);
-            // Whether there is a password at all: an account made with an emailed
-            // code has none, so its security page offers to SET one, not change it.
-            $gRow['has_password'] = !empty($gRow['has_password']);
-        }
-        json_out(['guest' => $gRow]);
+        json_out(['guest' => guest_me_payload((int) $_SESSION['guest_id'])]);
 
     // Logged-in guest updates their own contact details (NOT their email).
     case 'guest_update_profile':
@@ -1297,13 +1230,7 @@ switch ($action) {
                 ->prepare('UPDATE guests SET phone = ?, address = ?, postcode = ? WHERE id = ?')
                 ->execute([$phone, $address, $postcode, (int) $_SESSION['guest_id']]);
         }
-        $stmt = db()->prepare('SELECT name, email, phone, address, postcode FROM guests WHERE id = ?');
-        $stmt->execute([$_SESSION['guest_id']]);
-        $gRow = $stmt->fetch() ?: null;
-        if ($gRow) {
-            $gRow['avatar'] = guest_avatar_v((int) $_SESSION['guest_id']);
-        }
-        json_out(['ok' => true, 'guest' => $gRow]);
+        json_out(['ok' => true, 'guest' => guest_me_payload((int) $_SESSION['guest_id'])]);
 
     // The guest's own profile photo: set (a cropped JPEG from the Account page) or
     // remove. Only ever their OWN — the session decides whose, never the body.
@@ -1653,9 +1580,7 @@ switch ($action) {
             json_out(['error' => 'Not available'], 403);
         }
         if (!empty($_SESSION['guest_id'])) {
-            $s = db()->prepare('SELECT name, email, phone, address, postcode FROM guests WHERE id = ?');
-            $s->execute([$_SESSION['guest_id']]);
-            json_out(['ok' => true, 'guest' => $s->fetch() ?: null]);
+            json_out(['ok' => true, 'guest' => guest_me_payload((int) $_SESSION['guest_id'])]);
         }
         $email =
             defined('OWNER_NOTIFY_EMAIL') && OWNER_NOTIFY_EMAIL ? OWNER_NOTIFY_EMAIL : 'staging-guest@example.invalid';
@@ -1678,16 +1603,7 @@ switch ($action) {
         session_regenerate_id(true); // a new id at every sign-in, as everywhere else
         guest_session_begin((int) $g['id']);
         unset($_SESSION['admin_id']); // one role at a time
-        json_out([
-            'ok' => true,
-            'guest' => [
-                'name' => $g['name'],
-                'email' => $g['email'],
-                'phone' => $g['phone'],
-                'address' => $g['address'],
-                'postcode' => $g['postcode'],
-            ],
-        ]);
+        json_out(['ok' => true, 'guest' => guest_me_payload((int) $g['id'])]);
 
     // Staging sandbox ONLY: the one-tap "Back office" seat. The guest seat above
     // needs no credential because a guest session is low-power; an ADMIN session

@@ -42,6 +42,8 @@ build step**); PHP backend files sit alongside it. App-style guest shell lives i
   `CHB_CHROMIUM=/opt/pw-browsers/chromium-1194/chrome-linux/chrome` (ui-test-lib's
   own override) when the launch complains about a missing browser revision.
   When you genuinely cannot run it, SAY so in the PR rather than implying CI-parity.
+  The container can also RESTART mid-session (`uptime` resets, files survive): MariaDB and any `php -S` you started
+  are gone, and a suite started then dies with "Connection refused". `service mariadb start` brings it back.
 - **CI's PHP runs with the TRACING JIT ON; a local `php` does not.** setup-php enables it by default, and PHP
   8.3.35's JIT miscompiled a hand-written CSV character loop (the first file read in a process grew eight extra
   header fields; the same file a moment later read fine) — a failure that passed every local run for days. To
@@ -5418,6 +5420,33 @@ usually open too.
   account never where the code lands, the password still working, removed and invited people), ui-test-people §C (the
   three ways, a wrong password, the reset from a username, the link signing in), test-emails-render §14 (no password
   promised and 10 minutes, each half read on its own).
+
+## Every way in tells the page the same thing about you (reported from a phone)
+
+**Reported as "it's not saving the email address, I logged in using passkey"**, with Your details reading "Add your
+email". The email was saved. The passkey sign-in (`pk_admin_sign_in`, passkeys.php) built its own reply from
+`people_public` alone, so the page was never told the email (`contact`), two-step, the alert settings or the emails.
+Adding the address again saved it and showed it, and the next passkey sign-in said "Add your email" again. The same
+reply also let the two-step switch read the old shared setting, and the Notifications page start from the shared
+settings and save them over the person's own. The guest passkey reply had a name, email and phone only. Several other
+guest replies had no password state either, so a guest who signed in with a code and then saved their phone was offered
+"Change password" for a password they never had.
+- **One composer per side, in db.php**: `admin_me_payload` and `admin_backfill_owner` moved from auth.php (passkeys.php
+  cannot require a router); `admin_me_payload` requires webpush.php itself for `notify_prefs_for`. `guest_me_payload($gid)`
+  is new: name, email, phone, address, postcode, `has_password`, `avatar`. guest_status, every guest sign-in (password,
+  code, code-register, link, passkey, the staging seat) and the profile save all answer with it. The passkey reply
+  re-reads the row after the session begins, as `admin_complete_login` does, so even `seen` matches.
+- **CI can now reach the passkey sign-in.** The WebAuthn library is uploaded to the host and is not in the repo, so
+  passkeys.php refused everything in the harness and no test had ever run it. test-integration **§88** writes a stand-in
+  into the app copy: the calls passkeys.php makes, with the "signature" an HMAC of the challenge keyed by the stored
+  public key, so only the cryptography is stood in. It signs in by `admin_login_finish` and `any_login_finish` (owner and
+  guest) and compares each reply with admin_status / guest_status key by key. It does the same for a guest's password,
+  emailed code, sign-in link and details save. A fixture check refuses a wrong signature.
+- **test-people §13** checks the source: every `'me' =>` reply in the app is `admin_me_payload`'s, and every guest reply in
+  auth.php and passkeys.php is `guest_me_payload`'s or `null`.
+- Break-tested: the old replies put back fail six named §88 checks and both §13 checks; a stand-in that accepts any
+  signature fails the fixture check. Also confirmed in Chromium with a CDP virtual authenticator against the real code
+  (scratch, not committed): main showed "Email · Add your email" after a passkey sign-in, the fix the address.
 
 ## Devices: where each person is signed in, and signing one out (approved demo, built and merged without CI)
 

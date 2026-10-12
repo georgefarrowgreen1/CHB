@@ -564,6 +564,24 @@ function guest_avatar_v($gid)
     $n = guest_avatar_name($gid);
     return $n === '' ? '' : substr($n, 0, 10);
 }
+// What the browser is told about the guest signed in, by guest_status and by every
+// way in (a password, an emailed code or link, a passkey, the staging seat). Each
+// built its own; the passkey's had no address, postcode or password, so Your
+// details asked for an address already on the account. null: no such guest.
+function guest_me_payload($gid)
+{
+    $q = db()->prepare("SELECT name, email, phone, address, postcode, password_hash <> '' AS has_password FROM guests WHERE id = ?");
+    $q->execute([(int) $gid]);
+    $g = $q->fetch();
+    if (!$g) {
+        return null;
+    }
+    // An account made with an emailed code has no password, so its security page
+    // offers to SET one rather than change it.
+    $g['has_password'] = !empty($g['has_password']);
+    $g['avatar'] = guest_avatar_v((int) $gid);
+    return $g;
+}
 
 // ---- JSON helpers ----
 // THE SERVER'S CLOCK RIDES EVERY REPLY. A browser's Date is whatever the device
@@ -865,6 +883,46 @@ function admin_contact_email($row)
         return strtolower((string) OWNER_NOTIFY_EMAIL);
     }
     return '';
+}
+// WHAT THE BROWSER IS TOLD ABOUT THE PERSON SIGNED IN, and every way in tells it
+// this: a password, an emailed code, an invite or reset, a passkey, the boot's
+// admin_status. It lives here, not in auth.php, so passkeys.php can use it. The
+// passkey sign-in built its own and left out the email, two-step, alert settings
+// and emails, so Your details offered "Add your email" over a saved address and
+// the alert settings page showed (and would have saved) the wrong ones.
+function admin_me_payload($row)
+{
+    require_once __DIR__ . '/webpush.php'; // notify_prefs_for
+    $me = people_public($row, (int) $row['id']);
+    $me['contact'] = admin_contact_email($row);
+    $me['twofa'] = admin_twofa_wanted($row);
+    $me['twofaLive'] = admin_twofa_on($row);
+    $me['original'] = (int) $row['id'] === admin_original_owner_id();
+    $me['notify'] = notify_prefs_for($row);
+    $me += people_mail_payload($row);
+    return $me;
+}
+// The first owner's row predates the email column: fill it once from the owner
+// address the server already knows, unless someone else is using it.
+function admin_backfill_owner($row)
+{
+    if (!is_array($row) || !array_key_exists('email', $row) || (string) $row['email'] !== '') {
+        return $row;
+    }
+    if ((int) $row['id'] !== admin_original_owner_id() || !defined('OWNER_NOTIFY_EMAIL') || !OWNER_NOTIFY_EMAIL) {
+        return $row;
+    }
+    $e = strtolower((string) OWNER_NOTIFY_EMAIL);
+    try {
+        $q = db()->prepare('SELECT COUNT(*) FROM admins WHERE email = ? AND id <> ?');
+        $q->execute([$e, (int) $row['id']]);
+        if ((int) $q->fetchColumn() === 0) {
+            db()->prepare("UPDATE admins SET email = ? WHERE id = ? AND email = ''")->execute([$e, (int) $row['id']]);
+            $row['email'] = $e;
+        }
+    } catch (\Throwable $e2) {
+    }
+    return $row;
 }
 // TWO-STEP: a new device asks for a code, sent to the person signing in. It is
 // each person's own switch (people from before the switch moved here follow the
