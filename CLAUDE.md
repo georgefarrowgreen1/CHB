@@ -1468,8 +1468,9 @@ Found by the round-7 uploads review; each was reproduced before it was fixed.
   throttles count IPv6 by its /64; IPv4 (and IPv4 written as IPv6) as it is. The activity log keeps the full address.
 - Gates: test-integration **§75** (staging, cleaning, the size cap, publishing, a retried send, every deletion, the
   two sweeps, the /64 limiter), fourteen changes break-tested, each failing its own named check.
-- **Not done, said plainly**: chat photos and wall photos are still served from `uploads/` to anyone with the address
-  (only a profile photo goes through a login check), and the service worker's image cache is not cleared at sign-out.
+- **Since done**: chat photos and waiting wall photos open only through signed links (the security leftovers, Step
+  2), every private photo is encrypted (see "Private photos are encrypted"), and a guest's sign-out clears the
+  service worker's image cache (round 8).
 
 ## What years of data cost the owner's boot (round 7, server performance)
 
@@ -11180,14 +11181,61 @@ ships as its own PR.
   open chat redraws when the hour's link changes. The Inbox's "Photo" chip is now a link that opens the photo (it was
   a dead chip since the one Inbox). "Download my data" carries a week's link beside each chat photo and each waiting
   wall photo.
-- **Not done, said plainly**: a suggestion's picture (`experience-`) is still public before the owner publishes it;
-  its editor round-trips the image path, so it needs its own change. Deposit evidence photos are still public at an
-  unguessable name.
+- **Since done** (see "Private photos are encrypted, and the last two kinds join them" below): a suggestion's picture
+  waits privately until approved, and a deposit photo never leaves the private folder.
 - Gates: **test-photo.php** (39 checks: links, expiry at both ends, forgery, names, where the file is, the wiring),
   integration **§85** (the real chat, photo.php's answers and headers, expiry, forgery, the Inbox, the wall photo
   through approval, the deploy's move, the missed photo, deletion), §62 and §75 re-aimed to the private folder,
   ui-test-inbox §12 (the Photo link), smoke-test (the redraw). Thirteen mutations break-tested, each failing its own
   named check. NB php -S reads no .htaccess, so the private folder's refusal is test-photo's to check, not §85's.
+
+### Private photos are encrypted, and the last two kinds join them (built and merged without CI)
+
+**Asked for as "finish making uploaded photos private … can they be end to end encrypted?"** The owner chose
+**encrypted on the server** over end-to-end (offered both, with the trade: end-to-end would mean a photo passphrase,
+and a forgotten one loses every photo, deposit evidence included). Code: photo-lib.php (`photo_seal` / `photo_unseal`
+/ `photo_read` / `photo_put_private` / `photo_take_private` / `photo_release` / `photos_seal_private`), photo.php,
+experiences.php, `deposit_evidence_store` and `upload_publish` in db.php, `hub_bundle` in bookings.php.
+- **EVERY PHOTO IN THE PRIVATE FOLDER IS ENCRYPTED** (AES-256-GCM). The key is derived from APP_SECRET, like the
+  door codes' (`enc_key`), but is its own (`photo_seal_key`, an HMAC of it), so the two never share a key. The
+  file's own NAME is the associated data: a sealed file copied or renamed to another photo's name does not open.
+  Format: `CHBSEAL1` + 12-byte IV + 16-byte tag + ciphertext. A file without the marker is plaintext from before (or
+  from a host without OpenSSL) and is still served, so nothing breaks while the sweep runs.
+- **WHAT IT PROTECTS AGAINST, said plainly**: a copy of the folder on its own (a host's backup, the Backups page's
+  files archive, a web server that stopped honouring the deny-all). It does not protect against someone who has the
+  whole site, config.php included: the website itself can open them. **Moving to a new host needs the same
+  APP_SECRET**, as the door codes already do.
+- **Decrypted in two places only**: on the way out (`photo.php` sends the photo, `Content-Length` its own length)
+  and when approval publishes a wall photo or a suggestion's picture (`photo_release` writes it to public uploads/
+  decrypted). A photo that will not open is never released and photo.php answers 404 "This photo can't be opened".
+  Writes go through a temporary file beside the real one (`photo_put`), so a dying request never leaves half a photo;
+  the sweep clears a temporary file older than an hour. Moves and sealing in place **keep the file's date**: the
+  daily sweeps judge a photo's age by it (§75 caught a sealed orphan that looked a day old forever).
+- **A suggestion's picture is private until approved**: suggest stages it and holds it (`upload_hold`, encrypted);
+  `list_admin` sends `image_view` (a link that expires) beside `image_url` (the name a save sends back); approve
+  publishes it (`exp_publish_image` → `upload_publish`), and one whose picture has gone is published without it and
+  answers `picture: 'missing'` (the page says so). A `save` publishes the picture only after the edit has passed its
+  checks (a refused edit left a guest's picture public before), and a guest's picture the edit replaced is deleted
+  (`experience_image_drop`).
+- **A deposit photo never leaves the private folder**: `deposit_evidence_store` writes it there encrypted; the
+  activity line is now just "Deposit photo saved", with the photo's name in its `meta`. The booking page's Activity
+  shows it as a thumbnail that opens it (`hub_bundle` sends `photo`, a link that expires; `hubActivityHtml` draws only
+  a value starting `photo.php?`). Older lines that named the photo in their words still show it.
+- **Photos kept before move and are encrypted on deploy and daily** (`photos_make_private` now also moves deposit
+  photos and waiting suggestion pictures, published ones staying public; `photos_seal_private` encrypts what was
+  already private; migrate.php reports `photos_encrypted`). .htaccess and img.php refuse the old public addresses of
+  deposit photos as they do chat photos.
+- Gates: **test-photo.php** (67 checks: sealing, the name bound in, tampering, plaintext passing through, the key's
+  own derivation, moves encrypting and keeping the date, release decrypting and refusing what will not open, the
+  sweep, the wiring), integration **§90** (20 checks through the real endpoints: a chat photo sealed on disk and sent
+  decrypted, a swapped and a damaged file refused, a suggestion's picture private → linked → published, the missing
+  picture, a refused edit, save and replace, a deposit photo private and linked on the booking page, the deploy's move
+  and sealing, the old activity line) with §17j and §62 re-aimed, and **ui-test-privatephotos.js** (9 checks: the
+  thumbnail and its guard, the suggestion's link, the missing-picture toast). Fifteen mutations break-tested (3 pure,
+  9 server, 3 client), each failing its own named checks. NB a break copy of test-integration takes a LOWER-CASE
+  `CHB_IT_DB_NAME` (the override's own pattern); an upper-case one falls back to the shared database and the copies
+  wreck each other.
+- **Not done**: guests' profile photos (`uploads/avatars/`, served by avatar.php) are private but not encrypted.
 
 ### Step 3: following an enquiry is one screen for every address
 

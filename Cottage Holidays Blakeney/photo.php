@@ -3,10 +3,12 @@
 //  photo.php — a private photo, through a signed link that expires.
 //  GET ?f=<name>&exp=<unix time>&sig=<32 hex>   (made by photo_link, photo-lib.php)
 //
-//  Serves the photos sent in the guest chat and the guest photos waiting for
-//  approval, which live in uploads/private/. The link is the permission: the chat
-//  and the Inbox ask for fresh links each time they load, so a link copied out of
-//  them works for a few hours, and one in a guest's email for a week.
+//  Serves the photos kept in uploads/private/, encrypted (photo-lib.php): those
+//  sent in the guest chat, guests' photos and suggestion pictures waiting for
+//  approval, and deposit photos. The link is the permission: the chat, the Inbox,
+//  the moderation lists and the booking page ask for fresh links each time they
+//  load, so a link copied out of them works for a few hours, and one in a guest's
+//  email for a week.
 //
 //  No database and no session (config.php and photo-lib.php only): a picture
 //  never starts a session, and the answer is marked private, so a shared cache
@@ -58,9 +60,14 @@ if ($ext !== 'webp' && strpos((string) ($_SERVER['HTTP_ACCEPT'] ?? ''), 'image/w
     $file .= '.webp';
     $type = 'image/webp';
 }
+// Decrypted here and nowhere else: what leaves is the photo, what stays on disk is not.
+$bytes = photo_read($file);
+if ($bytes === null) {
+    photo_refuse(404, 'This photo can’t be opened', 'It may have been damaged.');
+}
 header('Vary: Accept');
 header('Content-Type: ' . $type);
-header('Content-Length: ' . (string) filesize($file));
+header('Content-Length: ' . (string) strlen($bytes));
 // Kept by this browser only, and never past the link's own time.
 header('Cache-Control: private, max-age=' . max(0, min(86400, (int) $exp - time())));
 header('Content-Disposition: inline');
@@ -68,5 +75,5 @@ header('X-Content-Type-Options: nosniff');
 header('X-Robots-Tag: noindex');
 header('Referrer-Policy: no-referrer');
 if ($method === 'GET') {
-    readfile($file);
+    echo $bytes;
 }

@@ -292,12 +292,15 @@ if ($failed) {
     $first = reset($failed);
     log_activity('system', 'migrate.fail', 'Database update FAILED — ' . ($first['file'] ?? ''), ['severity' => 'action', 'entity' => 'migration', 'meta' => ['detail' => mb_substr((string) ($first['error'] ?? ''), 0, 150)]]);
 }
-// Files, not tables: photos sent before chat photos (and waiting wall photos) were
-// private move into the private folder. Runs after every deploy; once all have
-// moved it moves nothing (photos_make_private, db.php).
+// Files, not tables: photos kept before they were private (chat and deposit photos,
+// waiting wall photos and suggestion pictures) move into the private folder, and
+// the ones already there are encrypted. Runs after every deploy; once all have
+// moved it moves nothing (photos_make_private, photos_seal_private, db.php).
 $photosMoved = 0;
+$photosSealed = 0;
 try {
     $photosMoved = photos_make_private();
+    $photosSealed = photos_seal_private();
 } catch (\Throwable $e) {
 }
 json_out(
@@ -306,6 +309,7 @@ json_out(
         'mode' => $baseline ? 'baseline' : ($force ? 'force' : 'apply'),
         'migrations' => $report,
         'photos_made_private' => $photosMoved,
+        'photos_encrypted' => $photosSealed,
     ],
     empty($failed) ? 200 : 500,
 );
