@@ -244,6 +244,39 @@ $od = (string) file_get_contents(__DIR__ . '/owner-digest.php');
 ppl('the digest is composed without the money for someone without Money overview', strpos($od, "people_can(\$row, 'mo.view')") !== false && strpos($od, "'noMoney' => true") !== false);
 ppl('a digest asked for from the back office goes only to whoever asked, and does not stop Monday\'s', strpos($od, 'people_mail_only(admin_contact_email(admin_me()))') !== false && strpos($od, "people_mail_only() === ''") !== false);
 
+// A passkey sign-in built its own description of the person and left out the email
+// (Your details read "Add your email" over a saved address). Every reply that tells
+// the page who is signed in goes through the one composer for that side, so a new way
+// in cannot tell the page less than a reload would. test-integration §88 drives them.
+echo "\n== §13 every sign-in describes the person with the one composer ==\n";
+$meOdd = [];
+$guestOdd = [];
+foreach (glob(__DIR__ . '/*.php') as $f) {
+    $base = basename($f);
+    if (strpos($base, 'test-') === 0) {
+        continue;
+    }
+    $src = (string) file_get_contents($f);
+    if (preg_match_all("/'me' =>(.{0,80})/", $src, $mm)) {
+        foreach ($mm[1] as $tail) {
+            if (strpos($tail, 'admin_me_payload(') === false) {
+                $meOdd[] = $base;
+            }
+        }
+    }
+    if (in_array($base, ['auth.php', 'passkeys.php'], true) && preg_match_all("/'guest' =>\s*([^,\]\n]{0,60})/", $src, $gm)) {
+        foreach ($gm[1] as $expr) {
+            if (strpos($expr, 'guest_me_payload(') !== 0 && trim($expr) !== 'null') {
+                $guestOdd[] = $base . ': ' . trim($expr);
+            }
+        }
+    }
+}
+$meSeen = preg_match_all("/'me' =>/", (string) file_get_contents(__DIR__ . '/auth.php') . file_get_contents(__DIR__ . '/passkeys.php'));
+ppl('(vacuity) the scan finds the sign-in replies it is checking (' . $meSeen . ')', $meSeen >= 8);
+ppl("every 'me' reply is admin_me_payload's" . ($meOdd ? ' — not in: ' . implode(', ', array_unique($meOdd)) : ''), !$meOdd);
+ppl("every guest sign-in reply is guest_me_payload's" . ($guestOdd ? ' — not: ' . implode('; ', $guestOdd) : ''), !$guestOdd);
+
 echo "\n== Summary ==\n";
 if ($fail) {
     echo "  $fail PEOPLE CHECK(S) FAILED ❌\n";

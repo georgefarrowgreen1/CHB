@@ -6713,6 +6713,118 @@ $rootDb->exec("DELETE FROM activity_log WHERE action IN ('csp.trial', 'csp.viola
 $d87 = $diag87();
 it_check('§87 …and with nothing found it says so', is_array($d87) && $d87['status'] === 'ok' && strpos($d87['detail'], 'Nothing in the last 7 days') === 0, json_encode($d87));
 
+// §88 EVERY WAY IN DESCRIBES THE PERSON THE SAME WAY. Reported from a phone: signed in
+// with a passkey, Your details read "Add your email" over a saved address. The passkey
+// sign-in built its own reply and left out the email, two-step, alert settings and
+// emails (and a guest's address, postcode and password), where the other ways in used
+// admin_me_payload / guest_me_payload. The passkey library is uploaded to the host and
+// is not in the repo, so a stand-in goes into the app copy: the calls passkeys.php makes,
+// with the signature an HMAC of the challenge keyed by the stored public key. Only the
+// cryptography is stood in; everything after it is the real code.
+echo "\n== §88 every sign-in describes the person the same way ==\n";
+@mkdir($work . '/lib/WebAuthn', 0777, true);
+file_put_contents($work . '/lib/WebAuthn/WebAuthn.php', <<<'PHP'
+<?php
+namespace lbuchs\WebAuthn;
+class ByteBuffer
+{
+    private $b;
+    public function __construct($b) { $this->b = $b; }
+    public function getBinaryString() { return $this->b; }
+}
+class WebAuthn
+{
+    private $challenge;
+    public function __construct($rpName, $rpId, $formats = null) {}
+    public function getGetArgs($ids = [], $timeout = 30, ...$rest)
+    {
+        $this->challenge = new ByteBuffer(random_bytes(32));
+        return (object) ['publicKey' => (object) ['challenge' => $this->challenge, 'timeout' => $timeout * 1000, 'allowCredentials' => []]];
+    }
+    public function getCreateArgs(...$a)
+    {
+        $this->challenge = new ByteBuffer(random_bytes(32));
+        return (object) ['publicKey' => (object) ['challenge' => $this->challenge]];
+    }
+    public function getChallenge() { return $this->challenge; }
+    public function processGet($clientDataJSON, $authenticatorData, $signature, $publicKey, $challenge, $prevSignCount = null)
+    {
+        if (!hash_equals(hash_hmac('sha256', (string) $challenge, (string) $publicKey, true), (string) $signature)) {
+            throw new \Exception('signature does not verify');
+        }
+        return (object) ['signCount' => 7];
+    }
+}
+PHP);
+$b64u88 = fn($b) => rtrim(strtr(base64_encode($b), '+/', '-_'), '=');
+$sign88 = function (array &$jar, string $begin, string $finish, string $cred, string $key) use ($b64u88) {
+    $r = http($jar, 'POST', '/passkeys.php', ['action' => $begin]);
+    $c = (string) ($r['json']['options']['publicKey']['challenge'] ?? '');
+    $chal = (string) base64_decode(strtr($c, '-_', '+/') . str_repeat('=', (4 - strlen($c) % 4) % 4));
+    return http($jar, 'POST', '/passkeys.php', ['action' => $finish, 'id' => $cred, 'clientDataJSON' => $b64u88('{}'), 'authenticatorData' => $b64u88('a'), 'signature' => $b64u88(hash_hmac('sha256', $chal, $key, true))]);
+};
+// Which keys differ, for a failure's detail.
+$diff88 = function ($a, $b) {
+    $a = is_array($a) ? $a : [];
+    $b = is_array($b) ? $b : [];
+    $out = [];
+    foreach (array_unique(array_merge(array_keys($a), array_keys($b))) as $k) {
+        if (!array_key_exists($k, $a) || !array_key_exists($k, $b) || $a[$k] !== $b[$k]) {
+            $out[] = $k;
+        }
+    }
+    return 'differs on: ' . implode(', ', $out);
+};
+// A Host with their own email, two-step and alert settings, so a reply that leaves
+// any of them out cannot match by luck.
+$rootDb->prepare("INSERT INTO admins (username, password_hash, name, email, full_access, perms, twofa, notify_prefs) VALUES ('pia88', ?, 'Pia Host', 'pia88@example.com', 0, '{}', 1, ?)")
+    ->execute([password_hash('it-pass-123', PASSWORD_DEFAULT), '{"money":false,"quietFrom":"22:00","quietTo":"07:00"}']);
+$pia88 = (int) $rootDb->lastInsertId();
+$rootDb->prepare('INSERT INTO admin_passkeys (admin_id, credential_id, public_key, label) VALUES (?, ?, ?, ?)')->execute([$pia88, 'cred88-pia', 'key88-pia', 'iPhone']);
+$j88 = [];
+$p88 = $sign88($j88, 'admin_login_begin', 'admin_login_finish', 'cred88-pia', 'key88-pia');
+$s88 = http($j88, 'POST', '/auth.php', ['action' => 'admin_status']);
+it_check('§88 a passkey sign-in tells the page the email the person signs in with', $p88['code'] === 200 && ($p88['json']['me']['contact'] ?? null) === 'pia88@example.com', $p88['raw']);
+it_check('§88 …and the same description as a reload (admin_status)', is_array($p88['json']['me'] ?? null) && ($s88['json']['admin'] ?? false) && $p88['json']['me'] === ($s88['json']['me'] ?? null), $diff88($p88['json']['me'] ?? null, $s88['json']['me'] ?? null));
+$j88b = [];
+$p88b = $sign88($j88b, 'any_login_begin', 'any_login_finish', 'cred88-pia', 'key88-pia');
+$s88b = http($j88b, 'POST', '/auth.php', ['action' => 'admin_status']);
+it_check('§88 the one passkey prompt (owner or guest) says the same', ($p88b['json']['role'] ?? '') === 'admin' && is_array($p88b['json']['me'] ?? null) && $p88b['json']['me'] === ($s88b['json']['me'] ?? null), $diff88($p88b['json']['me'] ?? null, $s88b['json']['me'] ?? null));
+$j88c = [];
+$bad88 = $sign88($j88c, 'any_login_begin', 'any_login_finish', 'cred88-pia', 'not-the-key');
+it_check('§88 (fixture) a passkey that cannot sign is still refused, so the stand-in decides nothing', $bad88['code'] === 401 && empty($bad88['json']['me']), $bad88['raw']);
+
+// A guest: every way in tells the page what guest_status would.
+$rootDb->prepare("INSERT INTO guests (name, email, phone, address, postcode, password_hash, email_verified_at) VALUES ('Gwen Passkey', 'gwen88@example.com', '07700 900188', '8 Quay Lane, Blakeney', 'NR25 7NE', ?, NOW())")
+    ->execute([password_hash('gwen-pass-188', PASSWORD_DEFAULT)]);
+$gwen88 = (int) $rootDb->lastInsertId();
+$rootDb->prepare('INSERT INTO guest_passkeys (guest_id, credential_id, public_key, label) VALUES (?, ?, ?, ?)')->execute([$gwen88, 'cred88-gwen', 'key88-gwen', 'Pixel']);
+$gStatus88 = function (array &$jar) {
+    return http($jar, 'POST', '/auth.php', ['action' => 'guest_status'])['json']['guest'] ?? null;
+};
+$g88 = [];
+$pg88 = $sign88($g88, 'any_login_begin', 'any_login_finish', 'cred88-gwen', 'key88-gwen');
+$sg88 = $gStatus88($g88);
+it_check("§88 a guest's passkey sign-in carries their address, postcode and that they have a password", ($pg88['json']['role'] ?? '') === 'guest' && ($pg88['json']['guest']['address'] ?? '') === '8 Quay Lane, Blakeney' && ($pg88['json']['guest']['postcode'] ?? '') === 'NR25 7NE' && ($pg88['json']['guest']['has_password'] ?? null) === true, $pg88['raw']);
+it_check('§88 …the same description as guest_status', is_array($pg88['json']['guest'] ?? null) && $pg88['json']['guest'] === $sg88, $diff88($pg88['json']['guest'] ?? null, $sg88));
+$g88b = [];
+$lg88 = http($g88b, 'POST', '/auth.php', ['action' => 'guest_login', 'email' => 'gwen88@example.com', 'password' => 'gwen-pass-188']);
+$sg88b = $gStatus88($g88b);
+it_check('§88 so does a guest password sign-in', is_array($lg88['json']['guest'] ?? null) && $lg88['json']['guest'] === $sg88b, $diff88($lg88['json']['guest'] ?? null, $sg88b));
+$g88c = [];
+$cg88 = $itGuest($g88c, 'Gwen Passkey', 'gwen88@example.com');
+$sg88c = $gStatus88($g88c);
+it_check('§88 …and an emailed code', is_array($cg88['json']['guest'] ?? null) && $cg88['json']['guest'] === $sg88c, $diff88($cg88['json']['guest'] ?? null, $sg88c));
+$g88d = [];
+$ts88 = time();
+$mg88 = http($g88d, 'POST', '/auth.php', ['action' => 'guest_magic_consume', 'guest_id' => $gwen88, 'ts' => $ts88, 'token' => substr(hash_hmac('sha256', 'login:' . $gwen88 . ':' . $ts88, $SECRET), 0, 32)]);
+$sg88d = $gStatus88($g88d);
+it_check('§88 …and an emailed sign-in link', is_array($mg88['json']['guest'] ?? null) && $mg88['json']['guest'] === $sg88d, $diff88($mg88['json']['guest'] ?? null, $sg88d));
+$up88 = http($g88d, 'POST', '/auth.php', ['action' => 'guest_update_profile', 'phone' => '07700 900199', 'address' => '9 Quay Lane, Blakeney', 'postcode' => 'NR25 7NE']);
+$sg88e = $gStatus88($g88d);
+it_check('§88 …and saving their details answers with the same, password state included', is_array($up88['json']['guest'] ?? null) && $up88['json']['guest'] === $sg88e && ($sg88e['address'] ?? '') === '9 Quay Lane, Blakeney', $diff88($up88['json']['guest'] ?? null, $sg88e));
+@unlink($work . '/lib/WebAuthn/WebAuthn.php');
+
 echo "\n== Summary ==\n";
 if ($fail) {
     echo "  $fail CHECK(S) FAILED \xE2\x9D\x8C\n\n";
