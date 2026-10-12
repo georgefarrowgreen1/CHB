@@ -303,11 +303,11 @@ function op_release($opId)
 
 // Photo evidence for a deposit decision — the offline capture's photo, uploaded
 // with the confirmed keep/return. BEST-EFFORT BY CONTRACT: the money op must
-// never fail because a photo was malformed, so this returns the stored relative
-// path or '' and never throws. JPEG data URIs only (the client encodes to JPEG),
-// magic bytes checked (nothing arbitrary lands in a web-served dir), decoded
-// size capped at 2MB. Random suffix: uploads/ is reachable by URL and damage
-// photos should not be guessable from a booking id.
+// never fail because a photo was malformed, so this returns the photo's logical
+// path ('uploads/deposit-evidence-…', photo-lib.php) or '' and never throws.
+// JPEG data URIs only (the client encodes to JPEG), magic bytes checked, decoded
+// size capped at 2MB. Kept in the private folder, encrypted, and shown on the
+// booking's page through a link that expires; never at a public address.
 function deposit_evidence_store($bookingId, $dataUri)
 {
     try {
@@ -321,15 +321,8 @@ function deposit_evidence_store($bookingId, $dataUri)
         if (substr($raw, 0, 2) !== "\xFF\xD8") {
             return '';
         }
-        $dir = __DIR__ . '/uploads';
-        if (!is_dir($dir) && !@mkdir($dir, 0755, true)) {
-            return '';
-        }
         $name = 'deposit-evidence-' . (int) $bookingId . '-' . bin2hex(random_bytes(6)) . '.jpg';
-        if (@file_put_contents($dir . '/' . $name, $raw) === false) {
-            return '';
-        }
-        return 'uploads/' . $name;
+        return photo_put_private($raw, $name) ? 'uploads/' . $name : '';
     } catch (\Throwable $e) {
         return '';
     }
@@ -354,18 +347,19 @@ function upload_pending_dir(): string
     }
     return $dir;
 }
-// A guest's wall photo goes public when it is approved: from the private folder
-// (or the staging folder) into uploads/. Returns the public path; one that is
-// already public comes back as it is; '' when there is nothing under that name.
-// Never a chat photo: those stay private for good.
+// A guest's wall photo, or the picture with their suggestion, goes public when it
+// is approved: from the private folder (decrypted) or the staging folder into
+// uploads/. Returns the public path; one that is already public comes back as it
+// is; '' when there is nothing under that name. Never a chat or deposit photo:
+// those stay private for good.
 function upload_publish($rel): string
 {
-    if (!preg_match('#^uploads/(?:pending/|private/)?(guest-[A-Za-z0-9._-]+\.(?:jpe?g|png|gif|webp))$#i', (string) $rel, $m)) {
+    if (!preg_match('#^uploads/(?:pending/|private/)?((?:guest|experience)-[A-Za-z0-9._-]+\.(?:jpe?g|png|gif|webp))$#i', (string) $rel, $m)) {
         return '';
     }
     $to = __DIR__ . '/uploads/' . $m[1];
     foreach ([UPLOAD_PRIVATE_DIR, UPLOAD_PENDING_DIR] as $dir) {
-        if (photo_move(__DIR__ . '/' . $dir . '/' . $m[1], $to)) {
+        if (photo_release(__DIR__ . '/' . $dir . '/' . $m[1], $to)) {
             return 'uploads/' . $m[1];
         }
     }
@@ -401,13 +395,14 @@ function upload_delete($rel): bool
     return $gone;
 }
 
-// PHOTOS SENT BEFORE THEY WERE PRIVATE. Every chat photo still in public uploads/
-// moves into the private folder, and so does every guest wall photo whose row is
-// not approved (approved ones stay public, on the wall). Their resized copies go.
+// PHOTOS KEPT BEFORE THEY WERE PRIVATE. Every chat photo and deposit photo still in
+// public uploads/ moves into the private folder, encrypted, and so does every
+// guest wall photo whose row is not approved and every suggestion picture whose
+// suggestion is still waiting (approved ones stay public). Their resized copies go.
 // Run after each deploy (migrate.php) and daily (self-repair); once everything has
-// moved it moves nothing. A wall photo is moved only when its row says it is
-// waiting: an unreadable table moves none, so an approved photo is never hidden.
-// Returns how many photos moved.
+// moved it moves nothing. A wall photo or a suggestion's picture is moved only
+// when its row says it is waiting: an unreadable table moves none, so nothing
+// approved is ever hidden. Returns how many photos moved.
 function photos_make_private(): int
 {
     $up = __DIR__ . '/uploads';
@@ -420,19 +415,22 @@ function photos_make_private(): int
         if (!photo_name_ok($f) || !is_file($up . '/' . $f)) {
             continue;
         }
-        if (strncasecmp($f, 'guest-', 6) === 0) {
+        if (!photo_never_public($f)) {
             if ($waiting === null) {
-                try {
-                    $waiting = array_flip(db()->query("SELECT url FROM guest_photos WHERE status <> 'approved'")->fetchAll(PDO::FETCH_COLUMN));
-                } catch (\Throwable $e) {
-                    $waiting = [];
+                $waiting = [];
+                foreach (["SELECT url FROM guest_photos WHERE status <> 'approved'", "SELECT image_url FROM experiences WHERE status = 'pending' AND image_url LIKE 'uploads/experience-%'"] as $sql) {
+                    try {
+                        $waiting += array_flip(db()->query($sql)->fetchAll(PDO::FETCH_COLUMN));
+                    } catch (\Throwable $e) {
+                        // not readable: none of that kind moves
+                    }
                 }
             }
             if (!isset($waiting['uploads/' . $f])) {
                 continue;
             }
         }
-        if (upload_private_dir() === '' || !photo_move($up . '/' . $f, __DIR__ . '/' . UPLOAD_PRIVATE_DIR . '/' . $f)) {
+        if (!photo_take_private($up . '/' . $f, $f)) {
             continue;
         }
         $moved++;

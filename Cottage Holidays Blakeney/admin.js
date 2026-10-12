@@ -12311,9 +12311,14 @@ function hubActivityHtml(bundle, bookingId) {
             const exp = (e.body || e.subject)
                 ? `<details class="bhub-feed-mail"><summary>Show email</summary><div class="bhub-feed-mailbody">${e.subject ? `<strong>${escapeHtml(e.subject)}</strong><br>` : ''}${escapeHtml(e.body || '').replace(/\n/g, '<br>')}</div></details>`
                 : '';
+            // A deposit photo, through the link that expires the server sent with
+            // it (photo.php); nothing else is ever drawn here as a picture.
+            const pic = typeof e.photo === 'string' && /^photo\.php\?/.test(e.photo)
+                ? `<a class="bhub-feed-photo" href="${escapeHtml(e.photo)}" target="_blank" rel="noopener" aria-label="Open the deposit photo"><img src="${escapeHtml(e.photo)}" alt="" loading="lazy"></a>`
+                : '';
             return {
                 at: e.at || '',
-                html: `<div class="bhub-hist-row"><span class="bhub-hist-when">${escapeHtml(fmtLogWhen(e.at))}</span><span class="bhub-hist-what">${escapeHtml(e.summary || e.action || '')}${exp}</span><span class="bhub-hist-actor">${escapeHtml(e.actor || '')}</span></div>`,
+                html: `<div class="bhub-hist-row"><span class="bhub-hist-when">${escapeHtml(fmtLogWhen(e.at))}</span><span class="bhub-hist-what">${escapeHtml(e.summary || e.action || '')}${exp}${pic}</span><span class="bhub-hist-actor">${escapeHtml(e.actor || '')}</span></div>`,
             };
         });
     const rows = pays.concat(evs).sort((a, z) => (z.at || '').localeCompare(a.at || ''));
@@ -38000,8 +38005,11 @@ async function loadExperiencesAdmin() {
     refreshExpPendingBadge(pending.length);
 }
 function expPendingHtml(r) {
-    const thumb = r.image_url
-        ? `<div class="exp-edit-thumb" style="background-image:url('${escapeHtml(chbCssUrl(r.image_url))}');margin-bottom:10px;"></div>`
+    // A suggestion's picture is private until it is approved: the server sends a
+    // link that expires (image_view) to show it by, and image_url stays its name.
+    const view = r.image_view || r.image_url;
+    const thumb = view
+        ? `<div class="exp-edit-thumb" style="background-image:url('${escapeHtml(chbCssUrl(view))}');margin-bottom:10px;"></div>`
         : '';
     return `<div class="glass-panel" style="padding:14px 16px;margin-bottom:10px;border:1px solid var(--accent-soft, var(--glass-border));">
                 ${thumb}
@@ -38030,7 +38038,7 @@ function expEditHtml(r) {
     const txt = (fid, val, ph, type) => `<input type="${type || 'text'}" class="input-glass" id="${fid}" value="${escapeHtml(val || '')}"${ph ? ` placeholder="${ph}"` : ''}>`;
     return `<div class="glass-panel exp-edit" data-id="${id}">
                 <input type="hidden" id="exp-img-${id}" value="${escapeHtml(r.image_url || '')}">
-                <div class="exp-edit-thumb" id="exp-thumb-${id}" style="background-image:url('${escapeHtml(chbCssUrl(r.image_url || ''))}');"></div>
+                <div class="exp-edit-thumb" id="exp-thumb-${id}" style="background-image:url('${escapeHtml(chbCssUrl(r.image_view || r.image_url || ''))}');"></div>
                 ${fld('exp-t-' + id, 'Title', txt('exp-t-' + id, r.title))}
                 ${fld('exp-c-' + id, 'Category', `<select class="input-glass" id="exp-c-${id}">${catOpts}</select>`)}
                 ${fld('exp-b-' + id, 'Description', `<textarea class="input-glass" id="exp-b-${id}" rows="3" style="resize:vertical;">${escapeHtml(r.body || '')}</textarea>`)}
@@ -38116,8 +38124,9 @@ async function expDelete(id) {
 }
 async function expApprove(id) {
     try {
-        await apiPost('experiences.php', { action: 'approve', id });
+        const r = await apiPost('experiences.php', { action: 'approve', id });
         await loadExperiencesAdmin();
+        if (r && r.picture === 'missing') toast('Published without its picture — it couldn’t be found.');
     } catch (e) {
         glassAlert(e.message);
     }

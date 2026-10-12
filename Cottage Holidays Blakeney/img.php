@@ -15,9 +15,9 @@ if (!in_array($w, $allowed, true)) {
     $w = 900;
 }
 
-// Only our uploads/, image extensions, and never a path escape. Never a chat
-// photo: those are private and open only through photo.php's signed links.
-if (!preg_match('#^uploads/[A-Za-z0-9._-]+\.(jpe?g|png|webp)$#i', $src) || strpos($src, '..') !== false || stripos($src, 'uploads/chat-') === 0) {
+// Only our uploads/, image extensions, and never a path escape. Never a chat or
+// deposit photo: those are private and open only through photo.php's signed links.
+if (!preg_match('#^uploads/[A-Za-z0-9._-]+\.(jpe?g|png|webp)$#i', $src) || strpos($src, '..') !== false || preg_match('#^uploads/(chat|deposit-evidence)-#i', $src)) {
     http_response_code(400);
     exit();
 }

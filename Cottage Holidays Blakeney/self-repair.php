@@ -386,11 +386,16 @@ try {
         $fixed[] = "removed $stPruned staged upload(s) nobody sent";
     }
 
-    // PHOTOS SENT BEFORE THEY WERE PRIVATE move into the private folder (the deploy's
-    // migrate.php run does this too; here it catches anything that run missed).
+    // PHOTOS KEPT BEFORE THEY WERE PRIVATE move into the private folder, and the ones
+    // there are encrypted (the deploy's migrate.php run does this too; here it
+    // catches anything that run missed).
     $madePrivate = photos_make_private();
     if ($madePrivate > 0) {
         $fixed[] = "moved $madePrivate photo(s) into the private folder";
+    }
+    $sealedPhotos = photos_seal_private();
+    if ($sealedPhotos > 0) {
+        $fixed[] = "encrypted $sealedPhotos private photo(s)";
     }
 
     // A CHAT PHOTO NO MESSAGE CARRIES is deleted after a day (a conversation deleted

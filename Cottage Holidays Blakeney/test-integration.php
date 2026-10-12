@@ -1636,24 +1636,25 @@ $r = $ladder();
 it_check('a retried ladder is answered at post ONE — no clash prompt, no duplicate', ($r['json']['replayed'] ?? false) === true && $ladCount() === 1, 'rows=' . $ladCount() . ' ' . $r['raw']);
 
 // (j) PHOTO EVIDENCE ON A DEPOSIT DECISION — rides the confirmed keep/return,
-// BEST-EFFORT by contract: a valid JPEG data URI is stored under uploads/ with
-// an activity row; anything malformed is ignored and the MONEY OP STANDS.
+// BEST-EFFORT by contract: a valid JPEG data URI is stored in the private folder,
+// encrypted (§90), with an activity row; anything malformed is ignored and the
+// MONEY OP STANDS.
 $rootDb->exec("INSERT INTO bookings (prop_key, name, email, check_in, check_out, adults, children, payment, deposit_paid, agreed_total, agreed_nightly, agreed_txn_fee, agreed_nights, hold_status, hold_amount) VALUES ('$propKey','Evidence Keep','ek@gmail.com','2026-07-01','2026-07-04',2,0,'paid',300,300,300,0,3,'charged',75)");
 $evBid = (int) $rootDb->lastInsertId();
 // a real 1×1 JPEG — the server checks the magic bytes, so a fake would prove nothing
 $jpg = 'data:image/jpeg;base64,/9j/4AAQSkZJRgABAQEAYABgAAD/2wBDAAgGBgcGBQgHBwcJCQgKDBQNDAsLDBkSEw8UHRofHh0aHBwgJC4nICIsIxwcKDcpLDAxNDQ0Hyc5PTgyPC4zNDL/wAALCAABAAEBAREA/8QAFAABAAAAAAAAAAAAAAAAAAAACf/EABQQAQAAAAAAAAAAAAAAAAAAAAD/2gAIAQEAAD8AVN//2Q==';
 $r = http($admin, 'POST', '/bookings.php', ['action' => 'keep_deposit', 'id' => $evBid, 'note' => 'Burn on the worktop', 'photo_data' => $jpg]);
 // NB the app is served from the TEMP docroot ($work) — uploads land THERE.
-$evFiles = glob($work . '/uploads/deposit-evidence-' . $evBid . '-*.jpg') ?: [];
-it_check('keep_deposit with a photo keeps the money AND stores the evidence', ($r['json']['ok'] ?? false) && count($evFiles) === 1, $r['raw'] . ' files=' . count($evFiles));
-$evLog = (int) $rootDb->query("SELECT COUNT(*) FROM activity_log WHERE action = 'deposit.evidence' AND entity_id = '$evBid'")->fetchColumn();
-it_check('…and the activity log names where it lives', $evLog === 1);
+$evFiles = glob($work . '/uploads/private/deposit-evidence-' . $evBid . '-*.jpg') ?: [];
+it_check('keep_deposit with a photo keeps the money AND stores the evidence, privately', ($r['json']['ok'] ?? false) && count($evFiles) === 1 && (glob($work . '/uploads/deposit-evidence-' . $evBid . '-*.jpg') ?: []) === [], $r['raw'] . ' files=' . count($evFiles));
+$evMeta = (string) $rootDb->query("SELECT meta FROM activity_log WHERE action = 'deposit.evidence' AND entity_id = '$evBid'")->fetchColumn();
+it_check('…and the activity log names where it lives', strpos($evMeta, 'uploads\\/deposit-evidence-' . $evBid . '-') !== false, $evMeta);
 
 $rootDb->exec("INSERT INTO bookings (prop_key, name, email, check_in, check_out, adults, children, payment, deposit_paid, agreed_total, agreed_nightly, agreed_txn_fee, agreed_nights, hold_status, hold_amount) VALUES ('$propKey','Evidence Bad','eb@gmail.com','2026-07-05','2026-07-08',2,0,'paid',300,300,300,0,3,'charged',75)");
 $evBid2 = (int) $rootDb->lastInsertId();
 it_reauth($admin); // money out → step-up first (see the helper above)
 $r = http($admin, 'POST', '/bookings.php', ['action' => 'return_deposit', 'id' => $evBid2, 'note' => 'All fine', 'photo_data' => 'data:image/jpeg;base64,not-a-jpeg-at-all']);
-$evFiles2 = glob($work . '/uploads/deposit-evidence-' . $evBid2 . '-*.jpg') ?: [];
+$evFiles2 = array_merge(glob($work . '/uploads/deposit-evidence-' . $evBid2 . '-*.jpg') ?: [], glob($work . '/uploads/private/deposit-evidence-' . $evBid2 . '-*.jpg') ?: []);
 it_check('a MALFORMED photo is ignored and the refund still stands (best-effort contract)', ($r['json']['ok'] ?? false) && count($evFiles2) === 0, $r['raw'] . ' files=' . count($evFiles2));
 
 // (k) A REPEAT THAT ARRIVES WHILE THE FIRST IS STILL RUNNING IS REFUSED, NOT RUN.
@@ -4697,9 +4698,18 @@ $mpRaw = @file_get_contents($BASE . '/photos.php', false, stream_context_create(
     'header' => "Accept: application/json\r\nContent-Type: multipart/form-data; boundary=$mp62\r\nCookie: " . implode('; ', array_map(fn($k) => "$k={$gj62[$k]}", array_keys($gj62))),
     'content' => $mpBody]]));
 $url62 = (string) $rootDb->query("SELECT url FROM guest_photos WHERE guest_id = $gid62 ORDER BY id DESC LIMIT 1")->fetchColumn();
-// A wall photo waits for approval in the private folder (photo-lib.php).
+// A wall photo waits for approval in the private folder (photo-lib.php), encrypted
+// (§90): it is read here the way photo.php reads it.
 $priv62 = $work . '/uploads/private/' . basename($url62);
-$stored62 = $url62 !== '' && is_file($priv62) ? (string) file_get_contents($priv62) : '';
+$unseal62 = function ($raw, $name) use ($SECRET) {
+    if (strncmp($raw, 'CHBSEAL1', 8) !== 0) {
+        return $raw;
+    }
+    $k = hash_hmac('sha256', 'private-photo|v1', hash('sha256', $SECRET . '|at-rest-v1', true), true);
+    $pt = openssl_decrypt(substr($raw, 36), 'aes-256-gcm', $k, OPENSSL_RAW_DATA, substr($raw, 8, 12), substr($raw, 20, 16), $name);
+    return $pt === false ? '' : $pt;
+};
+$stored62 = $url62 !== '' && is_file($priv62) ? (string) $unseal62((string) file_get_contents($priv62), basename($url62)) : '';
 it_check('§62 (fixture) the PNG sent carries a location in its metadata', strpos($png62, 'it62-secret') !== false, '');
 it_check('§62 a guest\'s PNG is stored without it, still a PNG', strpos((string) $mpRaw, '"ok":true') !== false && $stored62 !== '' && strpos($stored62, 'it62-secret') === false && (getimagesizefromstring($stored62)[2] ?? 0) === IMAGETYPE_PNG, (string) $mpRaw . ' ' . $url62);
 it_check('§62 …and kept privately until it is approved, never at its public address', $url62 !== '' && !is_file($work . '/' . $url62), $url62);
@@ -6972,6 +6982,113 @@ $r = http($s89, 'POST', '/auth.php', ['action' => 'guest_code_request', 'email' 
 it_check('§89 …after which that name signs nobody in', $r['code'] === 404, $r['raw']);
 $r = $un89($b89, 'hannah.reed89');
 it_check('§89 …and is free for someone else', ($r['json']['state'] ?? '') === 'free', $r['raw']);
+
+// §90 PRIVATE PHOTOS ARE ENCRYPTED, AND THE LAST TWO KINDS JOIN THEM (the owner's
+// choice: encrypted on the server rather than end to end). A guest's suggestion
+// picture was public from the moment it arrived, and a deposit photo for good, each
+// at an address anyone holding it could open; the private folder kept plaintext.
+// Now every photo there is encrypted, a suggestion's picture waits there until it is
+// approved, and a deposit photo never leaves it.
+echo "\n== §90 private photos are encrypted ==\n";
+$rootDb->exec("DELETE FROM login_attempts WHERE identifier IN ('chatupload', 'chatupload-new', 'chat', 'photo')");
+$sealed90 = fn($path) => is_file($path) && strncmp((string) file_get_contents($path), 'CHBSEAL1', 8) === 0;
+$link90 = function ($name) use ($sig85) {
+    $e = time() + 3600;
+    return '/photo.php?f=' . $name . '&exp=' . $e . '&sig=' . $sig85($name, $e);
+};
+// A CHAT PHOTO, SENT TODAY.
+$tok90 = bin2hex(random_bytes(12));
+$up90 = $mp75('/chat-upload.php', ['token' => $tok90], 'quay.jpg', $jpg75);
+$st90 = (string) ($up90['url'] ?? '');
+$an90 = [];
+$r = http($an90, 'POST', '/messages.php', ['action' => 'send', 'token' => $tok90, 'body' => 'The quay at dusk', 'name' => 'Rosa Ninety', 'email' => 'rosa90@gmail.com', 'attachment' => $st90]);
+$c90 = basename($st90);
+clearstatcache();
+$cRaw90 = (string) @file_get_contents($work . '/uploads/private/' . $c90);
+it_check('§90 a chat photo is kept encrypted: the marker, and none of the picture', $r['code'] === 200 && $c90 !== '' && strncmp($cRaw90, 'CHBSEAL1', 8) === 0 && strpos($cRaw90, "\xFF\xD8\xFF") === false, bin2hex(substr($cRaw90, 0, 8)) . ' ' . $r['raw']);
+$t90 = http($an90, 'POST', '/messages.php', ['action' => 'thread', 'token' => $tok90]);
+$l90 = (string) (($t90['json']['messages'][0] ?? [])['attachment'] ?? '');
+$g90 = $get85('/' . $l90);
+it_check("§90 …and its link sends the photo itself, decrypted, at the photo's own length", $g90['code'] === 200 && getimagesizefromstring($g90['raw']) !== false && (int) ($g90['h']['content-length'] ?? -1) === strlen($g90['raw']), $g90['code'] . ' ' . ($g90['h']['content-length'] ?? ''));
+$swap90 = 'chat-' . bin2hex(random_bytes(6)) . '.jpg';
+copy($work . '/uploads/private/' . $c90, $work . '/uploads/private/' . $swap90);
+it_check('§90 a sealed photo copied under another name opens nothing (its name is bound in)', $get85($link90($swap90))['code'] === 404, '');
+$dmg90 = 'chat-' . bin2hex(random_bytes(6)) . '.jpg';
+file_put_contents($work . '/uploads/private/' . $dmg90, 'CHBSEAL1' . random_bytes(60));
+$gd90 = $get85($link90($dmg90), 'text/html');
+it_check('§90 a damaged photo opens nothing, and says so in words', $gd90['code'] === 404 && stripos($gd90['raw'], 'be opened') !== false, $gd90['code'] . ' ' . substr($gd90['raw'], 0, 80));
+@unlink($work . '/uploads/private/' . $swap90);
+@unlink($work . '/uploads/private/' . $dmg90);
+// A GUEST'S SUGGESTION AND ITS PICTURE ($a89 has a booking from §89 and a proven address).
+$sg90 = $mp75('/experiences.php', ['action' => 'suggest', 'title' => 'IT90 Seal trip', 'body' => 'Out from Morston quay, an hour each way.', 'category' => 'Boat trips'], 'seals.jpg', $jpg75, $a89);
+$ex90 = $rootDb->query("SELECT id, image_url FROM experiences WHERE title = 'IT90 Seal trip' ORDER BY id DESC LIMIT 1")->fetch() ?: [];
+$exImg90 = (string) ($ex90['image_url'] ?? '');
+$exName90 = basename($exImg90);
+clearstatcache();
+it_check("§90 a suggestion's picture waits in the private folder, encrypted, never at a public address", ($sg90['ok'] ?? false) && strpos($exImg90, 'uploads/experience-') === 0 && $sealed90($work . '/uploads/private/' . $exName90) && !is_file($work . '/' . $exImg90) && $get85('/' . $exImg90)['code'] === 404, json_encode($sg90) . ' ' . $exImg90);
+$la90 = http($adm89, 'POST', '/experiences.php', ['action' => 'list_admin']);
+$row90 = array_values(array_filter($la90['json']['experiences'] ?? [], fn($x) => (int) $x['id'] === (int) ($ex90['id'] ?? 0)))[0] ?? [];
+$view90 = (string) ($row90['image_view'] ?? '');
+it_check('§90 the owner sees it through a link that expires, and its name stays what a save sends back', strpos($view90, 'photo.php?f=' . $exName90 . '&exp=') === 0 && ($row90['image_url'] ?? '') === $exImg90 && getimagesizefromstring($get85('/' . $view90)['raw']) !== false, $view90);
+$ap90 = http($adm89, 'POST', '/experiences.php', ['action' => 'approve', 'id' => (int) ($ex90['id'] ?? 0)]);
+clearstatcache();
+it_check('§90 approving publishes the picture at its public address, decrypted', ($ap90['json']['ok'] ?? false) && ($ap90['json']['picture'] ?? 'x') === '' && getimagesizefromstring((string) @file_get_contents($work . '/' . $exImg90)) !== false && !is_file($work . '/uploads/private/' . $exName90) && $get85('/' . $exImg90)['code'] === 200, $ap90['raw']);
+$rootDb->prepare("INSERT INTO experiences (title, body, image_url, category, status, source) VALUES ('IT90 Lost picture', 'b', ?, 'Walks', 'pending', 'guest')")->execute(['uploads/experience-' . bin2hex(random_bytes(6)) . '.jpg']);
+$lost90 = (int) $rootDb->lastInsertId();
+$ap90b = http($adm89, 'POST', '/experiences.php', ['action' => 'approve', 'id' => $lost90]);
+it_check('§90 a suggestion whose picture has gone is published without it, and the answer says so', ($ap90b['json']['picture'] ?? '') === 'missing' && $rootDb->query("SELECT CONCAT(status, '|', image_url) FROM experiences WHERE id = $lost90")->fetchColumn() === 'published|', $ap90b['raw']);
+$sg90b = $mp75('/experiences.php', ['action' => 'suggest', 'title' => 'IT90 Crab shack', 'body' => 'The best crab sandwiches on the quay.', 'category' => 'Food'], 'crab.jpg', $jpg75, $a89);
+$ex90b = $rootDb->query("SELECT id, image_url FROM experiences WHERE title = 'IT90 Crab shack' ORDER BY id DESC LIMIT 1")->fetch() ?: [];
+$img90b = (string) ($ex90b['image_url'] ?? '');
+$sv90c = http($adm89, 'POST', '/experiences.php', ['action' => 'save', 'id' => (int) ($ex90b['id'] ?? 0), 'title' => str_repeat('x', 200), 'body' => 'b', 'image_url' => $img90b, 'category' => 'Food']);
+clearstatcache();
+it_check('§90 an edit refused for its words leaves the picture private', $sv90c['code'] === 400 && $sealed90($work . '/uploads/private/' . basename($img90b)) && !is_file($work . '/' . $img90b), $sv90c['raw']);
+$sv90 = http($adm89, 'POST', '/experiences.php', ['action' => 'save', 'id' => (int) ($ex90b['id'] ?? 0), 'title' => 'IT90 Crab shack', 'body' => 'b', 'image_url' => $img90b, 'category' => 'Food']);
+clearstatcache();
+it_check('§90 saving a waiting suggestion publishes it, picture and all', ($sv90['json']['ok'] ?? false) && is_file($work . '/' . $img90b) && !is_file($work . '/uploads/private/' . basename($img90b)), $sv90['raw']);
+$sv90b = http($adm89, 'POST', '/experiences.php', ['action' => 'save', 'id' => (int) ($ex90b['id'] ?? 0), 'title' => 'IT90 Crab shack', 'body' => 'b', 'image_url' => '', 'category' => 'Food']);
+clearstatcache();
+it_check("§90 …and a guest's picture the owner takes off the card is deleted", ($sv90b['json']['ok'] ?? false) && !is_file($work . '/' . $img90b), $sv90b['raw']);
+// A DEPOSIT PHOTO.
+$rootDb->exec("INSERT INTO bookings (prop_key, name, email, check_in, check_out, adults, children, payment, deposit_paid, agreed_total, agreed_nightly, agreed_txn_fee, agreed_nights, hold_status, hold_amount) VALUES ('$propKey','Evidence Ninety','ev90@gmail.com','2026-07-11','2026-07-14',2,0,'paid',300,300,300,0,3,'charged',75)");
+$ev90 = (int) $rootDb->lastInsertId();
+$r = http($adm89, 'POST', '/bookings.php', ['action' => 'keep_deposit', 'id' => $ev90, 'note' => 'Scorch mark on the table', 'photo_data' => 'data:image/jpeg;base64,' . base64_encode($jpg75)]);
+$evF90 = glob($work . '/uploads/private/deposit-evidence-' . $ev90 . '-*.jpg') ?: [];
+it_check('§90 a deposit photo is kept encrypted in the private folder, never in public uploads/', ($r['json']['ok'] ?? false) && count($evF90) === 1 && $sealed90($evF90[0]) && (glob($work . '/uploads/deposit-evidence-' . $ev90 . '-*.jpg') ?: []) === [], $r['raw']);
+$hb90 = http($adm89, 'POST', '/bookings.php', ['action' => 'hub_bundle', 'id' => $ev90]);
+$evEv90 = array_values(array_filter($hb90['json']['events'] ?? [], fn($e) => ($e['action'] ?? '') === 'deposit.evidence'))[0] ?? [];
+$evLink90 = (string) ($evEv90['photo'] ?? '');
+it_check("§90 the booking's page shows it through a link that expires, under a plain line", strpos($evLink90, 'photo.php?f=deposit-evidence-' . $ev90 . '-') === 0 && ($evEv90['summary'] ?? '') === 'Deposit photo saved' && getimagesizefromstring($get85('/' . $evLink90)['raw']) !== false, json_encode($evEv90));
+// KEPT BEFORE: a deposit photo, and a suggestion still waiting, at public addresses;
+// a published suggestion's picture stays where its card shows it.
+$oldEv90 = 'deposit-evidence-' . $ev90 . '-' . bin2hex(random_bytes(6)) . '.jpg';
+$oldSug90 = 'experience-' . bin2hex(random_bytes(6)) . '.jpg';
+$oldPub90 = 'experience-' . bin2hex(random_bytes(6)) . '.jpg';
+foreach ([$oldEv90, $oldSug90, $oldPub90] as $f90) {
+    file_put_contents($work . '/uploads/' . $f90, $jpg75);
+}
+$rootDb->prepare("INSERT INTO activity_log (category, action, summary, entity, entity_id, severity) VALUES ('payment', 'deposit.evidence', ?, 'booking', ?, 'info')")->execute(['Deposit photo saved — uploads/' . $oldEv90, (string) $ev90]);
+$rootDb->prepare("INSERT INTO experiences (title, body, image_url, category, status, source) VALUES ('IT90 Old waiting', 'b', ?, 'Walks', 'pending', 'guest'), ('IT90 Old shown', 'b', ?, 'Walks', 'published', 'guest')")->execute(['uploads/' . $oldSug90, 'uploads/' . $oldPub90]);
+$plain90 = 'chat-' . bin2hex(random_bytes(6)) . '.jpg';
+file_put_contents($work . '/uploads/private/' . $plain90, $jpg75);
+it_check('§90 (fixture) a photo made private before encryption still opens, as it is', $get85($link90($plain90))['raw'] === $jpg75, '');
+$mg90 = http($noJar, 'GET', '/migrate.php?cron=' . $SECRET);
+clearstatcache();
+it_check('§90 after the deploy, a deposit photo kept before moves into the private folder, encrypted', !is_file($work . '/uploads/' . $oldEv90) && $sealed90($work . '/uploads/private/' . $oldEv90), json_encode($mg90['json']['photos_made_private'] ?? null));
+it_check('§90 …a waiting suggestion\'s picture too, while a published one stays where its card shows it', !is_file($work . '/uploads/' . $oldSug90) && $sealed90($work . '/uploads/private/' . $oldSug90) && is_file($work . '/uploads/' . $oldPub90), '');
+it_check('§90 …and a photo already private is encrypted where it lies, the same photo when opened', ($mg90['json']['photos_encrypted'] ?? 0) >= 1 && $sealed90($work . '/uploads/private/' . $plain90) && $get85($link90($plain90))['raw'] === $jpg75, json_encode($mg90['json']['photos_encrypted'] ?? null));
+$hb90b = http($adm89, 'POST', '/bookings.php', ['action' => 'hub_bundle', 'id' => $ev90]);
+$oldLink90 = '';
+foreach ($hb90b['json']['events'] ?? [] as $e90) {
+    if (strpos((string) ($e90['photo'] ?? ''), $oldEv90) !== false) {
+        $oldLink90 = (string) $e90['photo'];
+    }
+}
+it_check('§90 a line that named its photo in its words still shows it, through a link', $oldLink90 !== '' && $get85('/' . $oldLink90)['code'] === 200 && $get85('/uploads/' . $oldEv90)['code'] === 404, $oldLink90);
+it_check('§90 the image resizer refuses a deposit photo', $get85('/img.php?src=uploads/' . $oldEv90 . '&w=320')['code'] === 400, '');
+$mg90b = http($noJar, 'GET', '/migrate.php?cron=' . $SECRET);
+it_check('§90 the next deploy moves and encrypts nothing', ($mg90b['json']['photos_made_private'] ?? -1) === 0 && ($mg90b['json']['photos_encrypted'] ?? -1) === 0, json_encode([$mg90b['json']['photos_made_private'] ?? null, $mg90b['json']['photos_encrypted'] ?? null]));
+http($adm89, 'POST', '/messages.php', ['action' => 'delete', 'thread_id' => (int) $rootDb->query('SELECT id FROM chat_threads WHERE token = ' . $rootDb->quote($tok90))->fetchColumn()]);
 
 echo "\n== Summary ==\n";
 if ($fail) {

@@ -2403,7 +2403,7 @@ if ($action === 'return_deposit') {
     // whatever happens to the photo).
     $evidence = deposit_evidence_store($id, $in['photo_data'] ?? '');
     if ($evidence !== '') {
-        log_activity('payment', 'deposit.evidence', 'Deposit photo saved — ' . $evidence, ['prop_key' => $b['prop_key'] ?? '', 'entity' => 'booking', 'entity_id' => (string) $id]);
+        log_activity('payment', 'deposit.evidence', 'Deposit photo saved', ['prop_key' => $b['prop_key'] ?? '', 'entity' => 'booking', 'entity_id' => (string) $id, 'meta' => ['photo' => $evidence]]);
     }
     log_activity('payment', 'deposit.return', 'Damage deposit returned — £' . number_format((float) $amount, 2) . ($b['name'] ? ' · ' . $b['name'] : ''), ['prop_key' => $b['prop_key'] ?? '', 'entity' => 'booking', 'entity_id' => (string) $id]);
     log_comms_outcome('email.deposit_return', 'Deposit-return email', $emailResult, $id, $b['prop_key'] ?? '');
@@ -2462,7 +2462,7 @@ if ($action === 'keep_deposit') {
     // at the moment of deciding is what settles it.
     $evidence = deposit_evidence_store($id, $in['photo_data'] ?? '');
     if ($evidence !== '') {
-        log_activity('payment', 'deposit.evidence', 'Deposit photo saved — ' . $evidence, ['prop_key' => $b['prop_key'] ?? '', 'entity' => 'booking', 'entity_id' => (string) $id]);
+        log_activity('payment', 'deposit.evidence', 'Deposit photo saved', ['prop_key' => $b['prop_key'] ?? '', 'entity' => 'booking', 'entity_id' => (string) $id, 'meta' => ['photo' => $evidence]]);
     }
     log_activity('payment', 'deposit.kept', 'Damage deposit kept (damage) — £' . number_format($held, 2) . ($b['name'] ? ' · ' . $b['name'] : ''), ['severity' => 'warn', 'prop_key' => $b['prop_key'] ?? '', 'entity' => 'booking', 'entity_id' => (string) $id, 'meta' => $note !== '' ? ['detail' => $note] : []]);
     json_out(['ok' => true, 'kept' => $held]);
@@ -2819,13 +2819,24 @@ if ($action === 'hub_bundle') {
                     $meta = $decoded;
                 }
             }
+            // A deposit photo is shown through a link that expires (photo-lib.php).
+            // Older lines named the photo in their summary rather than the meta.
+            $photo = '';
+            if ($r['action'] === 'deposit.evidence') {
+                $rel = (string) ($meta['photo'] ?? '');
+                if ($rel === '' && preg_match('#(uploads/deposit-evidence-[A-Za-z0-9_-]+\.jpg)#', (string) $r['summary'], $pm)) {
+                    $rel = $pm[1];
+                }
+                $photo = $rel !== '' && photo_file($rel) !== '' ? photo_link($rel) : '';
+            }
             $events[] = [
                 'action' => $r['action'],
-                'summary' => $r['summary'],
+                'summary' => $r['action'] === 'deposit.evidence' ? 'Deposit photo saved' : $r['summary'],
                 'actor' => $r['actor'] ? admin_actor_label($r['actor']) : 'system',
                 'at' => $r['created_at'],
                 'subject' => isset($meta['subject']) ? (string) $meta['subject'] : '',
                 'body' => isset($meta['body']) ? (string) $meta['body'] : '',
+                'photo' => $photo,
             ];
         }
     } catch (\Throwable $e) {

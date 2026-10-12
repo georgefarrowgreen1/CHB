@@ -6,7 +6,7 @@
 //  POST {action:'suggest'}        -> signed-in guest suggests one (-> PENDING)
 //  POST {action:'list_admin'}     -> all rows incl. pending (admin)
 //  POST {action:'save'}           -> add/update a published card (admin)
-//  POST {action:'approve'}        -> publish a suggestion (admin)
+//  POST {action:'approve'}        -> publish a suggestion and its picture (admin)
 //  POST {action:'reject'}         -> reject a suggestion (admin)
 //  POST {action:'delete'}         -> remove a card (admin)
 //  POST {action:'reorder'}        -> set display order (admin)
@@ -140,15 +140,20 @@ if ($action === 'suggest') {
         /* table not migrated yet — let the insert below report it */
     }
 
-    // Optional photo the guest attached (validated + stored like guest photos).
+    // Optional photo the guest attached (validated + stripped like guest photos).
+    // PRIVATE UNTIL APPROVED: it waits in the private folder, encrypted, where the
+    // owner sees it through a link that expires; approving it publishes it.
     $image = '';
     if (!empty($_FILES['image']) && is_array($_FILES['image']) && ($_FILES['image']['error'] ?? 4) === UPLOAD_ERR_OK) {
         require_once __DIR__ . '/image-save.php';
-        $res = save_uploaded_image($_FILES['image'], 'experience', null, true);
+        $res = save_uploaded_image($_FILES['image'], 'experience', null, true, false);
         if (!empty($res['error'])) {
             json_out(['error' => $res['error']], $res['code'] ?? 400);
         }
-        $image = $res['url'];
+        $image = upload_hold((string) $res['url']);
+        if ($image === '') {
+            json_out(['error' => 'Your picture couldn’t be saved. Try again, or send the suggestion without it.'], 500);
+        }
     }
 
     try {
@@ -201,7 +206,25 @@ if ($action === 'list_admin') {
     } catch (\Throwable $e) {
         json_out(['error' => 'Experiences not ready — run migrate.php (migration-experiences.sql).'], 500);
     }
+    // A picture still private (a suggestion waiting) is shown through a link that
+    // expires; image_url stays its name, which is what a save sends back.
+    foreach ($rows as &$row) {
+        $img = (string) ($row['image_url'] ?? '');
+        $file = preg_match('#^uploads/experience-#', $img) ? photo_file($img) : '';
+        $row['image_view'] = $file !== '' && strpos($file, '/' . UPLOAD_PRIVATE_DIR . '/') !== false ? photo_link($img) : exp_safe_image($img);
+    }
+    unset($row);
     json_out(['experiences' => $rows]);
+}
+
+// A suggestion's picture goes public when its card does. One that can no longer
+// be found is dropped from the card rather than shown broken: '' comes back.
+function exp_publish_image(string $image): string
+{
+    if (!preg_match('#^uploads/experience-#', $image)) {
+        return $image;
+    }
+    return upload_publish($image);
 }
 
 if ($action === 'save') {
@@ -212,6 +235,18 @@ if ($action === 'save') {
     if ($image !== '' && exp_safe_image($image) === '') {
         json_out(['error' => "That photo address can't be used — choose the photo again."], 400);
     }
+    // Saving publishes the card, so its picture goes public with it; a guest's
+    // picture the edit replaced goes (unless another card shows it).
+    $was = '';
+    if ((int) ($in['id'] ?? 0) > 0) {
+        try {
+            $wq = db()->prepare('SELECT image_url FROM experiences WHERE id = ?');
+            $wq->execute([(int) $in['id']]);
+            $was = (string) ($wq->fetchColumn() ?: '');
+        } catch (\Throwable $e) {
+        }
+    }
+
     $linkLabel = clean($in['link_label'] ?? '');
     $linkUrl = exp_norm_url($in['link_url'] ?? '');
     $phone = trim((string) ($in['phone'] ?? ''));
@@ -230,6 +265,8 @@ if ($action === 'save') {
         'distance' => [80, 'The distance'],
         'map_query' => [255, 'The map search'],
     ]);
+    // Only now, with the edit accepted, does the picture go public with the card.
+    $image = exp_publish_image($image);
     try {
         if ($id) {
             db()
@@ -276,6 +313,9 @@ if ($action === 'save') {
         }
         json_out(['error' => 'Experiences not ready — run migrate.php (migration-experiences.sql).'], 500);
     }
+    if ($was !== '' && $was !== $image) {
+        experience_image_drop($was, $id);
+    }
     log_activity('media', 'experience.save', 'Experience saved — ' . mb_substr($title, 0, 60), ['entity' => 'experience', 'entity_id' => (string) $id]);
     json_out(['ok' => true, 'id' => $id]);
 }
@@ -285,12 +325,18 @@ if ($action === 'approve') {
     if (!$id) {
         json_out(['error' => 'Invalid request'], 400);
     }
+    // Its picture goes public with it; one that can no longer be found leaves the
+    // card without a picture, and the answer says so.
+    $iq = db()->prepare('SELECT image_url FROM experiences WHERE id = ?');
+    $iq->execute([$id]);
+    $img = (string) ($iq->fetchColumn() ?: '');
+    $pub = $img === '' ? '' : exp_publish_image($img);
     $max = (int) (db()->query('SELECT COALESCE(MAX(sort_order),0) m FROM experiences')->fetch()['m'] ?? 0);
     db()
-        ->prepare("UPDATE experiences SET status='published', sort_order=? WHERE id=?")
-        ->execute([$max + 1, $id]);
+        ->prepare("UPDATE experiences SET status='published', sort_order=?, image_url=? WHERE id=?")
+        ->execute([$max + 1, $pub, $id]);
     log_activity('moderation', 'experience.approve', 'Experience published', ['entity' => 'experience', 'entity_id' => (string) $id]);
-    json_out(['ok' => true]);
+    json_out(['ok' => true, 'picture' => $img !== '' && $pub === '' ? 'missing' : '']);
 }
 
 if ($action === 'reject') {
