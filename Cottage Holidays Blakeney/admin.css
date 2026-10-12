@@ -10,10 +10,1022 @@
    subject targets a class/id that never appears in the guest side across all
    public views + modals (empirically collected), so a guest who never loads
    this file renders byte-identically — verified by an A/B pixel-diff harness.
-   Admin components with a STATIC shell in index.html (the owner dock, the
-   Today/Inbox scaffolding) keep their rules in app.css by design. Edit admin
+   What stays in app.css: anything a guest page can show, and the owner-mode
+   rules for the static page (the header dock, the footer, the page's top
+   space), because owner-mode is set before this file arrives. Edit admin
    styles here and bump ADMIN_CSS_V.
    ============================================================ */
+/* ============================================================
+   Moved from app.css: rules only the back office can use (every one needs a
+   class or id that only owner markup carries), so a guest never downloads them.
+   They come first, in their old order, so every rule below still follows them
+   as it did when they sat in app.css. What changed is that they now follow ALL
+   of app.css: a later app.css rule of equal specificity used to beat one of
+   them. Every such pair was checked; the rules that met one on a real element
+   (.cancel-card under the shared transition group, .msg-archived-toggle beside
+   .btn-sm) stayed in app.css.
+   ============================================================ */
+.ap-rail {
+  display: grid;
+  gap: 7px;
+}
+.ap-row {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  font-size: var(--fs-sub);
+  color: var(--text-light);
+}
+.ap-date {
+  min-width: 84px;
+  font-variant-numeric: tabular-nums;
+}
+.ap-figc {
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  min-width: 62px;
+}
+.ap-note {
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+.ap-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  flex: none;
+  margin: 3px;
+}
+.ap-dot.is-done {
+  background: var(--ok-text);
+}
+.ap-dot.is-next {
+  background: var(--accent-text);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 22%, transparent);
+}
+.ap-dot.is-todo {
+  border: 1.5px solid var(--text-muted);
+}
+.ap-bar {
+  display: block;
+  height: 5px;
+  border-radius: var(--r-pill);
+  background: color-mix(in srgb, var(--text-muted) 22%, transparent);
+  overflow: hidden;
+  margin: 2px 0 10px;
+}
+.ap-bar > span {
+  display: block;
+  height: 100%;
+  border-radius: var(--r-pill);
+  background: var(--ok-text);
+}
+.skel-bar.w85 {
+  width: 85%;
+}
+/* --- CALENDAR MODULE --- */
+.cal-header-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px 16px;
+  flex-wrap: wrap;
+  margin-bottom: 18px;
+}
+.cal-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+}
+.cal-add-btn {
+  padding: 12px 22px;
+}
+.cal-month-nav {
+  display: flex;
+  gap: 16px;
+  align-items: center;
+  min-width: 0;
+}
+.cal-month-title {
+  font-family: var(--font-serif);
+  font-size: var(--fs-title);
+  line-height: 1.15;
+  white-space: nowrap; /* "September 2026" must never wrap beside the control */
+}
+/* Segmented ‹ Today › control — one hairline pill, buttons divided inside. */
+.tl-seg {
+  display: inline-flex;
+  align-items: stretch;
+  flex-shrink: 0;
+  border: 1px solid var(--glass-border);
+  border-radius: var(--r-pill);
+  overflow: hidden;
+  background: rgba(127, 127, 127, 0.07);
+}
+.tl-seg button {
+  font: 600 var(--fs-caption) var(--font-sans);
+  letter-spacing: 0.04em;
+  color: var(--text-light);
+  background: transparent;
+  border: 0;
+  padding: 9px 14px; /* lands the control at 32px — same as the segmented filters and .btn-sm */
+  cursor: pointer;
+  transition: background 0.2s var(--fluid-bezier);
+}
+.tl-seg button + button {
+  border-left: 1px solid var(--glass-border);
+}
+.cal-refresh-btn {
+  position: relative; /* the hit region below */
+  background: transparent;
+  border: 1px solid var(--glass-border);
+  color: var(--text-muted);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px; /* fixed circle at the small-control height (segments, .btn-sm) */
+  height: 32px;
+  padding: 0;
+  border-radius: 50%;
+}
+.cal-refresh-btn .ic {
+  width: 15px;
+  height: 15px;
+}
+.cal-refresh-btn:hover {
+  color: var(--text-light);
+  border-color: var(--glass-highlight);}
+.cal-refresh-btn.syncing {
+  opacity: 0.6;
+  pointer-events: none;
+}
+.cal-refresh-btn.syncing .ic {
+  animation: calSyncSpin 0.9s linear infinite;
+}
+.cal-panel {
+  padding: 25px;
+}
+.count-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 19px;
+  height: 19px;
+  padding: 0 5px;
+  border-radius: var(--r-pill);
+  font-family: var(--font-sans);
+  font-size: var(--fs-micro);
+  font-weight: 700;
+  vertical-align: middle;
+}
+.msg-thread-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  text-align: left;
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px solid var(--glass-border);
+  border-radius: var(--r-md);
+  padding: 12px 14px;
+  color: var(--text-light);
+  cursor: pointer;
+  transition: background 0.2s var(--fluid-bezier);
+}
+.msg-thread-row:focus-visible{
+  background: var(--glass-hover);
+}
+/* Avatar circle (initial), tinted per person so conversations are easy to tell
+   apart. Hue comes from an inline --ava-h set by the row template. */
+.msg-thread-row .mtr-ava {
+  flex-shrink: 0;
+  width: 42px;
+  height: 42px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--font-sans);
+  font-weight: 600;
+  font-size: var(--fs-headline);
+  color: #fff;
+  background: hsl(var(--ava-h, 210) 34% 42%);
+}
+.msg-thread-row .mtr-main {
+  flex: 1;
+  min-width: 0;
+}
+.msg-thread-row .mtr-top {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+.msg-thread-row .mtr-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--fs-body);
+}
+.msg-thread-row.unread .mtr-name {
+  font-weight: 700;
+}
+.msg-thread-row .mtr-tag {
+  font-size: var(--fs-micro);
+  color: var(--text-muted);
+  font-weight: 400;
+}
+.msg-thread-row .mtr-time {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: var(--fs-caption);
+  color: var(--text-muted);
+}
+.msg-thread-row .mtr-bot {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 3px;
+}
+.msg-thread-row .mtr-last {
+  flex: 1;
+  min-width: 0;
+  font-size: var(--fs-sub);
+  color: var(--text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.msg-thread-row.unread .mtr-last {
+  color: var(--text-light);
+}
+/* Inbox search + "Needs reply" filter chip */
+.msg-inbox-controls {
+  display: flex;
+  /* The row WRAPS and the field claims a basis. Both siblings are 0 0 auto +
+     nowrap, so on a phone the input took the whole shortfall — 64px, two
+     characters — and only when there IS work, i.e. when search is wanted. */
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  margin: 10px 0;
+}
+.msg-inbox-controls #msg-search {
+  flex: 1 1 200px;
+  margin: 0;
+}
+.msg-filter-chip {
+  flex: 0 0 auto;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid var(--glass-border);
+  color: var(--text-muted);
+  font-family: var(--font-sans);
+  font-size: var(--fs-caption);
+  font-weight: 600;
+  padding: 7px 12px;
+  border-radius: var(--r-pill);
+  cursor: pointer;
+  white-space: nowrap;
+  transition:
+    background 0.25s var(--fluid-bezier),
+    color 0.25s var(--fluid-bezier),
+    border-color 0.25s var(--fluid-bezier);
+}
+.msg-filter-chip:hover {
+  color: var(--text-light);
+}
+.msg-filter-chip.on {
+  background: var(--warn);
+  border-color: var(--warn);
+  color: var(--accent-ink);
+}
+/* "Needs reply" pill on a thread row (last message is the guest's, unanswered) */
+.needs-reply-pill {
+  display: inline-block;
+  vertical-align: middle;
+  background: rgba(255, 183, 77, 0.16);
+  color: var(--warn-text);
+  font-size: var(--fs-micro);
+  font-weight: 600;
+  padding: 2px 7px;
+  border-radius: var(--r-pill);
+  margin-left: 6px;
+}
+.msg-noresults {
+  font-size: var(--fs-sub);
+  color: var(--text-muted);
+  text-align: center;
+  padding: 14px 0;
+}
+/* Inbox sort control (soonest stay / newest / cottage). */
+.inbox-sort {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  font-size: var(--fs-caption);
+  color: var(--text-muted);
+  margin-bottom: 12px;
+}
+/* Segmented control (.inbox-sort.seg): one hairline pill, the active
+   segment raised as a thumb — the dashboard filters and the Inbox sort. */
+.inbox-sort.seg {
+  display: inline-flex;
+  flex-wrap: nowrap;
+  gap: 2px;
+  padding: 3px;
+  max-width: 100%;
+  overflow-x: auto;
+  border: 1px solid var(--glass-border);
+  border-radius: var(--r-pill);
+  background: rgba(127, 127, 127, 0.07);
+}
+.inbox-sort.seg .inbox-sort-btn {
+  border: 0;
+  white-space: nowrap;
+  padding: 6px 14px;
+}
+.inbox-sort.seg .inbox-sort-btn.is-on {
+  background: var(--glass-hover);
+  color: var(--text-light);
+  border: 0;
+  box-shadow: var(--shadow-soft);
+}
+/* Inbox folder-switch count chips: a tiny .inbox-badge sized to sit inside a
+   segment. Empty (count 0) hides itself so quiet folders stay clean. */
+.ifold-count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  margin-left: 4px;
+  border-radius: var(--r-pill);
+  font-size: var(--fs-micro);
+  font-weight: 600;
+  vertical-align: middle;
+}
+.ifold-count:empty {
+  display: none;
+}
+#bookings-filters .inbox-sort-btn {
+  flex: 1 1 auto;
+  text-align: center;
+}
+@media (max-width: 640px) {
+    #bookings-filters .inbox-sort-btn {
+        padding: 9px 6px;
+      }
+}
+/* Inside a folder the switch already separates the sections — the section
+   title sits close under it, not at the Today page's 34px rhythm. */
+#inbox-folder-enquiries .bo-sec-title,
+#inbox-folder-messages .bo-sec-title {
+  margin-top: 4px;
+}
+.inbox-sort-btn {
+  font: inherit;
+  cursor: pointer;
+  padding: 4px 12px;
+  border-radius: var(--r-pill);
+  border: 1px solid var(--glass-border);
+  background: transparent;
+  color: var(--text-muted);
+  transition: filter var(--fluid-bezier, ease) 0.2s;
+}
+.inbox-sort-btn.is-on {
+  background: color-mix(in srgb, var(--accent) 16%, transparent);
+  color: var(--accent-text);
+  border-color: color-mix(in srgb, var(--accent) 30%, transparent);
+}
+.repeat-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  vertical-align: middle;
+  margin-left: 8px;
+  padding: 2px 9px;
+  border-radius: var(--r-pill);
+  font-family: var(--font-sans);
+  font-size: var(--fs-micro);
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  background: rgba(76, 175, 80, 0.13);
+  color: var(--ok-text);
+  border: 1px solid rgba(76, 175, 80, 0.28);
+}
+.repeat-badge .ic {
+  width: 12px;
+  height: 12px;
+}
+/* Manage header: the one status pill sits to the RIGHT of the title,
+   centred on the title's line (owner-asked: "perfectly in line"). */
+.dashboard-header.settings-head {
+  /* flex-direction:row (explicit) beats the ≤640px .dashboard-header column
+     rule by specificity, so the pill stays RIGHT of the title on mobile too. */
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.dashboard-header.settings-head .settings-head-titles {
+  min-width: 0; /* let the subtitle wrap rather than shove the pill off-screen */
+  width: auto; /* override the mobile > div:first-child { width:100% } */
+  flex: 1 1 auto;
+}
+/* The pill on the right. */
+.settings-head-pills {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 8px;
+  flex-shrink: 0;
+}
+.settings-head-pills .cron-pill {
+  margin: 0; /* drop the old stacked-below bottom gap */
+}
+.cron-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 18px;
+  padding: 7px 14px;
+  border-radius: var(--r-pill);
+  border: 1px solid transparent;
+  font: inherit;
+  font-size: var(--fs-sub);
+  font-weight: 600;
+  cursor: pointer;
+  background: rgba(76, 175, 80, 0.12);
+  color: var(--ok-text);
+  border-color: rgba(76, 175, 80, 0.3);
+  transition: filter var(--fluid-bezier, ease) 0.2s;
+}
+.cron-pill.warn {
+  background: rgba(255, 167, 38, 0.14);
+  color: var(--warn-text);
+  border-color: rgba(255, 167, 38, 0.35);
+}
+/* Explicit healthy state (same as the base green) + a red hard-failure state. */
+.cron-pill.ok {
+  background: rgba(76, 175, 80, 0.12);
+  color: var(--ok-text);
+  border-color: rgba(76, 175, 80, 0.3);
+}
+.cron-pill.danger {
+  background: rgba(229, 57, 53, 0.14);
+  color: var(--danger-text);
+  border-color: rgba(229, 57, 53, 0.38);
+}
+.cron-pill-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: currentColor;
+  flex-shrink: 0;
+}
+/* Recent-activity feed rows (dashboard) */
+.act-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 2px;
+  border-bottom: 1px solid var(--glass-border);
+  font-size: var(--fs-sub);
+  transition: background 0.2s var(--fluid-bezier);
+}
+.act-row:last-child {
+  border-bottom: none;
+}
+/* Area overview — the "important parts first" summary that leads Cottages &
+   Marketing (occupancy / key numbers) before the detail sub-folders. */
+/* "Recent" chips + empty-search note above the index */
+.settings-noresults {
+  font-size: var(--fs-sub);
+  color: var(--text-muted);
+  margin: 4px 0 14px;
+}
+/* Keep every Settings folder, sub-folder and drill-down on the same 640px
+           content column as the folder index, so navigating in/out stays aligned
+           and every panel's content lines up regardless of what it renders. */
+.settings-sec {
+  max-width: 640px;
+}
+/* The all-cottages season CARDS flow two-up on desktop — let just this
+           panel take the width for the second column. */
+#sec-seasongrid {
+  max-width: 1000px;
+}
+#accom-detail,
+#calendar-detail,
+#cancel-detail {
+  max-width: 640px;
+}
+.settings-group {
+  background: var(--glass-bg);
+  border: 1px solid var(--glass-border);
+  border-radius: var(--r-lg);
+  overflow: hidden;
+  margin-bottom: 20px;
+}
+.settings-row {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  width: 100%;
+  text-align: left;
+  background: none;
+  border: none;
+  border-top: 1px solid var(--glass-border);
+  color: var(--text-light);
+  padding: 15px 18px;
+  cursor: pointer;
+  transition: background 0.2s var(--fluid-bezier);
+}
+.settings-row .settings-row-chev {
+  transition:
+    transform 320ms var(--settle),
+    color 0.2s var(--fluid-bezier);
+}
+.settings-row:hover .settings-row-chev {
+  transform: translateX(2px);
+  color: var(--accent);
+}
+.settings-row:first-child {
+  border-top: none;
+}
+.settings-row:focus-visible{
+  background: var(--glass-hover);
+}
+.settings-row-ic {
+  width: 30px;
+  height: 30px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-light);
+}
+.settings-row-ic .ic {
+  width: 22px;
+  height: 22px;
+}
+.settings-row-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+.settings-row-label {
+  font-size: var(--fs-body);
+}
+.settings-row-sub {
+  font-size: var(--fs-caption);
+  color: var(--text-muted);
+  margin-top: 1px;
+}
+.settings-row-chev {
+  color: var(--text-muted);
+  font-size: var(--fs-title);
+  line-height: 1;
+  flex-shrink: 0;
+}
+#settings-panel .accounts-stat {
+  margin-bottom: 0;
+}
+.cancel-cards {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  max-width: 560px;
+}
+.cancel-card:hover {
+  border-color: var(--text-muted);}
+.cancel-card.selected {
+  border-color: var(--glass-highlight);
+  background: var(--glass-hover);
+}
+.cancel-card-name {
+  font-family: var(--font-serif);
+  font-size: var(--fs-title);
+  display: block;
+  margin-bottom: 10px;
+}
+.cancel-card-points {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.cancel-card-points li {
+  position: relative;
+  padding-left: 16px;
+  font-size: var(--fs-sub);
+  color: var(--text-muted);
+  line-height: 1.5;
+}
+.cancel-card-points li::before {
+  content: "·";
+  position: absolute;
+  left: 4px;
+  color: var(--text-muted);
+}
+.cancel-card-check {
+  position: absolute;
+  top: 16px;
+  right: 16px;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1.5px solid var(--glass-border);
+  color: transparent;
+  transition: background-color 0.25s var(--fluid-bezier), border-color 0.25s var(--fluid-bezier), color 0.25s var(--fluid-bezier);
+}
+.cancel-card-check .ic {
+  width: 16px;
+  height: 16px;
+}
+.cancel-card.selected .cancel-card-check {
+  background: var(--glass-highlight);
+  border-color: var(--glass-highlight);
+  color: var(--accent-ink);
+}
+@media (min-width: 1200px) {
+    /* ---- Apple-Mail Inbox (desktop): folders rail | list | reading pane ---- */
+    #inbox-main {
+        display: grid;
+        grid-template-columns: 185px minmax(0, 1fr);
+        column-gap: 20px;
+        align-items: start;
+      }
+    #inbox-folder-enquiries,
+      #inbox-folder-messages,
+      #inbox-folder-email {
+        grid-column: 2;
+        min-width: 0;
+      }
+    #inbox-main > .settings-section-label,
+      #inbox-main > .settings-group {
+        grid-column: 2;
+      }
+}
+.tl-wrap {
+  --tl-day-w: 38px; /* px per day — the lanes' grid columns and the JS scroll maths both read this */
+  max-width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  border-radius: var(--r-sm);
+  /* Soft fade on the trailing edge — the strip visibly continues. The sticky
+     cottage labels sit on the LEFT, outside the faded zone. */
+  -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 40px), transparent);
+  mask-image: linear-gradient(to right, #000 calc(100% - 40px), transparent);
+}
+#needs-you-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 10px;
+}
+.ny-ic .ic {
+  width: 16px;
+  height: 16px;
+}
+@media (max-width: 640px) {
+    .tl-wrap {
+        --tl-day-w: 32px;
+      }
+}
+/* ---- Manage → Email: the admin mailbox client ---- */
+/* The opened email reads like a hub card and arrives with the same entrance. */
+/* Accordion: the email opens INSIDE its row — the arrow turns to point down
+   and the reader card slots directly beneath, collapsible from the row or
+   its Collapse button. */
+.mbx-meta .booking-detail-label {
+  margin-right: 4px;
+}
+/* Received mail renders as escaped text only — readable, never executable. */
+.mbx-form .booking-detail-label {
+  display: block;
+  margin-bottom: 5px;
+}
+/* Guest-match card: who this sender is, with hub links */
+/* Attachment pills */
+.mbx-att .ic {
+  width: 13px;
+  height: 13px;
+}
+/* Recent payments feed */
+.feed-list {
+  padding: 4px 16px;
+  border-radius: var(--r-md);
+}
+.feed-row {
+  display: grid;
+  grid-template-columns: 92px auto 1fr auto auto auto;
+  gap: 12px;
+  align-items: center;
+  padding: 11px 0;
+  border-top: 1px solid var(--glass-border);
+  font-size: var(--fs-sub);
+}
+.feed-row:first-child {
+  border-top: none;
+}
+.feed-who {
+  color: var(--text-light);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.feed-amt {
+  font-weight: 600;
+  text-align: right;
+}
+.feed-del {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: var(--fs-headline);
+  line-height: 1;
+  padding: 2px 6px;
+  border-radius: 7px;
+  justify-self: end;
+}
+.feed-del:focus-visible{
+  background: rgba(229, 83, 60, 0.16);
+  color: #ff8a78;
+}
+.feed-del:hover{
+  color: var(--danger-text);}
+@media (max-width: 640px) {
+    .feed-row {
+        /* date · who (flex) · amount · status — the state travels on every width;
+           it is the only payment-status signal and hiding it lost Completed vs
+           Pending/Failed on the device the owner uses most. */
+        grid-template-columns: auto 1fr auto auto;
+        row-gap: 3px;
+      }
+    .feed-row .prop-tag {
+        display: none;
+      }
+}
+.os-sub {
+  font-size: var(--fs-caption);
+  color: var(--text-muted);
+  margin-top: 4px;
+}
+.os-donut {
+  width: 62px;
+  height: 62px;
+  flex-shrink: 0;
+}
+@media (min-width: 1024px) {
+    .os-donut {
+        width: 72px;
+        height: 72px;
+      }
+}
+.accounts-stat {
+  background: var(--glass-bg);
+  border: 1px solid var(--glass-border);
+  border-radius: var(--r-lg);
+  padding: 24px 26px;
+}
+.accounts-stat .label {
+  font-size: var(--fs-caption);
+  color: var(--text-muted);
+  margin-bottom: 10px;
+  font-weight: 600;
+}
+/* Analytics panel: sticky period bar, segmented control, group headings */
+/* The range switch is a clean floating pill on the sheet ground — no stray
+   full-width white band (which read as a rough box floating over the content). */
+.ana-pick {
+  display: flex;
+  align-items: center;
+  padding: 2px 0 16px;
+}
+.ana-seg {
+  display: flex;
+  width: 100%;
+  background: var(--glass-bg);
+  border: 1px solid var(--glass-border);
+  border-radius: var(--r-pill);
+  padding: 4px;
+  gap: 3px;
+  box-shadow: var(--shadow-soft);
+}
+.ana-seg-btn {
+  appearance: none;
+  cursor: pointer;
+  font: inherit;
+  font-size: var(--fs-sub);
+  flex: 1 1 0;
+  text-align: center;
+  padding: 8px 6px;
+  border: 0;
+  border-radius: var(--r-pill);
+  background: transparent;
+  color: var(--text-muted);
+  transition:
+    background 0.2s var(--fluid-bezier),
+    color 0.2s var(--fluid-bezier);
+}
+.ana-seg-btn.on {
+  background: var(--accent);
+  color: var(--accent-ink);
+  font-weight: 600;
+}
+/* CSV export: a calm full-width action at the foot of the report. */
+.ana-export {
+  appearance: none;
+  cursor: pointer;
+  font: inherit;
+  font-size: var(--fs-sub);
+  font-weight: 500;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  width: 100%;
+  padding: 13px;
+  margin: 26px 0 6px;
+  border-radius: var(--r-md);
+  border: 1px solid var(--glass-border);
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--text-muted);
+  transition:
+    background 0.2s var(--fluid-bezier),
+    color 0.2s var(--fluid-bezier);
+}
+.ana-export:hover {
+  color: var(--text-light);}
+.ana-export .ic {
+  opacity: 0.8;
+}
+.rate-prop {
+  background: var(--glass-bg);
+  backdrop-filter: blur(var(--glass-blur));
+  -webkit-backdrop-filter: blur(var(--glass-blur));
+  border: 1px solid var(--glass-border);
+  border-radius: var(--r-lg);
+  padding: 24px 26px;
+  box-shadow: var(--shadow-panel);
+}
+.rate-prop h4 {
+  font-family: var(--font-serif);
+  font-size: var(--fs-title);
+  margin-bottom: 20px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.rule-divider {
+  font-size: var(--fs-caption);
+  color: var(--text-muted);
+  margin: 18px 0 12px;
+  padding-top: 14px;
+  border-top: 1px solid var(--glass-border);
+  font-weight: 600;
+}
+.arrival-days {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.day-check {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: var(--fs-sub);
+  color: var(--text-light);
+  background: rgba(0, 0, 0, 0.25);
+  border: 1px solid var(--glass-border);
+  padding: 6px 10px;
+  border-radius: var(--r-sm);
+  cursor: pointer;
+}
+.day-check input {
+  accent-color: var(--ok);
+  cursor: pointer;
+}
+body.cmdk-open #changeover-toasts {
+  visibility: hidden;
+}
+@media (max-width: 768px) {
+    .cron-pill {
+        margin-bottom: 14px;
+      }
+    .cal-panel {
+        padding: 12px 8px;
+      }
+    /* Phone toolbar: the action buttons lead (+ Add Booking | Block dates, with
+         the refresh pinned to the right screen edge), and the month title +
+         segmented ‹ Today › control sit on the line beneath. */
+    .cal-header-bar {
+        flex-direction: column;
+        align-items: stretch;
+        gap: 10px;
+        margin-bottom: 12px;
+      }
+    .cal-month-nav {
+        justify-content: space-between;
+        gap: 12px;
+        width: 100%;
+        order: 1; /* below the actions row */
+      }
+    .cal-actions {
+        justify-content: flex-start;
+      }
+    /* Refresh hugs the right edge — both on the calendar (icon rides inside
+         .cal-updated with its "updated…" text) and on the mailbox toolbar
+         (bare icon), whatever else wraps. */
+    .cal-actions > .cal-refresh-btn:last-child {
+        margin-left: auto;
+      }
+    /* No room for prose beside the buttons: hide the sync status text so the
+         refresh stays ON the toolbar line — the spinning icon signals a sync. */
+    .cal-actions #cal-updated-text {
+        display: none;
+      }
+    .cal-add-btn {
+        padding: 10px 16px;
+      }
+    .cal-month-title {
+        font-size: var(--fs-headline);
+      }
+}
+@media (max-width: 480px) {
+    .cal-panel {
+        padding: 10px 7px;
+      }
+}
+/* Settings → Website content: image rows */
+/* Settings index: small section headers that group related folders. Also used
+   INSIDE drill-down panels (.settings-sec — e.g. Manage → Pricing / Search
+   learning inject the same class), so the caps style must apply there too. */
+.settings-index .settings-section-label,
+.settings-sec .settings-section-label {
+  font-size: var(--fs-caption);
+  font-weight: 600;
+  color: var(--text-muted);
+  margin: 22px 6px 8px;
+}
+.settings-index > .settings-section-label:first-child {
+  margin-top: 2px;
+}
+@media (min-width: 900px) {
+    .settings-index .settings-group {
+        break-inside: avoid;
+      }
+    .settings-index .settings-section-label {
+        break-after: avoid;
+        margin-top: 4px;
+      }
+    /* The staging test centre is a short sub-list: ONE column — two just split a
+           3-row list from its action row. */
+    #testcentre-list.settings-index {
+        column-count: 1;
+        max-width: 640px;
+      }
+    /* The Money index is the five-verdict landing + ONE More group now — two
+         columns just tore the group from its caption. */
+    #accounts-index.settings-index {
+        column-count: 1;
+        max-width: none;
+      }
+}
+/* Full-width list rows: same easing + a gentle press,
+but no lift. */
+.settings-row,
+.msg-thread-row {
+  transition:
+    background 0.35s var(--fluid-bezier),
+    color 0.35s var(--fluid-bezier),
+    transform 320ms var(--settle), filter 320ms var(--settle),
+    box-shadow 0.35s var(--fluid-bezier);
+}
+.settings-row:active,
+.msg-thread-row:active {
+  transform: scale(var(--sc, 0.97));
+  transition: transform 80ms var(--in), filter 80ms var(--in);}
+@media (min-width: 641px) {
+    .cal-month-title { font-size: var(--fs-display); }
+}
 /* Darkstar's brand colour — the assistant knot turns this purple once the
    on-device semantic model has downloaded. Admin-only, so it lives here rather
    than in app.css's :root (keeps it a one-file change). Mid-violet: reads on

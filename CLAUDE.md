@@ -1822,9 +1822,9 @@ The dead-code audit's guest-facing findings, re-derived against the current tree
   Budgets lowered to lock it in; tsc app 599.
 - ui-test-searchpage's waiting check holds the stubbed search answer until it has measured. Two animation frames
   on a loaded machine outlasted the fixed 1.2s delay, so the answer landed first.
-- **Not done**: owner-only rules still in app.css (~2.9KB gz shipped) and admin.js's unreachable code (the legacy
-  mailbox reader, the old Payments sub-pages). The owner's windows left later (see "The owner's windows leave the
-  guest download").
+- **Not done**: admin.js's unreachable code (the legacy mailbox reader, the old Payments sub-pages). The owner's
+  windows and their styles left later (see "The owner's windows leave the guest download" and "The owner-only styles
+  leave app.css").
 
 ## The owner's windows leave the guest download
 
@@ -1848,6 +1848,39 @@ saw them. Measured, index.html 33.1KB → 27.3KB gz.
 - Gates: smoke-test (each `before:` anchor is in index.html and its window is not, break-tested both ways),
   ui-test-overlays (opens the sheet after `ensureAdminViews()`), the size budgets (index.html down, admin-views.html
   up by the same markup).
+
+## The owner-only styles leave app.css
+
+The other half of the round-8 leftover: 155 rules in app.css only the back office can use, sent to every visitor.
+They sit at the top of admin.css now. Shipped (comments stripped): app.css −3.1KB gz for every guest, admin.css +3.2KB
+for the owner.
+- **WHICH RULES**: every selector in the rule's list needs a class or id that owner markup carries (admin.js,
+  admin-views.html) and that no guest source names (index.html, app.js, guest-app.js, cottage.php, home.php,
+  experiences-page.php). A class the guest code BUILDS (`'is-' + size`, `` `chat-${role}` ``) is invisible to a word
+  scan, so every literal prefix the guest code concatenates onto counts as guest.
+- **A RULE UNDER `body.owner-mode` FOR THE STATIC PAGE STAYS** (the header dock, the footer, the page's top space):
+  setAuthUI sets owner-mode before admin.css has arrived, and those rules must apply at once.
+- **MOVING A RULE CHANGES ONE THING: IT NOW FOLLOWS ALL OF app.css.** The moved rules keep their old order and their
+  @media wrappers, so admin.css's own rules still follow them as before. What flips is a LATER app.css rule of equal
+  specificity that set the same property and used to win. Every such pair (about 22,000, widths that overlap
+  included) was tested on the real DOM of every scene for an element both match, and the rules no scene reached were
+  checked statically for classes that sit on one element in the source. Two met, and stay in app.css: the
+  `.cancel-card` base rule under app.css's late shared transition group (the "appended LAST" block the motion notes
+  describe; its transition was dead there and would have won from admin.css), and `.msg-archived-toggle`, which the
+  old messages list puts on a button beside `.btn-sm`. A future move must ask the same question.
+- **Checked by computed style on every screen**: the layout-test scenes plus the composer, the booking sheet and its
+  new-cottage steps, Analytics, Cancellation, Times & limits, Rates, Backups, Activity, Key safes and the bank page, at
+  three widths in both themes, recorded every element's computed style (sorted, port normalised) before and after
+  the move: 324 screen states. The only differences were timing artifacts, none a style: the timeline's
+  "now" line (it follows the clock), the 3px busy bar caught mid-request, a "Needs a look" row's `is-new` arrival
+  class (it is set when the row's data lands after the first paint, and a bigger admin.css starts the scripts a
+  moment later), and two that did not happen again on a re-run. 95 of the 166 moved selectors matched an element in
+  some scene; the rest belong to screens the scenes do not reach (the hidden legacy lists, the old mailbox reader, the
+  monthly-plan rail, the test centre) and were checked statically, which is how the `.msg-archived-toggle` tie
+  surfaced. The harness is not committed (it runs for about an hour); its two traps are in the windows section.
+- **check-css-conventions' per-file counts moved with the rules**: app.css's off-grid, raw-hex and breakpoint counts
+  fell by what admin.css's rose (one 768px breakpoint is counted in both, because each file now has its own
+  `@media (max-width: 768px)`). Changing those values would change the look, which this move promises not to do.
 
 ## Email delivery is at-least-once now — the OUTBOX (migration-113)
 
