@@ -144,6 +144,10 @@
         msgDock.appendChild(msgBtn);
         msgWrap.appendChild(msgDock);
         document.body.appendChild(msgWrap);
+        // The people's faces in place of the icon, once the team is known (app.js).
+        try {
+            if (window.chatFabPaint) window.chatFabPaint();
+        } catch (e) {}
     }
 
     // Slide each dock's white indicator under its current button so it glides

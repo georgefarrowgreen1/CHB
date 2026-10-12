@@ -10101,6 +10101,9 @@ async function liveUpdateTick() {
         try {
             if (activeFrontProperty) renderPropReviews(activeFrontProperty);
         } catch (e) {}
+        try {
+            chatFabRefresh(); // a no-op while this device's copy is fresh
+        } catch (e) {}
     } finally {
         liveUpdateBusy = false;
     }
@@ -10117,6 +10120,10 @@ function startLiveUpdates() {
 window.addEventListener('DOMContentLoaded', async () => {
     try {
         applySavedTheme();
+        // The Messages button's faces, from this device's copy.
+        try {
+            chatFabPaint();
+        } catch (e) {}
         // THE POOR-SIGNAL WATCHDOG (hinted devices only): on one bar nothing
         // fails, everything HANGS — including the content fetches BEFORE the
         // auth step, so no per-step race can help. Past the patience window,
@@ -10238,6 +10245,10 @@ window.addEventListener('DOMContentLoaded', async () => {
         } catch (e) {
             console.error(e);
         }
+        // Who answers, for the Messages button (not awaited).
+        try {
+            chatFabRefresh();
+        } catch (e) {}
         // AFTER setAuthUI, which decides the default landing. Belt-and-braces, not
         // load-bearing — the earlier position also passes, because setAuthUI leaves an
         // owner alone once on an admin view. Kept here so it doesn't depend on that.
@@ -12691,6 +12702,10 @@ function dayLabel(at) {
 // the owner wrote reaching a guest page, so the read sanitises: anything malformed
 // is simply not there. An empty team signs everything with the crown, as before.
 const CHAT_TEAM_KEY = 'chb-chat-team';
+// When the server last answered (any answer, an empty team included), and how long
+// that answer stands before the Messages button asks again (chatFabRefresh).
+const CHAT_TEAM_AT_KEY = 'chb-chat-team-at';
+const CHAT_TEAM_FRESH_MS = 6 * 3600e3;
 /** @type {Array<{id:number,name:string,line:string,v:string}>|null} */
 let __chatTeam = null;
 /** @type {{on:boolean,until:number|null}|null} */
@@ -12726,8 +12741,17 @@ function chatTeamSet(team, away) {
             : null;
     try {
         localStorage.setItem(CHAT_TEAM_KEY, JSON.stringify(__chatTeam));
+        localStorage.setItem(CHAT_TEAM_AT_KEY, String(Date.now()));
     } catch (e) {}
     return was !== JSON.stringify([__chatTeam, __chatAway]);
+}
+// The server's answer, wherever it came from: the header and both Messages buttons
+// follow it when it changed anything a guest would see.
+function chatTeamApply(team, away) {
+    if (!chatTeamSet(team, away)) return false;
+    chatHeadPaint();
+    chatFabPaint(true);
+    return true;
 }
 function chatMember(id) {
     const n = +id || 0;
@@ -12816,6 +12840,62 @@ function chatTeamToggle() {
     const open = !fold.classList.contains('open');
     fold.classList.toggle('open', open);
     btn.setAttribute('aria-expanded', String(open));
+}
+// ---- THE MESSAGES BUTTON SHOWS WHO ANSWERS (the approved Messages demo) ----
+// Both chat buttons wear the people's faces: a pill of faces and "Messages" on a
+// computer, the faces alone on a phone (a word would cover the cards' prices).
+// With nobody shown each keeps its icon. `arrive`: they replace something.
+function chatFabPaint(arrive) {
+    const all = chatTeam();
+    const team = all.slice(0, 2);
+    const key = team.length ? JSON.stringify(team.map((m) => [m.id, m.name, m.v])) : '';
+    const faces = team.length ? chatPair(team, 'fab') : '';
+    const paint = (btn, html) => {
+        if (!btn) return;
+        if (btn.dataset.glyph === undefined) {
+            btn.dataset.glyph = btn.innerHTML;
+            btn.dataset.glyphLabel = btn.getAttribute('aria-label') || '';
+        }
+        if (btn.dataset.faces === key) return;
+        btn.dataset.faces = key;
+        btn.classList.toggle('has-faces', !!key);
+        btn.classList.toggle('is-arriving', !!key && !!arrive);
+        btn.innerHTML = key ? html : btn.dataset.glyph;
+        const label = key ? 'Messages with ' + chatTeamNames(all) : btn.dataset.glyphLabel;
+        btn.setAttribute('aria-label', label);
+        btn.title = label;
+    };
+    paint(document.getElementById('chat-fab'), faces + '<span class="chat-fab-l">Messages</span>');
+    paint(document.querySelector('#guest-msg-fab .guest-dock-btn'), faces);
+}
+window.chatFabPaint = chatFabPaint;
+function chatTeamFresh() {
+    try {
+        const age = Date.now() - (+(localStorage.getItem(CHAT_TEAM_AT_KEY) || 0) || 0);
+        return age >= 0 && age < CHAT_TEAM_FRESH_MS;
+    } catch (e) {
+        return false;
+    }
+}
+let __chatFacesAsk = false;
+let __chatFacesTried = 0;
+// No answer, or one with no team (a server from before 'faces'), waits this long.
+const CHAT_FACES_RETRY_MS = 10 * 60e3;
+// Asks who answers when this device's copy is missing or stale ('faces' makes and
+// reads no thread). Never for the owner, nor in a preview (its posts are refused).
+function chatFabRefresh() {
+    if (isAuthenticated || PREVIEW_MODE || __chatFacesAsk || chatTeamFresh()) return;
+    if (Date.now() - __chatFacesTried < CHAT_FACES_RETRY_MS) return;
+    __chatFacesTried = Date.now();
+    __chatFacesAsk = true;
+    apiPost('messages.php', { action: 'faces' })
+        .then((r) => {
+            if (r && Array.isArray(r.team)) chatTeamApply(r.team, r.away);
+        })
+        .catch(() => {})
+        .then(() => {
+            __chatFacesAsk = false;
+        });
 }
 // ---- THE STAY, PINNED UNDER THE HEADER ----
 // A signed-in guest whose stay is coming up (or under way) sees it above the
@@ -13295,7 +13375,7 @@ async function loadChat() {
         const payload = loggedIn ? { action: 'thread', team: 1 } : { action: 'thread', token, team: 1 };
         __chatTeamAt = Date.now();
         const r = await apiPost('messages.php', payload);
-        if (Array.isArray(r.team) && chatTeamSet(r.team, r.away)) chatHeadPaint();
+        if (Array.isArray(r.team)) chatTeamApply(r.team, r.away);
         const msgs = r.messages || [];
         __chatSig = chatMsgSig(msgs);
         __chatSeen = chatSeenSig(msgs);
@@ -13353,7 +13433,7 @@ async function chatPoll() {
             __chatTeamAt = Date.now();
         }
         const r = await apiPost('messages.php', payload);
-        if (askTeam && Array.isArray(r.team) && chatTeamSet(r.team, r.away)) chatHeadPaint();
+        if (askTeam && Array.isArray(r.team)) chatTeamApply(r.team, r.away);
         if (__chatSig !== sigAtFire) return;
         const msgs = r.messages || [];
         const sig = chatMsgSig(msgs);
@@ -22195,7 +22275,7 @@ const CHB_SK_CARD = '<div class="card glass-panel sk-card"><div class="skeleton 
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'photoseal1';
+    const BUILD = 'chatfaces1';
     /** @type {any} */ (window).__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;

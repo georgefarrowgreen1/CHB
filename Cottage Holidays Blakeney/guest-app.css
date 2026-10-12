@@ -460,6 +460,26 @@ body.guest-app:not(.owner-mode) #guest-msg-fab {
   right: 12px;
   bottom: calc(20px + var(--safe-b));
   z-index: 1400;
+  --chat-ground: rgb(28, 27, 30);
+}
+/* The faces where the icon stood (app.js chatFabPaint). */
+body.guest-app:not(.owner-mode) #guest-msg-fab .guest-dock-btn.has-faces {
+  width: auto;
+  padding: 0 8px;
+}
+body.guest-app:not(.owner-mode) #guest-msg-fab .chat-ava.is-fab {
+  width: 40px;
+  height: 40px;
+}
+@media (max-width: 480px) {
+  body.guest-app:not(.owner-mode) #guest-msg-fab .guest-dock-btn.has-faces {
+    padding: 0 4px;
+  }
+  body.guest-app:not(.owner-mode) #guest-msg-fab .chat-ava.is-fab {
+    width: 32px;
+    height: 32px;
+    font-size: var(--fs-body);
+  }
 }
 
 /* Hover label so each icon's purpose is clear (desktop / pointer devices). */
@@ -557,14 +577,30 @@ body.guest-app:not(.owner-mode) #guest-msg-fab {
     height: 44px;
   }
 }
-/* On very narrow phones the centred dock would crowd the bottom-left Messages
-   button, so anchor the dock to the right edge there (Messages stays on the
-   left). Buttons keep their 44px tap target rather than shrinking. */
-@media (max-width: 380px) {
+/* The book pill centres in the room left of the Messages pill (64px, 84px with
+   faces, plus 12px either side). ui-test-chatfaces §8 measures the gap. */
+@media (max-width: 480px) {
   body.guest-app:not(.owner-mode) #guest-tabbar {
-    left: auto;
-    right: 12px;
+    left: 12px;
+    right: 88px;
     transform: none;
+    padding: 0;
+    max-width: none;
+  }
+  body.guest-app:not(.owner-mode):has(#guest-msg-fab .has-faces) #guest-tabbar {
+    right: 108px;
+  }
+}
+@media (max-width: 360px) {
+  body.guest-app:not(.owner-mode) #guest-tabbar.gt-show-cta #guest-book-cta {
+    padding-inline: 22px;
+  }
+}
+/* Wider: centred until the 122px faces pill would come within 8px (252px = pill
+   + 12px margin + 8px gap + half the 220px book pill). */
+@media (min-width: 481px) {
+  body.guest-app:not(.owner-mode):has(#guest-msg-fab .has-faces) #guest-tabbar {
+    left: min(50%, calc(100% - 252px));
   }
 }
 
@@ -883,6 +919,9 @@ body.guest-app:not(.owner-mode):has(#guest-auth-modal.open) #guest-msg-fab {
 body.light-mode.guest-app:not(.owner-mode) .guest-dock {
   background: rgba(255, 255, 255, 0.82);
   border-color: rgba(28, 46, 58, 0.1);
+}
+body.light-mode.guest-app:not(.owner-mode) #guest-msg-fab {
+  --chat-ground: rgb(253, 252, 251);
 }
 /* Icons become ink-slate on the white dock (were white on dark). */
 body.light-mode.guest-app:not(.owner-mode) .guest-dock-btn {
