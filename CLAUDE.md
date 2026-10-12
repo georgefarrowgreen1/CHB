@@ -934,8 +934,9 @@ in admin.css). The ids the rest of the app reads are unchanged (`enq-email-subje
 
 **Asked for as "overhaul the add booking page", demoed twice, then "Build it, merge without tests or CI".** Supersedes
 the sectioned form (its `.modal-foot`, `.mav-strip`, `.modal-cols`, the date trigger and `#modal-date-verdict`). The
-sheet is `#edit-modal .modal-box.bks` in index.html, the "ADD-BOOKING SHEET" block in admin.js (`bks*`) and the "ADD /
-EDIT A BOOKING" block in admin.css.
+sheet is `#edit-modal .modal-box.bks` in admin-views.html (it arrives with the back office; see "The owner's windows
+leave the guest download"), the "ADD-BOOKING SHEET" block in admin.js (`bks*`) and the "ADD / EDIT A
+BOOKING" block in admin.css.
 - **The hidden `#modal-*` inputs are still the form's STORE.** setModalFields, tlAddAt, the cmdk prefills, the
   walkthrough, the new-cottage wizard and saveModal read and write them unchanged. admin.js `bksSync` paints the sheet
   from them; app.js reaches it only through `bksHook()` (guarded on `__ADMIN_LOADED`, the chbFrameSync pattern), and
@@ -1821,9 +1822,32 @@ The dead-code audit's guest-facing findings, re-derived against the current tree
   Budgets lowered to lock it in; tsc app 599.
 - ui-test-searchpage's waiting check holds the stubbed search answer until it has measured. Two animation frames
   on a loaded machine outlasted the fixed 1.2s delay, so the answer landed first.
-- **Not done**: the owner-only windows still in index.html (the email composer and the booking sheet, ~5KB gz),
-  owner-only rules still in app.css (~3.5KB gz), and admin.js's unreachable code (the legacy mailbox reader, the
-  old Payments sub-pages).
+- **Not done**: owner-only rules still in app.css (~2.9KB gz shipped) and admin.js's unreachable code (the legacy
+  mailbox reader, the old Payments sub-pages). The owner's windows left later (see "The owner's windows leave the
+  guest download").
+
+## The owner's windows leave the guest download
+
+The round-8 trim's biggest leftover: every visitor downloaded the owner's email composer and booking sheet and never
+saw them. Measured, index.html 33.1KB → 27.3KB gz.
+- **THE WINDOWS ARRIVE WITH THE BACK OFFICE.** `#enq-email-modal` + `#cmp-toast` (the composer) and `#edit-modal` +
+  `#newprop-modal` + `#overview-modal` (the booking sheet and its new-cottage steps) are templates in
+  admin-views.html, delivered by `ensureAdminViews()` before admin.js runs, so every function that reaches them finds
+  them. `data-host="before:<selector>"` puts each back where index.html had it: the composer before `#reviews-modal`,
+  the sheet before `footer.site-footer`. **The position is not tidiness.** The composer is a `.reviews-modal` at
+  z 6000, the same as `#glass-dialog`, and overlays of equal z-index stack by document order, so a confirm raised over
+  the composer must still come after it (checked by hit test). A template whose first id is already in the page is
+  skipped, so a second run adds nothing.
+- **app.js asks before it touches them**: `openModal` returns while the sheet is not there yet, `closeModal` guards
+  its error line. Everything else that reaches these ids already ran from owner code.
+- **Checked by computed style, not by eye**: a throwaway harness built from layout-test's scenes recorded every
+  element's computed style (and `::before`/`::after`) on main and on this change, in both themes: the guest screens
+  are identical, and the only elements missing are the windows themselves. Two traps it taught, both worth keeping:
+  Chrome lists custom properties in a different order on each run, so sort before hashing, and a `url()` value
+  carries the test server's port, so normalise it.
+- Gates: smoke-test (each `before:` anchor is in index.html and its window is not, break-tested both ways),
+  ui-test-overlays (opens the sheet after `ensureAdminViews()`), the size budgets (index.html down, admin-views.html
+  up by the same markup).
 
 ## Email delivery is at-least-once now — the OUTBOX (migration-113)
 

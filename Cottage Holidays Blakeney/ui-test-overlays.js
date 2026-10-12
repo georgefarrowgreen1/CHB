@@ -52,7 +52,9 @@ const OVERLAYS = [
     ['date-picker', "openProperty('21a'); await pause(300); openEnquireModal(); await pause(200); openDatePicker();", 'closeDatePicker(); closeEnquireModal();', '.datepicker-card'],
     ['terms-modal', "openTermsModal(null, '21a');", 'closeTermsModal()', '.terms-modal-box'],
     ['glass-dialog', "glassConfirm('Sure?');", 'glassDialogResolve(false)', '.glass-dialog-box'],
-    ['edit-modal', 'openModal();', 'closeModal()', '.modal-box'],
+    // The owner's booking sheet arrives with the back office's markup now, so the
+    // markup is put in first, the way loadAdminBundle does, without signing in.
+    ['edit-modal', 'await ensureAdminViews(); openModal();', 'closeModal()', '.modal-box'],
 ];
 
 (async () => {
