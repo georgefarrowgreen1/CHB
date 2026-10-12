@@ -12,6 +12,8 @@
 // 10. an email typed into the website chat is not proof: its own row until confirmed
 // 11. an Inbox not on screen builds its count, not its rows
 // 12. a chat photo opens from the conversation, through its signed link
+// 13. a guest's reply by email shows once: in their chat, saying Email, never also as the email
+// 14. New email: to anyone, from the Inbox (who it is to, the name it greets, the send)
 const { boot } = require('./ui-test-lib'); // pins TZ=Europe/London at require time
 const fs = require('fs');
 let fails = 0;
@@ -51,6 +53,10 @@ const SHOTS = process.env.IB_SHOTS || '';
         { uid: 'u5', from: 'pete@holtlinen.co.uk', fromRaw: 'Pete Holt <pete@holtlinen.co.uk>', subject: 'Invoice 4471', date: at(-3, '11:00'), seen: false, preview: 'Invoice attached for September linen.' },
     ];
     const sent = [{ id: 5, to_email: 'daniel@example.com', cc_email: null, subject: 'Your stay at Jollyboat', body: 'Looking forward to having you!', sent_at: at(-20, '10:00') }];
+    // The emails the list left out because they are in a chat (mailbox.php's `merged`).
+    const merged = [];
+    const { now } = require('./ui-test-lib');
+    const stamp = (ms) => { const x = new Date(ms); const p = (n) => String(n).padStart(2, '0'); return `${x.getFullYear()}-${p(x.getMonth() + 1)}-${p(x.getDate())} ${p(x.getHours())}:${p(x.getMinutes())}:${p(x.getSeconds())}`; };
     const logs = { 12: [{ action: 'booking.confirm', summary: 'Confirmation emailed to Daniel', at: at(-30, '14:03'), subject: '', body: '' }] };
     const posts = [];
     let state = null;
@@ -64,8 +70,14 @@ const SHOTS = process.env.IB_SHOTS || '';
             b.__url = file;
             posts.push(b);
             if (file === 'mailbox.php') {
-                if (b.action === 'list') return json({ ok: true, messages: mails, total: mails.length, hasMore: false });
+                if (b.action === 'list') return json({ ok: true, messages: mails, total: mails.length, hasMore: false, merged });
                 if (b.action === 'sent') return json({ ok: true, messages: sent });
+                // New email: the server's own preview and send, as far as the Inbox can see them.
+                if (b.action === 'preview') return json({ ok: true, subject: b.subject || '(no subject)', html: `<!doctype html><html><body><h1>${b.subject}</h1>${b.name ? `<p>Hello ${String(b.name).split(' ')[0]},</p>` : ''}<p>${b.body}</p></body></html>` });
+                if (b.action === 'send' && b.compose === 'new') {
+                    sent.unshift({ id: 90 + sent.length, to_email: b.to, to_name: b.name || null, cc_email: null, subject: b.subject, body: b.body, sent_at: stamp(now() - 60000) });
+                    return json({ ok: true });
+                }
                 if (b.action === 'delete' && Array.isArray(b.uids)) {
                     for (let i = mails.length - 1; i >= 0; i--) if (b.uids.includes(mails[i].uid)) mails.splice(i, 1);
                     return json({ ok: true, deleted: b.uids.length });
@@ -571,6 +583,183 @@ const SHOTS = process.env.IB_SHOTS || '';
     }, null, { timeout: 8000 }).then((h) => h.jsonValue(), () => null);
     ok(!!ph12 && ph12.href === photo12, `the photo is a link to its signed address (${ph12 ? ph12.href.slice(0, 40) : 'none'})`);
     ok(!!ph12 && ph12.target === '_blank' && /noopener/.test(ph12.rel) && ph12.text === 'Photo', '…opening in a new tab, named "Photo"');
+
+    // 13. A GUEST'S REPLY BY EMAIL IS ONE MESSAGE. The reply poll posts it into their
+    // chat and the email stays in the mailbox, so the conversation showed it twice: once
+    // in the chat, once as the email it came in. The chat's copy shows, saying "Email".
+    console.log('13. a guest\'s emailed reply shows once in their conversation');
+    const count13 = (w) => page.evaluate((x) => (document.getElementById('ib-thread').innerText.match(new RegExp(x, 'g')) || []).length, w);
+    // How a message is shown: its item (the chat's, written by email) and the channel
+    // its meta draws. A run of one channel names it once, so the icon is what to read.
+    const meta13 = (w) => page.evaluate((x) => {
+        const p = __ibPeopleMap.get('e:sofia@example.fr');
+        const its = p ? p.items.filter((i) => String(i.text || '').includes(x)) : [];
+        const m = [...document.querySelectorAll('#ib-thread .ib-msg')].find((e) => e.textContent.includes(x));
+        const t = m && m.querySelector('.ib-meta');
+        const svg = t && t.querySelector('svg');
+        const tpl = document.createElement('template');
+        tpl.innerHTML = IB_IC.email;
+        return { n: its.length, ch: its.map((i) => i.ch + '/' + (i.via || '')).join(','), text: t ? t.textContent.replace(/\s+/g, ' ').trim() : '', mailIcon: !!svg && !!tpl.content.firstElementChild && svg.outerHTML === tpl.content.firstElementChild.outerHTML };
+    }, w);
+    // One the list already left out (the poll had posted it), now in the chat.
+    merged.push({ uid: 'u6', chat: 1 });
+    threadMsgs.push({ id: 11, role: 'guest', body: 'IT13-POSTED Is there a hairdryer?', at: at(0, '08:40'), seen: false, attachment: '', kind: 'mail' });
+    // One the poll had not posted yet when the list was read: listed with its chat and words.
+    const w13 = 'IT13-WINDOW Found the towels, thank you!';
+    mails.push({ uid: 'u7', from: 'sofia@example.fr', fromRaw: 'Sofia Laurent <sofia@example.fr>', subject: 'Re: Your message to Cottage Holidays Blakeney', date: at(0, '08:50'), seen: false, preview: w13, chat: 1, words: w13 });
+    await page.evaluate(async () => { await loadMailbox(); await window.openInbox(); await ibOpen('e:sofia@example.fr'); });
+    await page.waitForFunction(() => /IT13-POSTED/.test(document.getElementById('ib-thread').innerText) && /IT13-WINDOW/.test(document.getElementById('ib-thread').innerText), null, { timeout: 8000 }).catch(() => {});
+    ok((await count13('IT13-POSTED')) === 1, `a reply the poll posted shows once, in the chat (${await count13('IT13-POSTED')})`);
+    const mp13 = await meta13('IT13-POSTED');
+    ok(mp13.n === 1 && mp13.ch === 'chat/email' && /^Email · /.test(mp13.text) && mp13.mailIcon, `…and says it came by email (${JSON.stringify(mp13)})`);
+    ok((await count13('IT13-WINDOW')) === 1, 'one the chat has not had yet shows once, as the email');
+    // The poll posts it: the chat, loaded again, shows those words from the guest.
+    threadMsgs.push({ id: 12, role: 'guest', body: w13, at: at(0, '08:51'), seen: false, attachment: '', kind: 'mail' });
+    await page.evaluate(async () => { await ibOpen('e:sofia@example.fr'); });
+    await page.waitForFunction(() => { const p = __ibPeopleMap.get('e:sofia@example.fr'); return !!p && !p.mails.some((m) => m.uid === 'u7'); }, null, { timeout: 8000 }).catch(() => {});
+    await page.waitForTimeout(300);
+    ok((await count13('IT13-WINDOW')) === 1, `once the chat has it, it still shows once, not twice (${await count13('IT13-WINDOW')})`);
+    const mw13 = await meta13('IT13-WINDOW');
+    ok(mw13.n === 1 && mw13.ch === 'chat/email' && mw13.mailIcon, `…now the chat's copy, written by email (${JSON.stringify(mw13)})`);
+    const plan13 = await page.evaluate(() => { const p = __ibPeopleMap.get('e:sofia@example.fr'); const d = ibDeletePlan(p); return { uids: d.uids.slice().sort(), words: ibDeleteWords(p), mails: p.mails.length }; });
+    ok(plan13.mails === 0 && plan13.uids.join(',') === 'u6,u7', `deleting the conversation deletes both emails from the mailbox too (${plan13.uids.join(',')})`);
+    ok(/from the mailbox too/.test(plan13.words), '…and the confirm says so');
+    await page.click('#ib-conv .ib-back').catch(() => {});
+    await page.waitForTimeout(600);
+
+    // 14. NEW EMAIL: to anyone, from the Inbox. The one sheet, without a stay or money
+    // to add: who it is to (picked from the people the app knows, or typed), the name it
+    // greets, a subject. A booked guest picked from the list gets their own email.
+    console.log('14. New email: to anyone, from the Inbox');
+    await page.evaluate(async () => { await window.openInbox(); });
+    const nb14 = await page.evaluate(() => {
+        const b = document.getElementById('ib-compose'), r = document.getElementById('ib-refresh');
+        if (!b || !r) return null;
+        const x = b.getBoundingClientRect(), y = r.getBoundingClientRect();
+        return { label: b.getAttribute('aria-label'), w: Math.round(x.width), h: Math.round(x.height), row: Math.abs(x.top - y.top) < 2, gap: Math.round(Math.min(Math.abs(y.left - x.right), Math.abs(x.left - y.right))) };
+    });
+    ok(!!nb14 && nb14.label === 'New email' && nb14.row && nb14.gap <= 16, `a New email button beside refresh (${JSON.stringify(nb14)})`);
+    ok(!!nb14 && nb14.w >= 44 && nb14.h >= 44, 'at the 44px floor');
+    // Writing to guests is a permission: without it the button is not offered.
+    const hid14 = await page.evaluate(() => { document.body.classList.add('cap-x-gu-reply'); const h = !document.getElementById('ib-compose').getClientRects().length; document.body.classList.remove('cap-x-gu-reply'); return h; });
+    ok(hid14, 'someone who may not write to guests is not offered it');
+    await page.click('#ib-compose');
+    await page.waitForFunction(() => document.getElementById('enq-email-modal').classList.contains('open'), null, { timeout: 5000 }).catch(() => {});
+    await page.waitForTimeout(500);
+    const s14 = await page.evaluate(() => {
+        const vis = (id) => { const e = document.getElementById(id); return !!e && e.getClientRects().length > 0; };
+        return {
+            mode: document.getElementById('enq-email-modal').classList.contains('cmp-new'),
+            title: (document.getElementById('enq-email-title') || {}).textContent || '',
+            focus: (document.activeElement || {}).id || '',
+            to: vis('cmp-new-to'), name: vis('cmp-new-name'), toRow: vis('cmp-to'),
+            stay: vis('cmp-stay-row'), money: vis('cmp-money-row'), attach: vis('cmp-attach'),
+            greet: document.getElementById('cmp-greet').textContent,
+        };
+    });
+    ok(s14.mode && s14.title === 'New email', `the sheet opens as a new email (${s14.title})`);
+    ok(s14.to && s14.name && !s14.toRow && s14.focus === 'cmp-new-to', 'with an address and a name to fill, the address asked for first');
+    ok(!s14.stay && !s14.money && s14.attach, 'no stay or money to add, files still can be');
+    ok(s14.greet === '', 'no greeting until there is a name');
+    // Nothing to send to yet: the sheet says what is missing, where it is.
+    await page.fill('#enq-email-body', 'Could you quote for winter linen?');
+    await page.click('#enq-email-send');
+    await page.waitForTimeout(300);
+    const e14a = await page.evaluate(() => ({ msg: document.getElementById('enq-email-msg').textContent, focus: (document.activeElement || {}).id }));
+    ok(e14a.msg === 'Add who it’s to.' && e14a.focus === 'cmp-new-to', `no address: it asks for one (${e14a.msg})`);
+    await page.fill('#cmp-new-to', 'pete at holt');
+    await page.click('#enq-email-send');
+    await page.waitForTimeout(300);
+    ok((await page.$eval('#enq-email-msg', (e) => e.textContent)) === 'That isn’t an email address.', 'not an address: it says so');
+    // The people the app knows, by name or address.
+    await page.fill('#cmp-new-to', '');
+    await page.type('#cmp-new-to', 'pete');
+    await page.waitForTimeout(300);
+    const sg14 = await page.evaluate(() => [...document.querySelectorAll('#cmp-new-sugg .cmp-sugg-row')].map((r) => r.textContent.replace(/\s+/g, ' ').trim()));
+    ok(sg14.length === 1 && /Pete Holt/.test(sg14[0]) && /pete@holtlinen\.co\.uk/.test(sg14[0]), `typing a name offers the person (${sg14.join(' | ')})`);
+    ok((await page.$eval('#cmp-new-to', (e) => e.getAttribute('aria-expanded'))) === 'true', '…announced as open');
+    await page.keyboard.press('Escape');
+    await page.waitForTimeout(200);
+    const esc14 = await page.evaluate(() => ({ sugg: document.getElementById('cmp-new-sugg').hidden, open: document.getElementById('enq-email-modal').classList.contains('open') }));
+    ok(esc14.sugg && esc14.open, 'Escape folds the suggestions, not the sheet');
+    await page.fill('#cmp-new-to', '');
+    await page.type('#cmp-new-to', 'pete');
+    await page.waitForTimeout(300);
+    await page.keyboard.press('ArrowDown');
+    ok((await page.evaluate(() => (document.activeElement || {}).className || '')) === 'cmp-sugg-row', 'Down reaches the person offered');
+    await page.keyboard.press('Enter');
+    await page.waitForTimeout(300);
+    const pk14 = await page.evaluate(() => ({ to: document.getElementById('cmp-new-to').value, name: document.getElementById('cmp-new-name').value, greet: document.getElementById('cmp-greet').textContent, focus: (document.activeElement || {}).id, sugg: document.getElementById('cmp-new-sugg').hidden }));
+    ok(pk14.to === 'pete@holtlinen.co.uk' && pk14.name === 'Pete Holt' && pk14.sugg, `picking them fills the address and the name (${pk14.to}, ${pk14.name})`);
+    ok(pk14.greet === 'Hello Pete,' && pk14.focus === 'enq-email-subject', 'the greeting follows the name, and the subject is next');
+    await page.click('#enq-email-send');
+    await page.waitForTimeout(300);
+    ok((await page.$eval('#enq-email-msg', (e) => e.textContent)) === 'Add a subject.', 'no subject: it asks for one');
+    await page.fill('#enq-email-subject', 'Linen for the winter');
+    // The preview is the server's email, built from what is typed.
+    // Posts are seen node-side, so the wait for one is a poll here, not in the page.
+    const waitPost = async (from, pred, ms = 6000) => {
+        for (let i = 0; i < ms / 100; i++) {
+            const hit = posts.slice(from).find(pred);
+            if (hit) return hit;
+            await page.waitForTimeout(100);
+        }
+        return null;
+    };
+    const pv0 = posts.length;
+    await page.click('#enq-email-preview-btn');
+    const pvPost = await waitPost(pv0, (p) => p.__url === 'mailbox.php' && p.action === 'preview');
+    ok(!!pvPost && pvPost.to === 'pete@holtlinen.co.uk' && pvPost.name === 'Pete Holt' && pvPost.subject === 'Linen for the winter' && /winter linen/.test(pvPost.body), `Preview asks the server for this email (${pvPost ? JSON.stringify({ to: pvPost.to, name: pvPost.name, subject: pvPost.subject }) : 'none'})`);
+    await page.click('#cmp-tab-write');
+    await page.waitForTimeout(300);
+    // Send: five seconds to change their mind, then it goes through the mailbox.
+    const sd0 = posts.length;
+    await page.click('#enq-email-send');
+    await page.waitForTimeout(400);
+    const hold14 = await page.evaluate(() => ({ open: document.getElementById('enq-email-modal').classList.contains('open'), toast: document.getElementById('cmp-toast').textContent.replace(/\s+/g, ' ') }));
+    ok(!hold14.open && /Sending to Pete/.test(hold14.toast) && !posts.slice(sd0).some((p) => p.action === 'send'), `it waits with Undo, naming who it goes to (${hold14.toast.trim().slice(0, 60)})`);
+    await page.evaluate(() => composeFlush());
+    await page.waitForFunction(() => /Sent to Pete/.test(document.getElementById('cmp-toast').textContent), null, { timeout: 5000 }).catch(() => {});
+    const sp14 = posts.slice(sd0).find((p) => p.__url === 'mailbox.php' && p.action === 'send');
+    ok(!!sp14 && sp14.compose === 'new' && sp14.to === 'pete@holtlinen.co.uk' && sp14.name === 'Pete Holt' && sp14.subject === 'Linen for the winter' && /winter linen/.test(sp14.body), 'sent as a new email, to the address with the name');
+    ok(!!sp14 && typeof sp14.op_id === 'string' && sp14.op_id.length > 8 && Array.isArray(sp14.attachments), '…once, whatever happens to the answer (a retry id rides it)');
+    ok(/Sent to Pete/.test(await page.$eval('#cmp-toast', (e) => e.textContent)), 'and says it went');
+    // Someone the app had never met is in the Inbox now, by the name it was sent to.
+    sent.unshift({ id: 99, to_email: 'nell.new@example.org', to_name: 'Nell Newbury', cc_email: null, subject: 'Hello from Blakeney', body: 'Lovely to meet you at the quay.', sent_at: stamp(now() - 30000) });
+    await page.evaluate(async () => { await loadMailbox(); ibBuild(); ibRenderAll(); });
+    const nn14 = await page.evaluate(() => { const p = __ibPeopleMap.get('e:nell.new@example.org'); return p ? { name: p.name, sent: p.sent.length } : null; });
+    ok(!!nn14 && nn14.name === 'Nell Newbury' && nn14.sent === 1, `a new person is in the Inbox, named as written (${nn14 && nn14.name})`);
+    // A booked guest picked from the list gets THEIR email: the stay and money with it,
+    // and what was written so far carried across.
+    await page.click('#ib-compose');
+    await page.waitForFunction(() => document.getElementById('enq-email-modal').classList.contains('open'), null, { timeout: 5000 }).catch(() => {});
+    await page.waitForTimeout(400);
+    await page.fill('#enq-email-body', 'IT14 See you soon.');
+    await page.type('#cmp-new-to', 'daniel');
+    await page.waitForTimeout(300);
+    await page.click('#cmp-new-sugg .cmp-sugg-row');
+    await page.waitForTimeout(500);
+    const bk14 = await page.evaluate(() => ({ mode: document.getElementById('enq-email-modal').classList.contains('cmp-new'), toRow: !!document.getElementById('cmp-to').getClientRects().length, name: document.getElementById('cmp-to-name').textContent, stay: !!document.getElementById('cmp-stay-row').getClientRects().length, msg: document.getElementById('enq-email-body').value, kind: __composeTarget && __composeTarget.kind }));
+    ok(!bk14.mode && bk14.kind === 'booking' && bk14.toRow && /Daniel/.test(bk14.name) && bk14.stay, `a guest with a stay gets their own email, their stay with it (${bk14.kind}, ${bk14.name})`);
+    ok(bk14.msg === 'IT14 See you soon.', '…keeping what was already written');
+    await page.evaluate(() => closeEnquiryEmailModal());
+    await page.waitForTimeout(500);
+    // A draft of a new email is kept on this device, with who it was to.
+    await page.click('#ib-compose');
+    await page.waitForTimeout(500);
+    await page.fill('#cmp-new-to', 'ivy@example.net');
+    await page.fill('#cmp-new-name', 'Ivy Lane');
+    await page.fill('#enq-email-subject', 'Your walk guide');
+    await page.fill('#enq-email-body', 'IT14-DRAFT Here are the walks we mentioned.');
+    await page.dispatchEvent('#enq-email-body', 'input');
+    await page.evaluate(() => closeEnquiryEmailModal());
+    await page.waitForTimeout(600);
+    await page.click('#ib-compose');
+    await page.waitForTimeout(600);
+    const dr14 = await page.evaluate(() => ({ to: document.getElementById('cmp-new-to').value, name: document.getElementById('cmp-new-name').value, subj: document.getElementById('enq-email-subject').value, msg: document.getElementById('enq-email-body').value, greet: document.getElementById('cmp-greet').textContent }));
+    ok(dr14.to === 'ivy@example.net' && dr14.name === 'Ivy Lane' && dr14.subj === 'Your walk guide' && /IT14-DRAFT/.test(dr14.msg) && dr14.greet === 'Hello Ivy,', `closing keeps the draft, address and name included (${dr14.to}, ${dr14.name})`);
+    await page.evaluate(() => closeEnquiryEmailModal(true));
+    await page.waitForTimeout(400);
 
     if (SHOTS) {
         await page.evaluate(() => { document.body.classList.toggle('light-mode'); });

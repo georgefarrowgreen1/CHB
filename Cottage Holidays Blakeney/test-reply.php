@@ -433,7 +433,8 @@ chk('smtp_transmit writes the marker', preg_match('/function smtp_transmit\([\s\
 // the address-only answer and hide the owner's own words again.
 $mbxSrc = file_get_contents(__DIR__ . '/mailbox.php');
 chk('the mailbox list passes the headers', strpos($mbxSrc, 'mailbox_is_self_notification($fromAddr, $head)') !== false);
-chk('the reply poll passes the headers', preg_match('/\$isSelf = mailbox_is_self_notification\(\$fromAddr, explode\(/', file_get_contents(__DIR__ . '/mailbox-read.php')) === 1);
+$mrSrc = (string) file_get_contents(__DIR__ . '/mailbox-read.php');
+chk('the reply poll passes the headers', preg_match('/\$rt = mailbox_reply_route\(\$p, explode\(/', $mrSrc) === 1 && strpos($mrSrc, '$isSelf = mailbox_is_self_notification($fromAddr, $head);') !== false);
 // An owner's emailed reply becomes a chat message, so the list must not show it
 // a second time as a person waiting — but only one the poll would route: an
 // OWNER token, a sender on the allow-list, and a chat that still exists (a reply

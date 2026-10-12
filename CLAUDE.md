@@ -71,7 +71,7 @@ build step**); PHP backend files sit alongside it. App-style guest shell lives i
 
 ## The emails are a design system, and mailer.php is it
 
-Every template (test-emails-render §1 counts them: 53), one look, every one composed from the helpers at the top of
+Every template (test-emails-render §1 counts them: 54), one look, every one composed from the helpers at the top of
 `mailer.php` — never hand-rolled table markup, which is how the enquiry reply and the
 owner's new-enquiry notification each grew their own label-value table and looked like a
 different product from the confirmation that follows them.
@@ -1535,9 +1535,8 @@ default, as `SMTP_PORT` does for sending), which only the harness's config sets.
   read once and never again; nothing deleted; the Inbox's list, read and delete over HTTP; the handled list following
   a deletion; five webhook cases) and test-reply's token-reader checks. Twelve changes break-tested, each failing its
   own named check.
-- **Not done, said plainly**: a guest's emailed reply still shows in their conversation twice, once as chat and once
-  as mail. Setting it aside in the list would also hide one the poll leaves as mail (a reply that is only quoted
-  text), so it was left.
+- **A guest's emailed reply now shows once** (it showed twice, as chat and as mail): see "A guest's reply by email is
+  one message" under the one Inbox. A reply that is only quoted text routes nowhere, so it stays listed as mail.
 
 ## A page left open all day (round 7)
 
@@ -1715,8 +1714,7 @@ Two read-only audits of the newest features and of the back office for drift; ea
   password sheet); the chat header re-asks who is away every three minutes; the weekly analytics email names "A
   cottage page" and links to Analytics; the search "Export accounts (CSV)" calls `pmExport('csv')`; help topics and
   search rows name today's screens (no Inbox folders, Guest chat, Backups, Price ideas, Guest list); "Compose an email"
-  is "Email a guest" and opens the Inbox's search, because the one Inbox has no blank compose (said plainly: writing
-  to an address nobody has used yet has no way in); search rows speak `fmtStayRange`; three captions at 13px are the
+  is "New email" and opens the Inbox's New email sheet (see the one Inbox); search rows speak `fmtStayRange`; three captions at 13px are the
   12px tier; the activity log's links end in the drawn chevron.
 - **A WORD IN A ROW'S SUB CAN SWALLOW THE FALLBACK.** Rewording one action to "what guests get out of hours" made
   "what is the meaning of life" a fuzzy hit, which suppressed the "I can't answer that" reply; the row was dropped
@@ -2789,6 +2787,43 @@ the matching block at the foot of admin.css. Gated by **`ui-test-inbox.js`** (37
   the emails about them — with a booking left the person is marked done. Nothing is sent to the
   guest. Hidden when only a booking is left (nothing to delete) and during an approval's Undo
   window. The three new actions are `'all'` in PEOPLE_POLICY. Gated by ui-test-inbox §7.
+- **A GUEST'S REPLY BY EMAIL IS ONE MESSAGE** (owner-asked: it showed twice, once in their chat and once as the
+  email it came in). The reply poll posts it into the chat and the email stays in the mailbox; the chat's copy is the
+  one that shows, and it says so: messages written by email carry `kind 'mail'` (`chat_guest_reply`, and
+  `chat_admin_reply(…, 'mail')` from the poll and the webhook), rendered as a chat message whose channel reads
+  "Email" (`via` in `ibItems`, so a run of them names it once).
+  - **The route is decided once** (`mailbox_reply_route()` in mailbox-read.php), by the poll and by mailbox.php's
+    `list`, so the two cannot disagree about which mail went into a chat.
+  - **The list leaves a copy out only on evidence**: the poll recorded it (`routed` in the `mailbox-poll` state, a
+    uid list pruned with `uids`), or its words are already one of THAT GUEST'S messages in the chat
+    (`chat_has_guest_words`, compared exactly in PHP, never by SQL equality, which this collation makes blind to
+    case and trailing spaces). The words rule covers replies posted before the record existed and the webhook's. The
+    owner's own words in the chat never hide a guest's email. `list` returns `chatHidden` and `merged`
+    ([{uid, chat}]); `ibDeletePlan` deletes the merged copies from the mailbox with the conversation.
+  - **Before the poll has posted it**, the list sends the email with `chat` and `words`, and the Inbox drops it as
+    soon as the chat it has loaded shows those words from the guest (`ibMailInChat`). Until then it shows once, as
+    the email.
+  - **The poll's duplicate guard asks whose message it is** (`chat_last_message_is($tid, $body, $role)`): a guest
+    replying with the owner's last words verbatim was read as a retry of the owner's message, skipped, and then
+    counted as in the chat, i.e. shown nowhere.
+  - Gates: test-integration §77 (the record, the kind) and **§77c** (the window both ways, the words rule, the owner's
+    words, a quoted-only reply, the echo), ui-test-inbox **§13**. Break-tested one change at a time.
+- **NEW EMAIL: to anyone, from the Inbox** (owner-asked). A circle beside the refresh (`#ib-compose`,
+  `composeNew`, also the search action "New email" and the help topic's doIt) opens the one composer sheet as
+  `{ kind: 'new' }` (`.cmp-new`): To (typed, or picked from the people the app knows, `cmpNewPeople` /
+  `composeNewPick`, keyboard by `cmpNewWire`: Down reaches the list, Escape folds it and not the sheet), Name (the
+  greeting above the box follows it, "Hello Pete,"), Subject, the message and files; no stay or money to add.
+  Picking someone with a current stay or an enquiry opens THEIR email instead, carrying the words.
+  - Sent through mailbox.php `send` with `compose: 'new'`, composed by `mailbox_new_body` (mailer.php, pure: the
+    subject as title, the greeting only with a name, the words escaped, signed by `reply_email_opts`'s first name
+    over the business); `preview` builds the same email for the sheet's Preview. Both need `gu.reply` (PEOPLE_POLICY;
+    `composeNew` is in CHB_ACT_CAP). The send rides the op ledger like the other sends.
+  - **The name it went to is kept** (`mail_sent.to_name`, migration-147; `sent` returns it, with the old SELECT as a
+    fallback), so the Inbox names a person nobody had met (`named(p, s.to_name, 0)`, the weakest name).
+  - Drafts are per device (`chb-cmp-draft:new`, address and name included); the five-second hold and Undo as for
+    every send.
+  - Gates: test-integration **§77d** (preview, refusals in words, the composer reaching the mailer, the name in Sent,
+    both permission halves), test-emails-render **§20** (and the sample, `mailbox_new`), ui-test-inbox **§14**.
 - **Re-aimed to the one list since** (the overnight CI pass): ui-test-mailbox (rewritten — rows, reading,
   reply routes, the decline ask, attachments as links), ui-test-emailreader (reading inside the conversation),
   onelook §9, needs-you (the enquiry duty lands on the conversation; the Inbox pip counts people waiting),

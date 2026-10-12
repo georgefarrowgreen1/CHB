@@ -356,7 +356,7 @@ const PEOPLE_POLICY = [
     // Guests & messages: reading is anyone's; writing to a guest is a permission.
     'mailbox.php' => [
         'new' => 'all', 'list' => 'all', 'read' => 'all', 'attachment' => 'all', 'mark_unread' => 'all', 'sent' => 'all',
-        'send' => 'gu.reply', 'delete' => 'gu.reply', 'delete_sent' => 'gu.reply',
+        'send' => 'gu.reply', 'preview' => 'gu.reply', 'delete' => 'gu.reply', 'delete_sent' => 'gu.reply',
     ],
     'messages.php' => [
         '' => 'all', 'threads' => 'all', 'needs_reply_count' => 'all', 'thread' => 'all', 'unread' => 'all', 'mark_all_read' => 'all', 'archive' => 'all', 'unarchive' => 'all',

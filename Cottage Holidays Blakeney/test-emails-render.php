@@ -273,6 +273,11 @@ $JOBS = [
       );
       return smtp_send('g@x.co', 'Guest', $m['subject'], $m['text'], $m['html']);
   }],
+  // The Inbox's New email, to someone the app may not know yet.
+  ['mailbox-new', 'guest', function () {
+      $m = mailbox_new_body('Pete Holt', 'Linen for the winter', "Could you quote for sheets and towels for three cottages over the winter?\n\nWe would need them by the first of November.", 'George');
+      return smtp_send('pete@example.test', 'Pete Holt', $m['subject'], $m['text'], $m['html']);
+  }],
   ['newsletter', 'guest', function () {
       $m = newsletter_body('Autumn on the north Norfolk coast', 'The seals are back at Blakeney Point.', 'The seals are back at Blakeney Point.', site_base_url() . 'index.html?unsub=tok');
       return smtp_send('g@x.co', 'Subscriber', $m['subject'], $m['text'], $m['html']);
@@ -1348,6 +1353,27 @@ chk('§19 with no name: the business, in the subject and both halves',
     && strpos($b19['text'], 'You have a new message from Cottage Holidays Blakeney:') !== false
     && strpos($b19['html'], 'You have a new message<') !== false
     && stripos($b19['text'] . $b19['html'], 'replied') === false);
+
+// §20 THE INBOX'S NEW EMAIL greets by the first name typed beside the address, once, and
+// greets no one when no name was given (the owner may have written their own hello);
+// the owner's words are escaped, a blank line starts a new paragraph, and it says who
+// wrote it and where a reply goes. Each half read on its own; a greeting is counted as
+// its own paragraph, because the preheader repeats the start of the message.
+echo "\n§20 a new email from the Inbox\n";
+$greet20 = fn($h) => preg_match_all('/>Hello [^<,]*,<\/p>/', (string) $h);
+$n20 = mailbox_new_body('Pete Holt', 'Linen <for> winter', "Could you quote?\n\nTwo cottages <b>sheets</b> & towels.", 'George');
+chk('§20 the subject is the one typed, as it is (the mailer encodes it)', $n20['subject'] === 'Linen <for> winter');
+chk('§20 the HTML greets them by first name, once', $greet20($n20['html']) === 1 && strpos($n20['html'], '>Hello Pete,</p>') !== false);
+chk('§20 …and so does the text half', strpos($n20['text'], "Hello Pete,\n\nCould you quote?") === 0);
+chk('§20 the words are escaped, each paragraph its own', strpos($n20['html'], 'Two cottages &lt;b&gt;sheets&lt;/b&gt; &amp; towels.') !== false && strpos($n20['html'], '<b>sheets</b>') === false && preg_match_all('/>Could you quote\?<\/p>|>Two cottages /', $n20['html']) === 2);
+chk('§20 the title is the subject, escaped', strpos($n20['html'], 'Linen &lt;for&gt; winter') !== false && strpos($n20['html'], 'Linen <for> winter') === false);
+chk('§20 it is signed by who wrote it, over the business, in both halves', strpos($n20['html'], 'George<br>') !== false && strpos($n20['text'], "\n\nGeorge\nCottage Holidays Blakeney") !== false);
+chk('§20 …and says where a reply goes, in both halves', strpos($n20['text'], 'comes straight to George.') !== false && strpos($n20['html'], 'comes straight to George.') !== false);
+$x20 = mailbox_new_body('', 'Linen', 'Hello there, a quote please.', '');
+chk('§20 with no name it greets no one, in either half', $greet20($x20['html']) === 0 && strpos($x20['text'], 'Hello there, a quote please.') === 0);
+chk('§20 …and with no signer it is from the business, a reply coming to us', strpos($x20['text'], "a quote please.\n\nCottage Holidays Blakeney") !== false && strpos($x20['text'], 'comes straight to us.') !== false);
+$s20 = mailbox_new_body('<b>Pete</b> Holt', 'Linen', 'A quote please.', 'George');
+chk('§20 a name is escaped where it greets', strpos($s20['html'], 'Hello &lt;b&gt;Pete&lt;/b&gt;,') !== false && strpos($s20['html'], '<b>Pete</b>') === false);
 
 // Review aid: CHB_EMAIL_DUMP=<dir> writes every captured email (html + text) so the real
 // output can be looked at, not just measured. Nothing runs without the variable.

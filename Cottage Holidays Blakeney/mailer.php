@@ -5501,6 +5501,37 @@ function mailbox_reply_body($subject, $bodyText)
 }
 
 /**
+ * A NEW EMAIL from the Inbox, to anyone: the subject as the title, "Hello <first name>,"
+ * when the owner gave a name (the composer shows that greeting above the box, so the
+ * owner does not type one), their words, the person who wrote them over the business,
+ * and where a reply goes. Pure: the sender resolves who signs it ($from).
+ */
+function mailbox_new_body($name, $subject, $message, $from = '')
+{
+    $subject = trim((string) $subject);
+    $message = trim((string) $message);
+    $first = first_name((string) $name, '');
+    $from = trim((string) $from);
+    $inner = email_h($subject) . ($first !== '' ? email_p('Hello ' . email_esc($first) . ',') : '');
+    // The owner types prose: blank lines split paragraphs, escaped here (email_p
+    // expects pre-escaped HTML), line breaks kept.
+    foreach (array_filter(array_map('trim', preg_split('/\n{2,}/', $message) ?: [])) as $para) {
+        $inner .= email_p(nl2br(email_esc($para)));
+    }
+    $replyTo = $from !== '' ? $from : 'us';
+    $inner .= email_p(($from !== '' ? email_esc($from) . '<br>' : '') . '<span style="color:' . email_muted_ink() . ';">Cottage Holidays Blakeney</span>')
+        . email_footnote('Reply to this email and it comes straight to ' . email_esc($replyTo) . '.');
+    // The preheader finishes the thought: the start of the message, not the subject again.
+    $pre = mb_substr((string) preg_replace('/\s+/u', ' ', $message), 0, 110);
+    return [
+        'subject' => $subject,
+        'text' => ($first !== '' ? "Hello {$first},\n\n" : '') . $message . "\n\n" . ($from !== '' ? $from . "\n" : '')
+            . "Cottage Holidays Blakeney\n\nReply to this email and it comes straight to {$replyTo}.",
+        'html' => email_shell($pre !== '' ? $pre : $subject, $inner),
+    ];
+}
+
+/**
  * One subscriber's copy of the newsletter. The unsubscribe link is PER RECIPIENT (their
  * own token), so this is built inside the send loop rather than once — and it rides
  * `email_shell`'s footer options so the link is in the document as well as the RFC 8058

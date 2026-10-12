@@ -5452,8 +5452,15 @@ $newKeys77 = array_keys($new77);
 sort($newKeys77);
 it_check('§77 mail the poll did not route is recorded for the owner: the customer, the forged sender, the deleted chat\'s reply, the bad token', $newKeys77 === ['it77-03-forged', 'it77-06-customer', 'it77-09-gone', 'it77-10-half'], json_encode($newKeys77));
 it_check('§77 …with the sender\'s name', ($new77['it77-06-customer']['name'] ?? '') === 'Anne Betts', json_encode($new77['it77-06-customer'] ?? null));
-$handled77 = (array) (json_decode((string) $rootDb->query("SELECT item_value FROM content WHERE item_key = 'mailbox-poll'")->fetchColumn(), true)['uids'] ?? []);
+$state77 = (array) json_decode((string) $rootDb->query("SELECT item_value FROM content WHERE item_key = 'mailbox-poll'")->fetchColumn(), true);
+$handled77 = (array) ($state77['uids'] ?? []);
 it_check('§77 every message is marked handled, each read once', count($handled77) === 11 && $retr77() === 11, json_encode([$handled77, $retr77()]));
+// What it put into a chat is recorded, so the Inbox's mail list leaves those copies out.
+$routed77 = (array) ($state77['routed'] ?? []);
+sort($routed77);
+it_check('§77 the poll records the five emails it put into a chat, and only those', $routed77 === ['it77-01-owner', 'it77-02-guest', 'it77-05-phone', 'it77-08-legacy', 'it77-11-refs'], json_encode($routed77));
+$kind77 = fn($marker) => (string) $rootDb->query('SELECT kind FROM messages WHERE body LIKE ' . $rootDb->quote('%' . $marker . '%') . ' ORDER BY id DESC LIMIT 1')->fetchColumn();
+it_check('§77 a reply that came in by email is marked so, the guest\'s and the owner\'s', $kind77('IT77-GUEST') === 'mail' && $kind77('IT77-OWNER') === 'mail', json_encode([$kind77('IT77-GUEST'), $kind77('IT77-OWNER')]));
 $before77 = [$retr77(), count($rows77())];
 $R77 = $poll77();
 it_check('§77 the next poll reads nothing again and posts nothing again', ($R77['ok'] ?? false) === true && ($R77['handled'] ?? -1) === 0 && [$retr77(), count($rows77())] === $before77, json_encode([$R77, $retr77(), count($rows77())]));
@@ -5465,8 +5472,16 @@ $r = http($admin, 'POST', '/mailbox.php', ['action' => 'list']);
 it_check('§77 one page of the list is one TOP per message, headers and preview together', $tops77() - $topsBefore77 === 11, (string) ($tops77() - $topsBefore77));
 $listed77 = array_map(fn($m) => (string) $m['uid'], (array) ($r['json']['messages'] ?? []));
 sort($listed77);
-it_check('§77 the Inbox lists the customer\'s mail and what the poll left as mail', $r['code'] === 200 && $listed77 === ['it77-02-guest', 'it77-03-forged', 'it77-06-customer', 'it77-09-gone', 'it77-10-half'], json_encode([$r['code'], $listed77, substr($r['raw'], 0, 160)]));
+it_check('§77 the Inbox lists the customer\'s mail and what the poll left as mail', $r['code'] === 200 && $listed77 === ['it77-03-forged', 'it77-06-customer', 'it77-09-gone', 'it77-10-half'], json_encode([$r['code'], $listed77, substr($r['raw'], 0, 160)]));
 it_check('§77 …and sets aside our own alert and every owner reply already in a chat, from any of their addresses', ($r['json']['ownHidden'] ?? -1) === 5 && ($r['json']['robotHidden'] ?? -1) === 1 && ($r['json']['total'] ?? -1) === 11, json_encode([$r['json']['ownHidden'] ?? null, $r['json']['robotHidden'] ?? null, $r['json']['total'] ?? null]));
+// THE GUEST'S REPLY BY EMAIL IS ONE MESSAGE: in their chat, not also in the list.
+$merged77 = [];
+foreach ((array) ($r['json']['merged'] ?? []) as $m) {
+    $merged77[(string) $m['uid']] = (int) $m['chat'];
+}
+ksort($merged77);
+it_check('§77 the guest\'s emailed reply, posted into their chat, is left out of the list (it showed twice)', ($r['json']['chatHidden'] ?? -1) === 1 && !in_array('it77-02-guest', $listed77, true), json_encode([$r['json']['chatHidden'] ?? null, $listed77]));
+it_check('§77 …and every copy in a chat is named with its chat, so deleting the conversation deletes it too', $merged77 === ['it77-01-owner' => $t77, 'it77-02-guest' => $t77, 'it77-05-phone' => $t77, 'it77-08-legacy' => $t77, 'it77-11-refs' => $t77], json_encode($merged77));
 $r = http($admin, 'POST', '/mailbox.php', ['action' => 'read', 'uid' => 'it77-06-customer']);
 it_check('§77 reading an email shows its words', $r['code'] === 200 && strpos((string) ($r['json']['body'] ?? ''), 'IT77-ANNE is the cottage free in May?') !== false && ($r['json']['from'] ?? '') === 'anne77@example.org', substr($r['raw'], 0, 200));
 $r = http($admin, 'POST', '/mailbox.php', ['action' => 'new']);
@@ -5529,6 +5544,106 @@ $h = $hook77(['recipient' => "reply+$lg77@yourdomain.co.uk", 'sender' => 'wren77
 it_check('§77b webhook: the guest\'s late reply is forwarded to you, not posted', $h === 'expired' && $one77('IT77-HOOK-LATEG') === null && $expRows77() === $expBefore77 + 4, json_encode([$h, $expRows77()]));
 $h = $hook77(['recipient' => "reply+$lg77@yourdomain.co.uk", 'sender' => 'stranger77@example.net', 'subject' => 'Re: Your message', 'stripped-text' => 'IT77-HOOK-LATEX Hi.']);
 it_check('§77b webhook: anyone else\'s late reply is ignored', $h === 'expired' && $expRows77() === $expBefore77 + 4, json_encode([$h, $expRows77()]));
+// A GUEST'S REPLY BY EMAIL IS ONE MESSAGE, whichever happens first. The poll posts it
+// into their chat and the email stays in the mailbox, so the conversation showed it
+// twice. The list leaves the email out once the chat has it, and until then names the
+// chat and the words, so the Inbox can tell the two are one.
+echo "\n== §77c a guest's emailed reply shows once in their conversation ==\n";
+$list77 = function () use (&$admin) {
+    $r = http($admin, 'POST', '/mailbox.php', ['action' => 'list']);
+    $byUid = [];
+    foreach ((array) ($r['json']['messages'] ?? []) as $m) {
+        $byUid[(string) $m['uid']] = $m;
+    }
+    $merged = [];
+    foreach ((array) ($r['json']['merged'] ?? []) as $m) {
+        $merged[(string) $m['uid']] = (int) $m['chat'];
+    }
+    return ['r' => $r, 'by' => $byUid, 'merged' => $merged];
+};
+$eml77('it77-15-window', ['From' => 'Wren Ashby <wren77@example.com>', 'To' => $own77, 'Subject' => 'Re: Your message to Cottage Holidays Blakeney', 'In-Reply-To' => "<msg.$g77@yourdomain.co.uk>"] + $plain77, 'IT77-WINDOW Could we arrive at four instead of three?' . $quote77);
+$L = $list77();
+$w77 = $L['by']['it77-15-window'] ?? null;
+it_check('§77c before the poll posts it, the email is listed with the chat it is going to and its own words', is_array($w77) && (int) ($w77['chat'] ?? 0) === $t77 && ($w77['words'] ?? '') === 'IT77-WINDOW Could we arrive at four instead of three?', json_encode($w77));
+it_check('§77c …the words without the quoted email under them', is_array($w77) && strpos((string) ($w77['words'] ?? ''), 'wrote:') === false);
+$hiddenBefore77 = (int) ($L['r']['json']['chatHidden'] ?? -1);
+$poll77();
+$r = $one77('IT77-WINDOW');
+it_check('§77c the poll posts it as the guest\'s, marked as come by email', ($r['sender_role'] ?? '') === 'guest' && (int) ($r['thread_id'] ?? 0) === $t77 && $kind77('IT77-WINDOW') === 'mail', json_encode($r));
+$L = $list77();
+it_check('§77c …and then the list leaves the email out, named with its chat', !isset($L['by']['it77-15-window']) && ($L['merged']['it77-15-window'] ?? 0) === $t77 && (int) ($L['r']['json']['chatHidden'] ?? -1) === $hiddenBefore77 + 1, json_encode([array_keys($L['by']), $L['merged'], $L['r']['json']['chatHidden'] ?? null]));
+// A reply posted before the poll kept a record (or by the webhook): no record, but its
+// words are already the guest's message in that chat.
+$st77c = (array) json_decode((string) $rootDb->query("SELECT item_value FROM content WHERE item_key = 'mailbox-poll'")->fetchColumn(), true);
+$st77c['routed'] = array_values(array_diff((array) ($st77c['routed'] ?? []), ['it77-02-guest', 'it77-15-window']));
+$rootDb->prepare("UPDATE content SET item_value = ? WHERE item_key = 'mailbox-poll'")->execute([json_encode($st77c)]);
+$L = $list77();
+it_check('§77c a reply posted before the poll kept a record is still left out, by its words in the chat', !isset($L['by']['it77-02-guest']) && !isset($L['by']['it77-15-window']) && ($L['merged']['it77-02-guest'] ?? 0) === $t77 && ($L['merged']['it77-15-window'] ?? 0) === $t77, json_encode([array_keys($L['by']), $L['merged']]));
+// Never by words alone when they are not the guest's: the same words from the owner
+// in the chat do not hide a guest's email.
+$rootDb->prepare("INSERT INTO messages (thread_id, sender_role, body, read_by_admin, read_by_guest) VALUES (?, 'admin', ?, 1, 0)")->execute([$t77, 'IT77-ECHO See you on Friday then.']);
+$eml77('it77-16-echo', ['From' => 'Wren Ashby <wren77@example.com>', 'To' => $own77, 'Subject' => 'Re: Your message to Cottage Holidays Blakeney', 'In-Reply-To' => "<msg.$g77@yourdomain.co.uk>"] + $plain77, 'IT77-ECHO See you on Friday then.');
+$L = $list77();
+it_check('§77c the owner\'s own words in the chat never hide the guest\'s email', isset($L['by']['it77-16-echo']) && (int) ($L['by']['it77-16-echo']['chat'] ?? 0) === $t77, json_encode(array_keys($L['by'])));
+// Nothing of their own above the quote: the poll leaves it as mail, and so does the list.
+$eml77('it77-17-quoted', ['From' => 'Wren Ashby <wren77@example.com>', 'To' => $own77, 'Subject' => 'Re: Your message to Cottage Holidays Blakeney', 'In-Reply-To' => "<msg.$g77@yourdomain.co.uk>"] + $plain77, ltrim($quote77));
+$L = $list77();
+$q77 = $L['by']['it77-17-quoted'] ?? null;
+it_check('§77c a reply that is only the quoted email stays in the list as mail, joined to no chat', is_array($q77) && !isset($q77['chat']) && !isset($q77['words']), json_encode($q77));
+$poll77();
+$new77 = array_column((array) json_decode((string) $rootDb->query("SELECT item_value FROM content WHERE item_key = 'mailbox-new'")->fetchColumn(), true), null, 'uid');
+$st77c = (array) json_decode((string) $rootDb->query("SELECT item_value FROM content WHERE item_key = 'mailbox-poll'")->fetchColumn(), true);
+it_check('§77c …the poll posts nothing for it, records it as new mail and not as in a chat', isset($new77['it77-17-quoted']) && !in_array('it77-17-quoted', (array) ($st77c['routed'] ?? []), true), json_encode([array_keys($new77), $st77c['routed'] ?? null]));
+// The same poll met the guest's echo of the owner's last words: a new message from
+// them, not a retry of the owner's (the guard read any last message as the same reply,
+// so it was skipped and then counted as in the chat: shown nowhere).
+$echo77 = (int) $rootDb->query("SELECT COUNT(*) FROM messages WHERE thread_id = $t77 AND sender_role = 'guest' AND body = 'IT77-ECHO See you on Friday then.'")->fetchColumn();
+it_check('§77c the guest\'s reply that echoes the owner\'s last words is posted as theirs', $echo77 === 1 && in_array('it77-16-echo', (array) ($st77c['routed'] ?? []), true), json_encode([$echo77, $st77c['routed'] ?? null]));
+// NEW EMAIL: to anyone, from the Inbox. Preview and send are one composer, refused for
+// someone who may not write to guests, and the name it was sent to is kept.
+echo "\n== §77d a new email from the Inbox ==\n";
+$r = http($admin, 'POST', '/mailbox.php', ['action' => 'preview', 'to' => 'pete@holtlinen.example', 'name' => 'Pete Holt', 'subject' => 'Linen for the winter', 'body' => "Could you quote for the winter?\n\nTwo cottages <b>sheets</b>."]);
+$ph77 = (string) ($r['json']['html'] ?? '');
+// A greeting is its own paragraph ("Hello Pete,"); the preheader repeats the start of
+// the message, so a greeting the owner typed shows twice and is not counted here.
+$greets77 = fn($h) => preg_match_all('/>Hello [^<,]*,<\/p>/', (string) $h);
+it_check('§77d the preview is the email: the subject as its title, greeted by first name once', $r['code'] === 200 && ($r['json']['subject'] ?? '') === 'Linen for the winter' && $greets77($ph77) === 1 && strpos($ph77, '>Hello Pete,</p>') !== false && strpos($ph77, 'Linen for the winter') !== false, substr($r['raw'], 0, 200));
+it_check('§77d …the words escaped, each paragraph its own', strpos($ph77, '&lt;b&gt;sheets&lt;/b&gt;') !== false && strpos($ph77, '<b>sheets</b>') === false && strpos($ph77, 'Could you quote for the winter?') !== false, '');
+$r = http($admin, 'POST', '/mailbox.php', ['action' => 'preview', 'to' => 'pete@holtlinen.example', 'name' => '', 'subject' => 'Linen', 'body' => 'Hello there, a quote please.']);
+it_check('§77d with no name it greets no one (the owner wrote their own hello)', $r['code'] === 200 && $greets77($r['json']['html'] ?? '') === 0 && strpos((string) ($r['json']['html'] ?? ''), 'Hello there, a quote please.') !== false, substr($r['raw'], 0, 160));
+$r = http($admin, 'POST', '/mailbox.php', ['action' => 'send', 'compose' => 'new', 'to' => 'not an address', 'name' => 'Pete Holt', 'subject' => 'Linen', 'body' => 'A quote please.']);
+it_check('§77d a To that is not an email address is refused in words', $r['code'] === 400 && strpos((string) ($r['json']['error'] ?? ''), '"To"') !== false, $r['raw']);
+$r = http($admin, 'POST', '/mailbox.php', ['action' => 'send', 'compose' => 'new', 'to' => 'pete@holtlinen.example', 'name' => 'Pete Holt', 'subject' => '', 'body' => 'A quote please.']);
+it_check('§77d …and so is one with no subject', $r['code'] === 400 && strpos((string) ($r['json']['error'] ?? ''), 'subject') !== false, $r['raw']);
+$r = http($admin, 'POST', '/mailbox.php', ['action' => 'send', 'compose' => 'new', 'to' => 'pete@holtlinen.example', 'name' => 'Pete Holt', 'subject' => 'Linen', 'body' => 'A quote please.', 'attachments' => [['filename' => 'list.txt', 'mime' => 'text/plain', 'content' => base64_encode('Sheets x 12')]]]);
+// Mail is off here, so the send fails at the mailer: what is proven is that the whole
+// composer ran (a fatal would be a 500 page, not this sentence).
+it_check('§77d a good new email reaches the mailer, built and with its file (mail is off here)', $r['code'] === 502 && strpos((string) ($r['json']['error'] ?? ''), "Couldn't send") === 0, $r['raw']);
+// The name it was sent to rides the Sent list (migration-147), so the Inbox names them.
+$rootDb->prepare('INSERT INTO mail_sent (to_email, to_name, subject, body) VALUES (?, ?, ?, ?)')->execute(['pete@holtlinen.example', 'Pete Holt', 'IT77-SENT Linen', 'A quote please.']);
+$r = http($admin, 'POST', '/mailbox.php', ['action' => 'sent']);
+$sentRow77 = array_values(array_filter((array) ($r['json']['messages'] ?? []), fn($m) => ($m['subject'] ?? '') === 'IT77-SENT Linen'))[0] ?? null;
+it_check('§77d the Sent list carries the name a new email went to', ($sentRow77['to_name'] ?? '') === 'Pete Holt' && ($sentRow77['to_email'] ?? '') === 'pete@holtlinen.example', json_encode($sentRow77));
+$rootDb->exec("DELETE FROM mail_sent WHERE subject = 'IT77-SENT Linen'");
+// Writing to guests is a permission, for the preview as much as the send.
+$rootDb->prepare("INSERT INTO admins (username, password_hash, name, email, full_access, perms, twofa, created_at) VALUES ('nell77', ?, 'Nell Noreply', 'nell77@example.com', 0, '{\"gu.reply\":false}', 0, NOW())")->execute([password_hash('pw-nell77', PASSWORD_DEFAULT)]);
+$nell77 = (int) $rootDb->lastInsertId();
+$nellJar77 = [];
+$r = http($nellJar77, 'POST', '/auth.php', ['action' => 'admin_login', 'username' => 'nell77', 'password' => 'pw-nell77']);
+it_check('§77d (fixture) a Host who may not write to guests signs in', $r['code'] === 200 && !empty($r['json']['ok']), $r['raw']);
+$r = http($nellJar77, 'POST', '/mailbox.php', ['action' => 'preview', 'to' => 'pete@holtlinen.example', 'subject' => 'Linen', 'body' => 'A quote please.']);
+$r2 = http($nellJar77, 'POST', '/mailbox.php', ['action' => 'send', 'compose' => 'new', 'to' => 'pete@holtlinen.example', 'subject' => 'Linen', 'body' => 'A quote please.']);
+it_check('§77d …is refused the preview and the send', $r['code'] === 403 && ($r['json']['code'] ?? '') === 'not_allowed' && $r2['code'] === 403 && ($r2['json']['code'] ?? '') === 'not_allowed', $r['raw'] . ' / ' . $r2['raw']);
+$r = http($nellJar77, 'POST', '/mailbox.php', ['action' => 'list']);
+it_check('§77d …while reading the mailbox stays everyone\'s', $r['code'] === 200, substr($r['raw'], 0, 160));
+// A plain Host may write to guests, so the preview is theirs too.
+$rootDb->prepare("INSERT INTO admins (username, password_hash, name, email, full_access, perms, twofa, created_at) VALUES ('hal77', ?, 'Hal Host', 'hal77@example.com', 0, '{}', 0, NOW())")->execute([password_hash('pw-hal77', PASSWORD_DEFAULT)]);
+$hal77 = (int) $rootDb->lastInsertId();
+$halJar77 = [];
+http($halJar77, 'POST', '/auth.php', ['action' => 'admin_login', 'username' => 'hal77', 'password' => 'pw-hal77']);
+$r = http($halJar77, 'POST', '/mailbox.php', ['action' => 'preview', 'to' => 'pete@holtlinen.example', 'name' => 'Pete Holt', 'subject' => 'Linen', 'body' => 'A quote please.']);
+it_check('§77d a Host who may write to guests sees the preview, signed by them', $r['code'] === 200 && strpos((string) ($r['json']['html'] ?? ''), 'Hal<br>') !== false, substr($r['raw'], 0, 200));
+$rootDb->exec("DELETE FROM admins WHERE id IN ($nell77, $hal77)");
 if (is_resource($srv77)) {
     proc_terminate($srv77);
 }
