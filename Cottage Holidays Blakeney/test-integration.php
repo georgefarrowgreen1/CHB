@@ -7090,6 +7090,49 @@ $mg90b = http($noJar, 'GET', '/migrate.php?cron=' . $SECRET);
 it_check('§90 the next deploy moves and encrypts nothing', ($mg90b['json']['photos_made_private'] ?? -1) === 0 && ($mg90b['json']['photos_encrypted'] ?? -1) === 0, json_encode([$mg90b['json']['photos_made_private'] ?? null, $mg90b['json']['photos_encrypted'] ?? null]));
 http($adm89, 'POST', '/messages.php', ['action' => 'delete', 'thread_id' => (int) $rootDb->query('SELECT id FROM chat_threads WHERE token = ' . $rootDb->quote($tok90))->fetchColumn()]);
 
+// ---- 91. The Messages button asks who answers, and nothing else ----------
+// The button shows the people's faces before the chat has been opened, so it asks
+// messages.php 'faces'. The answer must be the chat's own team (one composer), the
+// same for a visitor, a signed-in guest and the owner, and read-only: 'thread' makes a
+// signed-in guest's conversation and marks the owner's replies seen, and asking who
+// answers must do neither.
+echo "\n== 91. The Messages button asks who answers, and nothing else ==\n";
+$anon91 = [];
+$f91 = http($anon91, 'POST', '/messages.php', ['action' => 'faces']);
+$team91 = $f91['json']['team'] ?? null;
+$t91 = http($anon91, 'POST', '/messages.php', ['action' => 'thread', 'team' => 1]);
+it_check('§91 a visitor is told who answers', $f91['code'] === 200 && !empty($f91['json']['ok']) && is_array($team91) && count($team91) > 0, $f91['raw']);
+it_check('§91 …the same people, in the same order, as the chat itself is told', json_encode($team91) === json_encode($t91['json']['team'] ?? null), json_encode([$team91, $t91['json']['team'] ?? null]));
+it_check('§91 …first names, a line and a photo version only', array_keys($team91[0] ?? []) === ['id', 'name', 'line', 'v'] && strpos((string) json_encode($team91), '@') === false, json_encode($team91[0] ?? null));
+it_check('§91 …and whether they are away now', isset($f91['json']['away']['on']), $f91['raw']);
+it_check('§91 …and nothing about a conversation', !array_key_exists('messages', $f91['json'] ?? []) && !array_key_exists('peer_typing', $f91['json'] ?? []), $f91['raw']);
+$own91 = http($adm89, 'POST', '/messages.php', ['action' => 'faces']);
+it_check('§91 the owner is told the same, with no form token asked for', $own91['code'] === 200 && is_array($team91) && $team91 && json_encode($own91['json']['team'] ?? null) === json_encode($team91), $own91['raw']);
+$gj91 = [];
+$itGuest($gj91, 'Faye Faces', 'faye91@gmail.com');
+$gid91 = (int) $rootDb->query("SELECT id FROM guests WHERE email = 'faye91@gmail.com'")->fetchColumn();
+$thr91 = fn() => (int) $rootDb->query("SELECT COUNT(*) FROM chat_threads WHERE guest_id = $gid91")->fetchColumn();
+$g91 = http($gj91, 'POST', '/messages.php', ['action' => 'faces']);
+it_check('§91 a signed-in guest is told the same people', $gid91 > 0 && $g91['code'] === 200 && is_array($team91) && $team91 && json_encode($g91['json']['team'] ?? null) === json_encode($team91), $g91['raw']);
+it_check('§91 …and asking makes them no conversation', $thr91() === 0, (string) $thr91());
+http($gj91, 'POST', '/messages.php', ['action' => 'thread']);
+$tid91 = (int) $rootDb->query("SELECT id FROM chat_threads WHERE guest_id = $gid91")->fetchColumn();
+it_check('§91 (control) opening the chat does make one', $tid91 > 0, (string) $tid91);
+$rootDb->prepare("INSERT INTO messages (thread_id, sender_role, body, read_by_admin, read_by_guest) VALUES (?, 'admin', 'IT91 a reply', 1, 0)")->execute([$tid91]);
+$unread91 = fn() => (int) $rootDb->query("SELECT COUNT(*) FROM messages WHERE thread_id = $tid91 AND sender_role = 'admin' AND read_by_guest = 0")->fetchColumn();
+http($gj91, 'POST', '/messages.php', ['action' => 'faces']);
+it_check('§91 …nor marks a reply waiting for them as seen', $unread91() === 1, (string) $unread91());
+http($gj91, 'POST', '/messages.php', ['action' => 'thread']);
+it_check('§91 (control) opening the chat does mark it seen', $unread91() === 0, (string) $unread91());
+// Switched off, a person leaves the button's answer as they leave the chat's.
+$off91 = (int) ($team91[0]['id'] ?? 0);
+$rootDb->exec("UPDATE admins SET chat_show = 0 WHERE id = $off91");
+$ids91 = array_map(fn($m) => (int) ($m['id'] ?? 0), http($anon91, 'POST', '/messages.php', ['action' => 'faces'])['json']['team'] ?? []);
+it_check('§91 someone switched off is not on the button', $off91 > 0 && !in_array($off91, $ids91, true), json_encode($ids91));
+$rootDb->exec("UPDATE admins SET chat_show = 1 WHERE id = $off91");
+$rootDb->exec("DELETE FROM messages WHERE thread_id = $tid91");
+$rootDb->exec("DELETE FROM chat_threads WHERE id = $tid91");
+
 echo "\n== Summary ==\n";
 if ($fail) {
     echo "  $fail CHECK(S) FAILED \xE2\x9D\x8C\n\n";

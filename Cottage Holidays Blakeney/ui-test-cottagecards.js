@@ -56,6 +56,11 @@ const FREE = {
     jollyboat: [{ start: '2026-08-09', end: '2026-08-10' }],
     pimpernel: [{ start: '2026-08-09', end: '2026-08-16' }],
 };
+// The two people shown in the guest chat, so the Messages button is the faces pill.
+const TEAM = [
+    { id: 1, name: 'Sophia', line: 'Host', v: 'abcdef0123' },
+    { id: 2, name: 'George', line: 'Bookings & Website', v: '' },
+];
 // Pinned: the availability chip says "from <date>" or "from tomorrow" off the wall clock,
 // and the fixture dates are fixed, so an unpinned run would drift into the past.
 const PINNED = new Date('2026-08-08T09:00:00Z');
@@ -71,6 +76,10 @@ const PINNED = new Date('2026-08-08T09:00:00Z');
         const json = (o) => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(o) });
         if (url.includes('rates.php')) return json({ properties: PROPS, seasons: {}, occupancy: OCC });
         if (url.includes('availability.php')) return json({ ok: true, ranges: [], props: FREE });
+        // Who answers: the Messages button then wears their faces, the WIDER pill, which
+        // is the one section 6 has to clear the card text with.
+        if (url.includes('messages.php')) return json({ ok: true, messages: [], team: TEAM, away: { on: false, until: null } });
+        if (url.includes('avatar.php')) return route.fulfill({ status: 200, contentType: 'image/png', body: Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==', 'base64') });
         return json({ ok: true, bookings: [], enquiries: [], reviews: [], photos: [], props: {}, events: [], value: null });
     });
     await page.goto(`${base}/index.html`, { waitUntil: 'domcontentloaded' });
@@ -236,6 +245,13 @@ const PINNED = new Date('2026-08-08T09:00:00Z');
     );
 
     console.log('6. no floating control sits on the card text');
+    // With the people's faces, which makes it wider than the icon it replaces: the
+    // sweep below measures the button a guest actually sees.
+    const fabFaces = await page.evaluate(() => {
+        const b = document.querySelector('#guest-msg-fab .guest-dock-btn');
+        return !!b && b.classList.contains('has-faces') && b.querySelectorAll('.chat-ava').length === 2;
+    });
+    ok(fabFaces, 'the Messages button carries the two faces for the sweep');
     const fabSweep = await (async () => {
         let bad = 0, total = 0, worst = null;
         for (let y = 0; y <= 1200; y += 40) {

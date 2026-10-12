@@ -753,8 +753,56 @@ Code: the "WHO ANSWERS" blocks in app.js (`chatTeam*`, `chatAva`, `chatHeadHtml`
   test-reply (the away hours, the named opener), test-emails-render §19, and ui-test-guestchat re-aimed ("Who
   answers" replaced "Signed by"). Break-tested: three server mutations each fail their named §81 checks, and eight
   client mutations each fail their named checks (one passed until the one-run check was added).
-- **Not done, said plainly**: the chat button keeps its icon (the demo's faces there were not built), and message
-  times are shown as the database stores them, as before.
+- **Not done, said plainly**: message times are shown as the database stores them, as before. (The chat button's
+  faces, left out here, were built later: see the next section.)
+
+## The Messages button shows who answers (the approved demo's faces, built and merged without CI)
+
+The chat button carried an icon while the chat inside named the people. Now both buttons that open the chat show
+their faces: the "THE MESSAGES BUTTON SHOWS WHO ANSWERS" block beside `chatTeamToggle` in app.js (`chatFabPaint`,
+`chatFabRefresh`, `chatTeamApply`), messages.php's `faces` action, and rules in app.css (`.chat-fab.has-faces`) and
+guest-app.css (`#guest-msg-fab`).
+- **On a computer** the round accent button becomes the demo's pill: the faces (`chat-ava is-fab`, 36px), then the
+  word "Messages", on `--sheet-surface`, each face's ring cut from it (`--chat-ground`).
+- **On a phone** the pill shows the faces where the icon stood (32px, 40px from 481px), with no word beside them.
+  With the word it would be 164px wide and would sit over the cottage cards' prices.
+- **Its name says who it reaches**: "Messages with Sophia & George" (aria-label and title). At most two faces are
+  shown; everyone is named.
+- **With nobody shown**, each button keeps the icon and the name it always had. The button stores them
+  (`dataset.glyph`) and puts them back if the team empties.
+- **Where the team comes from**:
+  - This device's copy (`chb-chat-team`) paints at boot, before the reveal.
+  - It is asked of the server when that copy is missing or more than 6 hours old: `chb-chat-team-at`,
+    `CHAT_TEAM_FRESH_MS`.
+  - The ask is `messages.php {action: 'faces'}`. It is read-only and gives everyone the same answer, the chat's own
+    `chat_team()` + `chat_away_state()`. It must not be `thread`: for a signed-in guest, `thread` makes a
+    conversation and marks the owner's replies seen.
+  - It runs once the session is known (after `setGuestUI`), and again from the 30-second refresh only when the copy
+    is stale.
+  - Never for the owner, and never in a preview (its posts are refused).
+  - An answer with no team (a server from before `faces`), or no answer at all, waits `CHAT_FACES_RETRY_MS`
+    (10 minutes) before asking again.
+- **The chat's own answer moves the button too**: `loadChat` and the poll call `chatTeamApply`, which repaints the
+  header and both buttons when anything a guest would see changed.
+- **Faces that replace something settle in** (`is-arriving`, `chbAppear` 320ms, the second face 80ms later). A
+  first paint from this device's copy does not.
+- **THE BOOK PILL AND THE MESSAGES PILL SHARE THE BOTTOM EDGE**. A real collision found while measuring, and older
+  than this change:
+  - The rule for phones of 380px or narrower anchored the cottage page's "Check availability" pill to the RIGHT. It
+    was written when Messages sat bottom-left, so after Messages moved right the two overlapped by 54px at 360px.
+  - Now, up to 480px, the book pill centres in the room left of Messages: 88px kept on the right with the icon,
+    108px with faces.
+  - From 481px it stays centred on the screen until the faces pill would come within 8px, then moves left only that
+    far: `left: min(50%, calc(100% - 252px))`.
+- Gates:
+  - **`ui-test-chatfaces.js`** (45 checks, §1–§11): first visit, fresh and stale copies, nobody shown, the computer
+    pill in both themes, the chat's answer, owner and preview, the two pills from 320 to 768px with faces and with
+    the icon, the entrance, sanitising, and the no-team retry wait.
+  - test-integration **§91**: the same team as `thread` for a visitor, a guest and the owner, with no thread made and
+    nothing marked seen. Each half has a control showing that `thread` does both.
+  - **ui-test-cottagecards §6** now sweeps the faces pill, the wider one.
+  - Break-tests: 15 client mutations each failed their own named checks, and removing the server's `faces` branch
+    failed §91.
 
 ## Messages is a screen on a phone, not a pop-up (approved demo, built and merged without CI)
 

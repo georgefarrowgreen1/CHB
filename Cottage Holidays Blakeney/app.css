@@ -6858,6 +6858,33 @@ body.light-mode .chat-widget { --chat-ground: rgb(248, 248, 250); }
   pointer-events: none;
   transform: scale(0.6);
 }
+/* WHO ANSWERS, ON THE BUTTON (the approved Messages demo): with the team known the
+   round button is a pill of their faces and the word, on the sheet's ground, each
+   face's ring cut from it. Without one it stays the accent circle above. */
+.chat-fab.has-faces {
+  --chat-ground: var(--sheet-surface);
+  width: auto;
+  height: 52px;
+  gap: 12px;
+  padding: 0 20px 0 8px;
+  border-color: var(--glass-border);
+  border-radius: var(--r-pill);
+  background: var(--sheet-surface);
+  color: var(--text-light);
+  font-size: var(--fs-body);
+  font-weight: 600;
+}
+.chat-ava.is-fab {
+  width: 36px;
+  height: 36px;
+  font-size: var(--fs-headline);
+}
+.has-faces.is-arriving .chat-ava {
+  animation: chbAppear 320ms var(--settle) backwards;
+}
+.has-faces.is-arriving .chat-ava + .chat-ava {
+  animation-delay: 80ms;
+}
 body.owner-mode .chat-fab,
 body.owner-mode .chat-widget {
   display: none !important;

@@ -6,6 +6,7 @@
 //  visitor came from, a rough location, and their device at first contact.
 //
 //  PUBLIC (anonymous):
+//    POST {action:'faces'}                      -> who answers (team + away), nothing else
 //    POST {action:'thread', token}              -> messages for that token
 //    POST {action:'send', token, body, name, email, ref}  -> add (creates thread)
 //  GUEST (logged in):
@@ -391,6 +392,15 @@ function chat_nudge_mailbox()
         } catch (\Throwable $e) {
         }
     });
+}
+
+// ---------------- WHO ANSWERS, ON ITS OWN ----------------
+// The Messages button shows the people's faces before the chat has ever been
+// opened. Read-only and the same answer for everyone (owner, guest, visitor): no
+// thread is made, read or marked, unlike 'thread', which makes a signed-in guest's
+// thread and marks the owner's replies seen.
+if ($action === 'faces') {
+    json_out(['ok' => true, 'team' => chat_team(), 'away' => chat_away_state()]);
 }
 
 // ---------------- ADMIN ----------------
