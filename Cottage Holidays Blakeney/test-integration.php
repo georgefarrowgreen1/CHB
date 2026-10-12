@@ -6825,6 +6825,154 @@ $sg88e = $gStatus88($g88d);
 it_check('§88 …and saving their details answers with the same, password state included', is_array($up88['json']['guest'] ?? null) && $up88['json']['guest'] === $sg88e && ($sg88e['address'] ?? '') === '9 Quay Lane, Blakeney', $diff88($up88['json']['guest'] ?? null, $sg88e));
 @unlink($work . '/lib/WebAuthn/WebAuthn.php');
 
+// §89 A GUEST'S OWN USERNAME (approved demo). A guest chooses one in Your details and
+// signs in with it in place of their email. ONE NAME, ONE PERSON: unique among guests
+// (the column is UNIQUE) and against the back office's usernames (checked under one
+// lock); some names kept back; checked as it is typed and again when it is saved.
+// Signing in by username sends the code to the account's email without telling the
+// page the address; a back-office username still goes to its password.
+echo "\n== §89 a guest's own username ==\n";
+$cols89 = $rootDb->query("SHOW COLUMNS FROM `$DB_NAME`.guests LIKE 'username'")->fetchAll();
+$idx89 = $rootDb->query("SHOW INDEX FROM `$DB_NAME`.guests WHERE Column_name = 'username' AND Non_unique = 0")->fetchAll();
+it_check('§89 migration-148 adds guests.username with a UNIQUE key', count($cols89) === 1 && count($idx89) === 1);
+$a89 = [];
+$b89 = [];
+$itGuest($a89, 'Hannah Reed', 'hannah89@example.com');
+$itGuest($b89, 'Jo Eightynine', 'jo89@example.com');
+$un89 = function (array &$jar, string $u) {
+    return http($jar, 'POST', '/auth.php', ['action' => 'guest_username_check', 'username' => $u]);
+};
+$set89 = function (array &$jar, string $u) {
+    return http($jar, 'POST', '/auth.php', ['action' => 'guest_username_set', 'username' => $u]);
+};
+$r = $set89($b89, 'hannah89');
+it_check('§89 a guest saves a free username', $r['code'] === 200 && ($r['json']['guest']['username'] ?? '') === 'hannah89', $r['raw']);
+$r = http($b89, 'POST', '/auth.php', ['action' => 'guest_status']);
+it_check('§89 …and every description of them carries it (guest_status)', ($r['json']['guest']['username'] ?? '') === 'hannah89', $r['raw']);
+$r = $un89($a89, 'Hannah89');
+$sug89 = $r['json']['suggestions'] ?? [];
+it_check("§89 another guest's name is taken, capitals or not", ($r['json']['state'] ?? '') === 'taken' && ($r['json']['username'] ?? '') === 'hannah89', $r['raw']);
+$inUse89 = (int) $rootDb->query("SELECT COUNT(*) FROM `$DB_NAME`.guests WHERE username IN ('" . implode("','", array_map(fn($s) => preg_replace('/[^a-z0-9._-]/', '', (string) $s), $sug89 ?: ['-'])) . "')")->fetchColumn();
+it_check('§89 …with up to three free names to pick, none in use, each following the rule', count($sug89) >= 1 && count($sug89) <= 3 && $inUse89 === 0 && !array_filter($sug89, fn($s) => username_format_problem((string) $s) !== ''), json_encode($sug89));
+$r = $un89($a89, 'pia88');
+it_check("§89 a back-office username is taken too (one name, one person)", ($r['json']['state'] ?? '') === 'taken', $r['raw']);
+$r = $un89($a89, 'admin');
+it_check('§89 admin is kept back', ($r['json']['state'] ?? '') === 'kept', $r['raw']);
+$r = $un89($a89, 'test.cottage');
+it_check("§89 …and so is a cottage's name, dots or not", ($r['json']['state'] ?? '') === 'kept', $r['raw']);
+$bad89 = [];
+foreach (['ha' => 'At least 3', 'han nah' => 'No spaces', 'h@x.com' => 'an @', '_hannah' => 'Start with a letter', 'hannah!' => 'Only letters'] as $v => $want) {
+    $r = $un89($a89, $v);
+    if (($r['json']['state'] ?? '') !== 'bad' || strpos((string) ($r['json']['message'] ?? ''), $want) === false) {
+        $bad89[] = $v . ' → ' . substr($r['raw'], 0, 120);
+    }
+}
+it_check('§89 a name that breaks the rule is said in words (short, a space, an @, the first character, a symbol)', !$bad89, implode(' | ', $bad89));
+$r = $un89($a89, 'hannah.reed89');
+it_check('§89 a free name is free', ($r['json']['state'] ?? '') === 'free' && ($r['json']['suggestions'] ?? null) === [], $r['raw']);
+$r = $set89($a89, 'Hannah.Reed89');
+it_check('§89 saving it stores it lower case', $r['code'] === 200 && ($r['json']['guest']['username'] ?? '') === 'hannah.reed89', $r['raw']);
+$r = $un89($a89, 'hannah.reed89');
+it_check('§89 …and it reads as yours afterwards', ($r['json']['state'] ?? '') === 'yours', $r['raw']);
+$r = $set89($a89, 'hannah89');
+it_check("§89 the save checks again: another guest's name is refused (409 taken) with names to pick", $r['code'] === 409 && ($r['json']['code'] ?? '') === 'taken' && !empty($r['json']['suggestions']), $r['raw']);
+$r = $set89($a89, 'admin');
+it_check('§89 …and a kept-back one (409 kept)', $r['code'] === 409 && ($r['json']['code'] ?? '') === 'kept', $r['raw']);
+$r = $set89($a89, 'h@x');
+it_check('§89 …and one that breaks the rule (400)', $r['code'] === 400 && ($r['json']['code'] ?? '') === 'bad', $r['raw']);
+$r = http($a89, 'POST', '/auth.php', ['action' => 'guest_status']);
+it_check('§89 a refused save leaves the name they had', ($r['json']['guest']['username'] ?? '') === 'hannah.reed89', $r['raw']);
+// TWO PEOPLE SAVING ONE FREE NAME AT THE SAME MOMENT: exactly one gets it.
+$c89 = [];
+$d89 = [];
+$itGuest($c89, 'Cal Eightynine', 'cal89@example.com');
+$itGuest($d89, 'Dee Eightynine', 'dee89@example.com');
+$race89 = function (array $jar) use ($BASE) {
+    $h = curl_init($BASE . '/auth.php');
+    curl_setopt_array($h, [CURLOPT_POST => true, CURLOPT_RETURNTRANSFER => true, CURLOPT_TIMEOUT => 30, CURLOPT_POSTFIELDS => json_encode(['action' => 'guest_username_set', 'username' => 'sameword89']), CURLOPT_HTTPHEADER => ['Content-Type: application/json', 'Accept: application/json', 'Cookie: ' . implode('; ', array_map(fn($k) => "$k={$jar[$k]}", array_keys($jar)))]]);
+    return $h;
+};
+$mh89 = curl_multi_init();
+$hs89 = [$race89($c89), $race89($d89)];
+foreach ($hs89 as $h) {
+    curl_multi_add_handle($mh89, $h);
+}
+do {
+    curl_multi_exec($mh89, $running89);
+    curl_multi_select($mh89, 1.0);
+} while ($running89 > 0);
+$codes89 = array_map(fn($h) => (int) curl_getinfo($h, CURLINFO_HTTP_CODE), $hs89);
+sort($codes89);
+$holders89 = (int) $rootDb->query("SELECT COUNT(*) FROM `$DB_NAME`.guests WHERE username = 'sameword89'")->fetchColumn();
+it_check('§89 two guests saving one free name at the same moment: one gets it, the other is told it went (200 + 409)', $codes89 === [200, 409] && $holders89 === 1, json_encode($codes89) . ' holders=' . $holders89);
+foreach ($hs89 as $h) {
+    curl_multi_remove_handle($mh89, $h);
+}
+// THE BACK OFFICE MEETS THE SAME RULE: no rename onto a guest's name, and an invite's
+// username skips every name in use. §80 changed the owner's password and ended the
+// old session, so the owner signs in again (as §83 does).
+$adm89 = [];
+$r = http($adm89, 'POST', '/auth.php', ['action' => 'admin_login', 'username' => 'owner', 'password' => 'it-pass-80-reset']);
+it_check('§89 (fixture) the owner signs in again', $r['code'] === 200 && !empty($r['json']['ok']), $r['raw']);
+$r = http($adm89, 'POST', '/auth.php', ['action' => 'admin_me_set', 'field' => 'username', 'value' => 'hannah89']);
+it_check("§89 a back-office rename onto a guest's username is refused (409)", $r['code'] === 409, $r['raw']);
+$r = http($adm89, 'POST', '/people.php', ['action' => 'invite', 'name' => 'Hannah89', 'email' => 'hannah89-office@example.com', 'role' => 'host']);
+$inv89 = (string) $rootDb->query("SELECT username FROM `$DB_NAME`.admins WHERE email = 'hannah89-office@example.com'")->fetchColumn();
+it_check("§89 an invite's username skips a guest's (hannah89 is a guest's, so not that)", $r['code'] === 200 && $inv89 !== '' && $inv89 !== 'hannah89', $r['raw'] . ' username=' . $inv89);
+// SIGNING IN BY USERNAME: the code goes to the account's email, never named to the page.
+$rootDb->prepare("DELETE FROM `$DB_NAME`.login_attempts WHERE identifier IN ('guestcode', 'code:hannah89@example.com', 'codev:hannah89@example.com')")->execute();
+$s89 = [];
+$r = http($s89, 'POST', '/auth.php', ['action' => 'guest_code_request', 'email' => 'Hannah.Reed89']);
+$code89 = (int) $rootDb->query("SELECT COUNT(*) FROM `$DB_NAME`.guest_codes WHERE email = 'hannah89@example.com' AND used_at IS NULL")->fetchColumn();
+it_check('§89 a username asks for a code: it is made for the account\'s email, and the page is told only that one is on its way', $r['code'] === 200 && ($r['json']['username'] ?? null) === true && $code89 === 1 && strpos($r['raw'], 'hannah89@') === false, $r['raw']);
+$cSet('hannah89@example.com', '515151');
+$r = http($s89, 'POST', '/auth.php', ['action' => 'guest_code_verify', 'email' => 'hannah.reed89', 'code' => '515151']);
+it_check('§89 …and the code, sent with the username, signs that guest in', $r['code'] === 200 && ($r['json']['guest']['email'] ?? '') === 'hannah89@example.com', $r['raw']);
+$r = http($s89, 'POST', '/auth.php', ['action' => 'guest_code_request', 'email' => 'owner']);
+it_check('§89 a back-office username is told to ask for its password, and no code is sent', $r['code'] === 200 && ($r['json']['office'] ?? null) === true && !isset($r['json']['username']), $r['raw']);
+$r = http($s89, 'POST', '/auth.php', ['action' => 'guest_code_request', 'email' => 'nobody89']);
+it_check('§89 a username nobody has is said so (404 no_username, naming it)', $r['code'] === 404 && ($r['json']['code'] ?? '') === 'no_username' && strpos((string) ($r['json']['error'] ?? ''), 'nobody89') !== false, $r['raw']);
+$r = http($s89, 'POST', '/auth.php', ['action' => 'guest_code_request', 'email' => 'john smith']);
+it_check('§89 something that is neither an email nor a username asks for one (400)', $r['code'] === 400 && ($r['json']['code'] ?? '') === 'not_username', $r['raw']);
+$r = http($a89, 'POST', '/auth.php', ['action' => 'guest_change_password', 'current' => '', 'next' => 'hannah-pass-89']);
+$p89 = [];
+$r = http($p89, 'POST', '/auth.php', ['action' => 'guest_login', 'email' => 'hannah.reed89', 'password' => 'hannah-pass-89']);
+it_check('§89 a username and password sign in too', $r['code'] === 200 && ($r['json']['guest']['email'] ?? '') === 'hannah89@example.com', $r['raw']);
+$p89b = [];
+$r = http($p89b, 'POST', '/auth.php', ['action' => 'guest_login', 'email' => 'hannah.reed89', 'password' => 'not-it-89']);
+it_check('§89 …a wrong password says "Username or password", never the address', $r['code'] === 401 && strpos((string) ($r['json']['error'] ?? ''), 'Username or password') === 0 && strpos($r['raw'], 'hannah89@') === false, $r['raw']);
+$warns89 = fn() => (int) $rootDb->query("SELECT COUNT(*) FROM `$DB_NAME`.activity_log WHERE action IN ('admin.login_fail', 'admin.login_burst')")->fetchColumn();
+$w89 = $warns89();
+$p89c = [];
+$r = http($p89c, 'POST', '/auth.php', ['action' => 'admin_login', 'username' => 'hannah.reed89', 'password' => 'not-it-89']);
+it_check("§89 a guest's username tried at the back office is refused without a warning in your log", $r['code'] === 401 && $warns89() === $w89, $r['raw']);
+// YOUR GUEST LIST SHOWS IT, AND THEIR DATA CARRIES IT.
+// A cottage of its own, so nothing an earlier section did to the shared one (its
+// limits, its calendar) decides whether this booking is taken.
+$r = http($adm89, 'POST', '/rates.php', ['action' => 'create', 'name' => 'Username Cottage', 'couple_rate' => 100]);
+$pk89 = (string) ($r['json']['property']['prop_key'] ?? ($r['json']['prop_key'] ?? ''));
+$add89 = http($adm89, 'POST', '/bookings.php', ['action' => 'add', 'prop_key' => $pk89, 'name' => 'Hannah Reed', 'email' => 'hannah89@example.com', 'phone' => '', 'check_in' => date('Y-m-d', strtotime('+601 days')), 'check_out' => date('Y-m-d', strtotime('+604 days')), 'adults' => 1, 'children' => 0, 'payment' => 'unpaid']);
+it_check('§89 (fixture) a booking for the guest, so they are in your Guest list', $pk89 !== '' && (int) ($add89['json']['id'] ?? 0) > 0, $add89['raw']);
+$crm89 = http($adm89, 'POST', '/auth.php', ['action' => 'guest_crm']);
+$row89 = array_values(array_filter($crm89['json']['guests'] ?? [], fn($g) => ($g['email'] ?? '') === 'hannah89@example.com'));
+it_check('§89 your Guest list carries the username beside the guest', ($row89[0]['username'] ?? '') === 'hannah.reed89', json_encode($row89[0] ?? null) . ' crm=' . substr($crm89['raw'], 0, 160));
+$r = http($a89, 'POST', '/auth.php', ['action' => 'guest_export_data']);
+it_check('§89 "Download my data" carries it', ($r['json']['data']['account']['username'] ?? '') === 'hannah.reed89', substr($r['raw'], 0, 200));
+// ONLY A PROVEN ACCOUNT MAY HAVE ONE: a username signs in in place of the email.
+$itLegacyGuest('Una Proven', 'una89@example.com', 'una-pass-8989');
+$u89 = [];
+http($u89, 'POST', '/auth.php', ['action' => 'guest_login', 'email' => 'una89@example.com', 'password' => 'una-pass-8989']);
+$r = $un89($u89, 'una89');
+$r2 = $set89($u89, 'una89');
+it_check('§89 an account that never proved its email cannot check or save one (403)', $r['code'] === 403 && $r2['code'] === 403, $r['raw'] . ' | ' . $r2['raw']);
+// REMOVED: they sign in with their email, as before, and the name is free again.
+$r = $set89($a89, '');
+it_check('§89 an empty save removes it', $r['code'] === 200 && ($r['json']['guest']['username'] ?? 'x') === '', $r['raw']);
+$r = http($s89, 'POST', '/auth.php', ['action' => 'guest_code_request', 'email' => 'hannah.reed89']);
+it_check('§89 …after which that name signs nobody in', $r['code'] === 404, $r['raw']);
+$r = $un89($b89, 'hannah.reed89');
+it_check('§89 …and is free for someone else', ($r['json']['state'] ?? '') === 'free', $r['raw']);
+
 echo "\n== Summary ==\n";
 if ($fail) {
     echo "  $fail CHECK(S) FAILED \xE2\x9D\x8C\n\n";

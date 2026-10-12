@@ -5885,8 +5885,8 @@ are GONE (`switchGuestTab` survives as a compat opener).
   minutes of the code) — no password, no address; the account is born verified because the code
   proved the inbox.
 - **Six digits auto-verify**; a wrong code says how many tries are left, the fifth retires it; a
-  30s cool-down guards "Send a new code". The owner's USERNAME (no @) goes straight to the password
-  step and `guestLogin` tries `admin_login` first, as before.
+  30s cool-down guards "Send a new code". Anything typed without an @ is a USERNAME and is looked up
+  first (see "A guest's own username" below): a back-office one still goes to the password step.
 - **The device is remembered** (`chb-last-guest`: name + email only, forgotten on account delete) so
   the sheet opens on "Continue as …". A passkey is offered IN the email field (conditional
   mediation, `authPasskeyAutofill`). A likely domain typo is offered once (`authTypoFix`).
@@ -5898,6 +5898,70 @@ are GONE (`switchGuestTab` survives as a compat opener).
 - Gates: test-integration §50 (request/verify/register, tries, expiry, the proof rules),
   test-emails-render (`send_guest_code_email`, both kinds), **ui-test-signin.js** (§1–§5);
   e2e / ui-test-reach / ui-test-hig re-aimed off the tabs.
+
+## A guest's own username (approved demo, built and merged without CI)
+
+**Asked for as "give guests the ability to set their own username, don't allow one that is already taken", demoed,
+then "Build it, merge without CI" and "Usernames stay private, show username in the guests list".** A guest picks a
+name on Your details and may then type it in place of their email to sign in. Code: `username-lib.php` (pure),
+the "Usernames: the database half" block in db.php, `guest_ident` and the `guest_username_*` actions in auth.php,
+migration-148, the USERNAME block in app.js (`gaUsername*`, `gaUn*`, `authByUsername`), `.gu-*` in app.css.
+- **ONE RULE FOR EVERYONE WHO SIGNS IN** (`username_format_problem`, username-lib.php): 3 to 40 of a–z, 0–9, `.`,
+  `_`, `-`, starting with a letter or a number, never an @ (the @ is how the sign-in box tells a username from an
+  email). Stored lower case. `people_username_problem` (the back office's) now returns the same sentence, and the
+  client's `gaUnFmt` says the same words at once so typing is not a wait — test-people §14 holds the two lists of
+  messages equal.
+- **KEPT BACK FROM GUESTS** (`USERNAME_KEPT` plus every cottage's name, key and slug, removed cottages included —
+  `username_kept_extra`), compared SQUASHED (`.`, `_`, `-` ignored, so "a.d.m.i.n" is "admin"): words a guest could
+  use to look like the business. The back office is the business, so these apply to guests only.
+- **ONE NAME, ONE PERSON, across both tables.** `guests.username` is UNIQUE (migration-148); a guest's name may not
+  be a back-office username nor the other way round, so the check and the write happen inside `username_locked()`
+  (`GET_LOCK('chb_usernames', 5)`): the guest save, `admin_me_set` 'username' and the Permissions invite all take
+  it. A lock that cannot be had still runs (the UNIQUE key covers guest against guest); a duplicate-key error on the
+  write (`db_duplicate`) is answered as "taken", which is the guest-against-guest race §89 drives with two
+  simultaneous saves (one 200, one 409).
+- **ONLY A PROVEN ACCOUNT** may check or save one (`require_guest_proven`), or a squatter could hold a name on an
+  address they never proved. Proving an address from another browser clears the earlier claim's username along with
+  its phones and chat (`guest_prove_address`).
+- **THE VERDICT** (`username_verdict`): `bad` (the rule, in words) / `yours` / `kept` / `taken` / `free`, and when it
+  can't be had up to three FREE names (`username_suggest` over `username_candidates`): the typed name with a 2, then
+  shapes of their own name (first.last, first_last, last.first …), then more numbers — three different ideas, not
+  one name counted up. A kept name is never offered back with a number ("admin2"). Saved names come back as the
+  sheet's 409 `taken`/`kept` with `suggestions`, which `apiErr` now carries (`e.suggestions`).
+- **SIGNING IN BY USERNAME** (`guest_ident`): anything without an @ is looked up. A guest's username sends the code
+  to that account's email and **the address is never sent to the page** (`{ok, username: true}`; the code step says
+  "the email on your account"); a back-office username answers `{ok, office: true}` and the sheet goes to the
+  password step as before; a username nobody has is 404 `no_username` in words; something that could be neither is
+  400 `not_username`. An OLDER server answers a plain `{ok: true}`, which the client reads as the password step, so a
+  stale page and an old stub both still work. `guest_login` and `guest_code_verify` take the username too;
+  `guest_login` is throttled per username until it names an account, then per account, so switching between the two
+  buys no fresh allowance. `admin_login` answers a GUEST's username with a plain 401 and no warn row: a guest typing
+  their name is not someone trying the back office. NB a username's existence IS answered (the approved demo's
+  "There's no account with the username X"); the email behind it never is, and the throttles bound the guessing.
+- **PRIVATE**: only the guest and the back office see it — never on reviews, photos or the chat. The owner's Guest
+  list shows it beside the name (`.gst-un`), lists it in the row's facts, and its search matches it; it rides
+  `guest_crm` (with a fallback query before the migration) and "Download my data".
+- **The sheet** (`gaUsername`, a `.chb-sheet` bottom sheet with its own history entry, Escape and Back): a mark and
+  one status line (checking / available / taken / not available / the rule), suggestions as chips, Save disabled
+  until the name is free, a shake when tapped early, and "Remove my username" (asks first; signing in by email always
+  works). Capitals are lowered as they are typed with the caret kept. Every answer is sequence-guarded, so a slow
+  check never paints over a newer keystroke or a closed sheet. A deviation from the demo, said plainly: the Remove
+  link is new.
+- Gates: test-integration **§89** (the column and key, the verdicts and messages, suggestions free and valid, a
+  back-office name taken both ways, the invite skipping a guest's name, the two-way race, sign-in by code and by
+  password with no address in any reply, `admin_login` not logging a guest's name, the Guest list and the export,
+  an unproven account refused, removal), **ui-test-username.js** (45 checks: the row, every sheet state, the race,
+  Escape/Back/remove, the sign-in routes incl. an old server, the Guest list), test-people §14 (16 checks: the rule,
+  kept words, candidates, the client/server messages), ui-test-signin §5 re-aimed (a back-office username is looked
+  up, then goes to its password with no code sent). Nine server mutations and ten client mutations break-tested,
+  each failing its own named checks.
+- **Traps the gates taught**: §80 changes the first owner's password (`it-pass-80-reset`), so a late section signs
+  in again; `owner` is itself a kept word, so a back-office "taken" check needs another name (`pia88`, §88's); the
+  Guest list fixture needs a cottage of its own, or a §-earlier stay on the shared one clashes; and the ui suite's
+  waits ANSWER (`until`/`stepIs`) rather than throw, because a throwing wait turned a break-test into a crash on
+  stderr that counted no failed checks.
+- Budget: app.js +2.5KB gz shipped (the sheet and the sign-in routing; everyone downloads app.js, and an account
+  bundle split was measured and rejected earlier).
 
 ## The Key safes page: a status line, a to-do, one list (approved "simpler" demo)
 

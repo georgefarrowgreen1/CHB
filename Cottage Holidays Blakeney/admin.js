@@ -16364,7 +16364,8 @@ function gstRender() {
     statsEl.innerHTML = stat('', gbp(Math.round(total)).replace('.00', ''), 'Spent by ' + all.length + ' guest' + (all.length === 1 ? '' : 's'), 'all')
         + stat('back', String(nBack), 'Coming back', 'back') + stat('invite', String(nInv), 'To invite back', 'invite');
     const q = __gst.q.trim().toLowerCase();
-    const shown = all.filter((g) => (!q || String(g.name || '').toLowerCase().includes(q) || g.f.email.includes(q)) && (!__gst.filter || g.f.kind === __gst.filter))
+    // A guest is found by name, email or the username they chose.
+    const shown = all.filter((g) => (!q || String(g.name || '').toLowerCase().includes(q) || g.f.email.includes(q) || String(g.username || '').includes(q)) && (!__gst.filter || g.f.kind === __gst.filter))
         .sort((a, b) => (Number(b.ltv) || 0) - (Number(a.ltv) || 0));
     const chip = __gst.filter ? `<button type="button" class="gst-chip" ${chbAttrs('gstFilter', __gst.filter)}>Showing: ${__gst.filter === 'back' ? 'coming back' : 'worth inviting back'} <span aria-hidden="true">✕</span></button>` : '';
     if (!shown.length) {
@@ -16391,7 +16392,7 @@ function gstRowHtml(g) {
     const tone = invited && f.kind === 'invite' ? 'sent' : f.kind;
     const head = `<button type="button" class="gst-row" aria-expanded="${open}" ${chbAttrs('gstToggle', email)}>
             <span class="gst-av tag-${escapeHtml(f.cotKey)}" aria-hidden="true">${escapeHtml(initials)}</span>
-            <span class="gst-main"><b>${escapeHtml(g.name || email)}</b><small class="is-${tone}">${escapeHtml(sub)}</small></span>
+            <span class="gst-main"><b>${escapeHtml(g.name || email)}${g.username ? `<span class="gst-un">${escapeHtml(g.username)}</span>` : ''}</b><small class="is-${tone}">${escapeHtml(sub)}</small></span>
             <span class="gst-fig"><b>${gbp(Number(g.ltv) || 0).replace('.00', '')}</b>${f.stars ? `<small>★ ${f.stars}</small>` : ''}</span>
         </button>`;
     return `<div class="acw-prow gst-item${open ? ' is-open' : ''}" data-gemail="${escapeHtml(email)}">${head}<div class="gst-more"${open ? '' : ' hidden'}>${gstDetailHtml(g, first)}</div></div>`;
@@ -16405,6 +16406,8 @@ function gstDetailHtml(g, first) {
         ? gstCardHtml('Invitation sent', email, GST_IC.home, 'Invites ' + escapeHtml(first) + ' back to ' + escapeHtml(f.cot), '',
             !!(__gst.invitedFresh && __gst.invitedFresh.email === email && Date.now() - __gst.invitedFresh.at < 2000)) : '';
     const facts = [['Email', escapeHtml(email), '']];
+    // The username a guest chose to sign in with: shown to you, private from everyone else.
+    if (g.username) facts.push(['Username', escapeHtml(g.username), '']);
     if (f.next) facts.push(['Booked', fmtStayRange(String(f.next.b.checkIn || '').slice(0, 10), String(f.next.b.checkOut || '').slice(0, 10)) + ' · ' + escapeHtml((propertyMeta[f.next.pk] || {}).name || f.next.pk), gstAmt(f.next)]);
     f.past.forEach((s) => facts.push(['Stayed', fmtStayRange(String(s.b.checkIn || '').slice(0, 10), String(s.b.checkOut || '').slice(0, 10)) + ' · ' + escapeHtml((propertyMeta[s.pk] || {}).name || s.pk), gstAmt(s)]));
     const target = f.next || f.last;

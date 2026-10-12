@@ -7532,6 +7532,8 @@ body.owner-mode .cal-tools .mo-tool {
 .gst-main { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
 .gst-main b, .gst-main small { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .gst-main b { font-size: var(--fs-body); font-weight: 500; }
+/* The username a guest chose, beside their name (private to the guest and you). */
+.gst-un { margin-left: 8px; font-size: var(--fs-sub); font-weight: 400; color: var(--text-muted); }
 .gst-main small { font-size: var(--fs-sub); color: var(--text-muted); }
 .gst-main small.is-back { color: var(--info-text); }
 .gst-main small.is-invite { color: var(--warn-text); }

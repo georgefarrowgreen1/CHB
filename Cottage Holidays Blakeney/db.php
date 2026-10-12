@@ -580,7 +580,121 @@ function guest_me_payload($gid)
     // offers to SET one rather than change it.
     $g['has_password'] = !empty($g['has_password']);
     $g['avatar'] = guest_avatar_v((int) $gid);
+    $g['username'] = guest_username_of((int) $gid);
     return $g;
+}
+// The username a guest chose, or '' (none, or the column not migrated yet).
+function guest_username_of($gid)
+{
+    try {
+        $q = db()->prepare('SELECT username FROM guests WHERE id = ?');
+        $q->execute([(int) $gid]);
+        return (string) ($q->fetchColumn() ?: '');
+    } catch (\Throwable $e) {
+        return '';
+    }
+}
+
+// ---- Usernames: the database half (the rule is username-lib.php) ----
+// ONE NAME, ONE PERSON. A guest's username may not be anyone's back-office
+// username, nor the other way round. The guests' column is UNIQUE; across the two
+// tables the check and the write happen inside username_locked(), so a guest and a
+// back-office rename racing for one name cannot both win it.
+function username_locked(callable $fn)
+{
+    $got = false;
+    try {
+        $s = db()->prepare('SELECT GET_LOCK(?, 5)');
+        $s->execute(['chb_usernames']);
+        $got = (int) $s->fetchColumn() === 1;
+    } catch (\Throwable $e) {
+    }
+    try {
+        return $fn();
+    } finally {
+        if ($got) {
+            try {
+                db()->prepare('SELECT RELEASE_LOCK(?)')->execute(['chb_usernames']);
+            } catch (\Throwable $e) {
+            }
+        }
+    }
+}
+// Who has this username: ['guest', id], ['admin', id] or null. Removed and invited
+// back-office people still hold theirs. Before migration-148 no guest has one.
+function username_owner(string $u): ?array
+{
+    if ($u === '') {
+        return null;
+    }
+    foreach (['guest' => 'guests', 'admin' => 'admins'] as $kind => $table) {
+        try {
+            $q = db()->prepare("SELECT id FROM $table WHERE username = ? LIMIT 1");
+            $q->execute([$u]);
+            $id = $q->fetchColumn();
+            if ($id !== false) {
+                return [$kind, (int) $id];
+            }
+        } catch (\Throwable $e) {
+        }
+    }
+    return null;
+}
+// Which of these names someone already has, in either table.
+function usernames_in_use(array $names): array
+{
+    $names = array_values(array_unique(array_filter(array_map('strval', $names), fn($n) => $n !== '')));
+    if (!$names) {
+        return [];
+    }
+    $in = implode(',', array_fill(0, count($names), '?'));
+    $out = [];
+    foreach (['guests', 'admins'] as $table) {
+        try {
+            $q = db()->prepare("SELECT username FROM $table WHERE username IN ($in)");
+            $q->execute($names);
+            foreach ($q->fetchAll(PDO::FETCH_COLUMN) as $u) {
+                $out[strtolower((string) $u)] = true;
+            }
+        } catch (\Throwable $e) {
+        }
+    }
+    return array_keys($out);
+}
+// The cottages' names, kept back from guests: every cottage, removed ones too, so a
+// removed cottage's name can't become a guest's.
+function username_kept_extra(): array
+{
+    static $w = null;
+    if ($w === null) {
+        try {
+            $w = username_kept_words(db()->query('SELECT prop_key, name, slug FROM properties')->fetchAll());
+        } catch (\Throwable $e) {
+            $w = username_kept_words([['prop_key' => '21a', 'name' => '21A Westgate'], ['prop_key' => 'jollyboat', 'name' => 'Jollyboat'], ['prop_key' => 'pimpernel', 'name' => 'Pimpernel']]);
+        }
+    }
+    return $w;
+}
+// Up to three free names to offer in place of one that can't be had.
+function username_suggest(string $u, string $name): array
+{
+    $cands = username_candidates($u, $name, username_kept_extra());
+    return array_slice(array_values(array_diff($cands, usernames_in_use($cands))), 0, 3);
+}
+// A guest's verdict on a name, as the sheet shows it: 'bad' (the rule, in words),
+// 'yours', 'kept', 'taken' or 'free', with names to offer when it can't be had.
+function username_verdict(string $u, int $gid, string $name): array
+{
+    $bad = username_format_problem($u);
+    if ($bad !== '') {
+        return ['state' => 'bad', 'message' => $bad, 'suggestions' => []];
+    }
+    $own = username_owner($u);
+    if ($own && $own[0] === 'guest' && $own[1] === $gid) {
+        return ['state' => 'yours', 'suggestions' => []];
+    }
+    $state = username_kept($u, username_kept_extra()) ? 'kept' : ($own ? 'taken' : 'free');
+    return ['state' => $state, 'suggestions' => $state === 'free' ? [] : username_suggest($u, $name)];
 }
 
 // ---- JSON helpers ----
@@ -1319,6 +1433,11 @@ function require_fits(array $in, array $limits)
 function db_schema_missing(\Throwable $e): bool
 {
     return $e instanceof PDOException && in_array((string) $e->getCode(), ['42S02', '42S22'], true);
+}
+// Did a write break a UNIQUE key (someone got there first)?
+function db_duplicate(\Throwable $e): bool
+{
+    return $e instanceof PDOException && (string) $e->getCode() === '23000' && (int) ($e->errorInfo[1] ?? 0) === 1062;
 }
 // When a sign-in names an account that doesn't exist (or one with no password),
 // verify against a dummy hash anyway, so the answer takes the same time either way

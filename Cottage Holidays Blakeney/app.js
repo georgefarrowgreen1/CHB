@@ -7,11 +7,11 @@
 // the window properties when the bundle loads. Deploy checklist: bump ADMIN_V
 // whenever admin.js changes (it is the ?v= cache-buster).
 // ============================================================
-const ADMIN_BUNDLE_V = 790;
+const ADMIN_BUNDLE_V = 791;
 // admin.css is the owner-only stylesheet, split out of app.css so guests never
 // download it. Injected here (not a static <link>) and version-stamped on its
 // own — bump when admin.css changes. Kept OUT of the sw.js CORE precache.
-const ADMIN_CSS_V = 410;
+const ADMIN_CSS_V = 411;
 function ensureAdminCss() {
     if (document.getElementById('admin-css')) return Promise.resolve();
     return new Promise((resolve) => {
@@ -1622,9 +1622,15 @@ function previewBlockedToast() {
 // Object.assign, not assignment, so both fields are part of the type.
 // `left` is how many tries a code has left. It was dropped here, so the sign-in
 // sheet's "1 more try, or send a new one" could never show.
-function apiErr(message, status, code, left) {
+// `suggestions`: names to offer in place of a username that can't be had (auth.php).
+function apiErr(message, status, code, left, suggestions) {
     const n = Number(left);
-    return Object.assign(new Error(message), { status: status, code: code ? String(code) : '', left: left !== undefined && Number.isFinite(n) ? n : undefined });
+    return Object.assign(new Error(message), {
+        status: status,
+        code: code ? String(code) : '',
+        left: left !== undefined && Number.isFinite(n) ? n : undefined,
+        suggestions: Array.isArray(suggestions) ? suggestions.map(String).slice(0, 3) : [],
+    });
 }
 // NO IN-FLIGHT COALESCING HERE, and that is a decision, not an omission: it was shipped
 // and WITHDRAWN. This is the app's only POST channel and several of its busiest calls are
@@ -1715,7 +1721,7 @@ async function apiPostCore(endpoint, payload, opts) {
         if (res.status === 401) maybeHandleStaleAdmin(data.code);
         // `code` where the endpoint gives one, so a caller can tell apart outcomes that
         // both arrive as "not done": `already_sent` means the guest HAS the email.
-        throw apiErr(data.error || 'That didn’t go through — check your signal and try again.', res.status, data.code, data.left);
+        throw apiErr(data.error || 'That didn’t go through — check your signal and try again.', res.status, data.code, data.left, data.suggestions);
     }
     chbClockSync(data.srv);
     // A request that just SUCCEEDED is the only honest connectivity probe there
@@ -1771,7 +1777,7 @@ async function apiGetCore(endpoint) {
     }
     if (!res.ok) {
         if (res.status === 401) maybeHandleStaleAdmin(data.code);
-        throw apiErr(data.error || 'That didn’t go through — check your signal and try again.', res.status, data.code, data.left);
+        throw apiErr(data.error || 'That didn’t go through — check your signal and try again.', res.status, data.code, data.left, data.suggestions);
     }
     chbClockSync(data.srv);
     return data;
@@ -3926,6 +3932,7 @@ function renderGuestAccount(dir) {
             gaGroup([
                 gaRow({ t: 'Name', s: g.name || none, act: chbAttrs('gaEdit', 'name'), chev: true }),
                 gaRow({ t: 'Email', s: g.email || '', v: `<span class="ga-lock" title="Locked">${gaSvg('lock')}</span>`, static: true }),
+                gaRow({ t: 'Username', s: g.username || 'Choose a username', act: 'data-act="gaUsername"', chev: true, cls: 'ga-unrow' }),
                 gaRow({ t: 'Phone', s: g.phone || none, act: chbAttrs('gaEdit', 'phone'), chev: true }),
                 gaRow({ t: 'Address', s: g.address || none, act: chbAttrs('gaEdit', 'address'), chev: true }),
                 gaRow({ t: 'Postcode', s: g.postcode || none, act: chbAttrs('gaEdit', 'postcode'), chev: true }),
@@ -4727,6 +4734,228 @@ async function gaEdit(field) {
         }
     }
 }
+// ---- THE USERNAME (approved demo): a name a guest signs in with in place of their
+// email. Checked as it is typed — the server's verdict (free, yours, taken, kept
+// back, or the rule in words), with up to three free names when it can't be had —
+// and checked again when it is saved: two people saving one name at the same moment
+// cannot both get it, and the one who loses is told so in place, with names to pick.
+// Private like the photo: only the guest and the owner see it. The rule is
+// username-lib.php's; gaUnFmt says the same words at once so typing isn't a wait.
+let __gaUn = { state: 'empty', name: '', seq: 0, t: 0, sugg: [] };
+function gaUnFmt(v) {
+    if (/\s/.test(v)) return 'No spaces. A dot, dash or underscore works instead.';
+    if (v.includes('@')) return 'A username can’t have an @ in it. That’s how we tell it from an email.';
+    if (/[^a-z0-9._-]/.test(v)) return 'Only letters a to z, numbers, dots, dashes and underscores.';
+    if (!/^[a-z0-9]/.test(v)) return 'Start with a letter or a number.';
+    if (v.length < 3) return 'At least 3 characters.';
+    if (v.length > 40) return 'At most 40 characters.';
+    return '';
+}
+function gaUnSheetEl() {
+    let o = document.getElementById('ga-uname-sheet');
+    if (o) return o;
+    o = document.createElement('div');
+    o.id = 'ga-uname-sheet';
+    o.className = 'modal-overlay pop-modal chb-sheet';
+    o.setAttribute('role', 'dialog');
+    o.setAttribute('aria-modal', 'true');
+    o.setAttribute('aria-labelledby', 'gu-title');
+    o.dataset.act = 'backdropClose';
+    o.dataset.close = 'gaUsernameClose';
+    o.innerHTML = '<div class="modal-box glass-panel ga-sheetbox"></div>';
+    document.body.appendChild(o);
+    return o;
+}
+function gaUsername() {
+    const o = gaUnSheetEl();
+    const box = /** @type {HTMLElement} */ (o.querySelector('.ga-sheetbox'));
+    const cur = (currentGuest && currentGuest.username) || '';
+    box.innerHTML =
+        `<h2 class="ga-sheet-t" id="gu-title">Your username</h2><p class="ga-sheet-s">Sign in with it instead of your email. Only you and ${escapeHtml(businessShortName())} can see it.</p>` +
+        `<form class="gu-form" id="gu-form" data-act-submit="gaUsernameSubmit" data-pass="event" novalidate>` +
+        `<label class="ga-alabel" for="gu-input">Username</label>` +
+        `<div class="ga-ainp gu-field" id="gu-field"><input id="gu-input" type="text" maxlength="40" autocomplete="off" autocapitalize="none" autocorrect="off" spellcheck="false" aria-describedby="gu-status" data-act-input="gaUsernameInput" data-pass="self"><span class="gu-mark" id="gu-mark" aria-hidden="true"></span></div>` +
+        `<p class="gu-status" id="gu-status" aria-live="polite"></p>` +
+        `<div class="ga-afix gu-sugg" id="gu-sugg" hidden></div>` +
+        `<button type="submit" class="ga-big pri" id="gu-save" aria-disabled="true">Save</button>` +
+        `</form>` +
+        (cur ? `<button type="button" class="ga-alink is-mute gu-remove" data-act="gaUsernameRemove">Remove my username</button>` : '') +
+        `<button type="button" class="btn-glass ga-sheet-cancel" data-act="gaUsernameClose">Cancel</button>`;
+    __gaUn = { state: 'empty', name: '', seq: __gaUn.seq + 1, t: 0, sugg: [] };
+    const inp = /** @type {HTMLInputElement} */ (box.querySelector('#gu-input'));
+    inp.value = cur;
+    gaUnCheck(cur, true);
+    o.classList.remove('closing');
+    o.classList.add('open');
+    overlayHistPush();
+    setTimeout(() => {
+        try {
+            inp.focus({ preventScroll: true });
+            inp.setSelectionRange(inp.value.length, inp.value.length);
+        } catch (e) {}
+    }, 60);
+}
+function gaUsernameClose() {
+    const o = document.getElementById('ga-uname-sheet');
+    clearTimeout(__gaUn.t);
+    __gaUn.seq++; // an answer still on its way belongs to a sheet that has gone
+    if (!o || !o.classList.contains('open')) return;
+    overlayHistConsume();
+    chbCloseOverlay(o);
+}
+// Capitals are lowered as they are typed, the caret kept where it was.
+function gaUsernameInput(el) {
+    const lower = String(el.value || '').toLowerCase();
+    if (el.value !== lower) {
+        const p = el.selectionStart;
+        el.value = lower;
+        try {
+            el.setSelectionRange(p, p);
+        } catch (e) {}
+    }
+    gaUnCheck(el.value, false);
+}
+function gaUsernamePick(name) {
+    const inp = /** @type {HTMLInputElement|null} */ (document.getElementById('gu-input'));
+    if (!inp) return;
+    inp.value = String(name || '');
+    gaUnCheck(inp.value, true);
+    inp.focus();
+}
+function gaUnCheck(raw, immediate) {
+    const v = String(raw || '').toLowerCase();
+    const seq = ++__gaUn.seq;
+    clearTimeout(__gaUn.t);
+    __gaUn.name = v;
+    if (!v) return gaUnPaint('empty', v);
+    const bad = gaUnFmt(v);
+    // Still typing a name too short to judge: said quietly, not as a mistake.
+    if (bad) return gaUnPaint(bad === 'At least 3 characters.' ? 'short' : 'bad', v, bad);
+    if (v === ((currentGuest && currentGuest.username) || '')) return gaUnPaint('yours', v);
+    gaUnPaint('checking', v);
+    __gaUn.t = window.setTimeout(async () => {
+        let res = null;
+        let err = null;
+        try {
+            res = await apiPost('auth.php', { action: 'guest_username_check', username: v });
+        } catch (e) {
+            err = e;
+        }
+        if (seq !== __gaUn.seq) return; // a newer keystroke owns the sheet now
+        if (err || !res) return gaUnPaint('error', v, (err && err.message) || 'We couldn’t check that just now.');
+        __gaUn.sugg = Array.isArray(res.suggestions) ? res.suggestions : [];
+        gaUnPaint(['free', 'yours', 'taken', 'kept'].includes(res.state) ? res.state : 'bad', v, res.message || '');
+    }, immediate ? 120 : 400);
+}
+function gaUnPaint(state, v, msg) {
+    __gaUn.state = state;
+    const mark = document.getElementById('gu-mark');
+    const st = document.getElementById('gu-status');
+    const sug = document.getElementById('gu-sugg');
+    const field = document.getElementById('gu-field');
+    const inp = document.getElementById('gu-input');
+    const btn = document.getElementById('gu-save');
+    if (!mark || !st || !sug || !field || !inp || !btn) return;
+    const bad = ['bad', 'taken', 'kept', 'race'].includes(state);
+    const ok = state === 'free';
+    mark.className = 'gu-mark' + (ok ? ' is-ok' : bad ? ' is-bad' : '');
+    mark.innerHTML =
+        state === 'checking'
+            ? '<span class="ga-spin"></span>'
+            : ok
+              ? '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg>'
+              : bad && state !== 'bad'
+                ? '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M7 7l10 10M17 7 7 17"/></svg>'
+                : '';
+    st.className = 'gu-status' + (ok ? ' is-ok' : bad || state === 'error' ? ' is-bad' : '');
+    field.classList.toggle('is-bad', bad);
+    inp.setAttribute('aria-invalid', bad ? 'true' : 'false');
+    const offer = bad && state !== 'bad' ? __gaUn.sugg.slice(0, 3) : [];
+    const n = `<b>${escapeHtml(v)}</b>`;
+    const more = offer.length ? ' Try one of these:' : '';
+    st.innerHTML = {
+        empty: '3 to 40 lower-case letters or numbers. Dots, dashes and underscores are fine.',
+        short: escapeHtml(msg || ''),
+        bad: escapeHtml(msg || ''),
+        error: escapeHtml(msg || ''),
+        checking: 'Checking…',
+        yours: 'This is your username now.',
+        free: `${n} is available.`,
+        taken: `${n} is taken.${more}`,
+        kept: `${n} isn’t available.${more}`,
+        race: `Someone else has just taken ${n}.${more}`,
+    }[state] || '';
+    sug.hidden = !offer.length;
+    sug.innerHTML = offer.map((x) => `<button type="button" ${chbAttrs('gaUsernamePick', String(x))}>${escapeHtml(String(x))}</button>`).join('');
+    btn.setAttribute('aria-disabled', ok ? 'false' : 'true');
+}
+// Save: the server checks again. A name that went to someone else meanwhile is
+// refused there, and the sheet says so in place with free names to pick.
+async function gaUsernameSubmit(ev) {
+    if (ev && ev.preventDefault) ev.preventDefault();
+    const btn = document.getElementById('gu-save');
+    const field = document.getElementById('gu-field');
+    const inp = /** @type {HTMLInputElement|null} */ (document.getElementById('gu-input'));
+    if (!btn || !field || !inp || btn.classList.contains('is-busy')) return;
+    if (__gaUn.state === 'yours') return gaUsernameClose(); // already theirs: nothing to save
+    if (__gaUn.state !== 'free') {
+        // Not saveable yet: the field shakes once and the line under it says why.
+        const st = document.getElementById('gu-status');
+        if (st) {
+            st.className = 'gu-status is-bad';
+            if (__gaUn.state === 'empty') st.textContent = 'Type a username first.';
+        }
+        chbNudge(field);
+        field.classList.remove('gu-nudge');
+        void field.offsetWidth;
+        field.classList.add('gu-nudge');
+        inp.focus();
+        return;
+    }
+    const v = __gaUn.name;
+    const seq = __gaUn.seq;
+    btn.classList.add('is-busy');
+    btn.setAttribute('aria-busy', 'true');
+    btn.innerHTML = '<span class="ga-spin" aria-hidden="true"></span><span class="sr-only">Saving…</span>';
+    let res = null;
+    let err = null;
+    try {
+        res = await apiPost('auth.php', { action: 'guest_username_set', username: v });
+    } catch (e) {
+        err = e;
+    }
+    btn.classList.remove('is-busy');
+    btn.removeAttribute('aria-busy');
+    btn.textContent = 'Save';
+    if (err) {
+        if (seq !== __gaUn.seq) return; // closed, or typed in again, while it saved
+        __gaUn.sugg = Array.isArray(err.suggestions) ? err.suggestions : [];
+        if (err.code === 'taken') return gaUnPaint('race', v);
+        if (err.code === 'kept') return gaUnPaint('kept', v);
+        return gaUnPaint(err.code === 'bad' ? 'bad' : 'error', v, err.message || 'That didn’t save — check your signal and try again.');
+    }
+    if (res && res.guest) currentGuest = res.guest;
+    else if (currentGuest) currentGuest.username = v;
+    gaUsernameClose();
+    renderGuestAccount();
+    const sub = document.querySelector('#guest-account-body .ga-unrow .ga-s');
+    if (sub) sub.classList.add('ga-land');
+    toast('Username saved');
+}
+async function gaUsernameRemove() {
+    if (!(await glassConfirm('You’ll sign in with your email, as before.', 'Remove', { title: 'Remove your username?' }))) return;
+    try {
+        const res = await apiPost('auth.php', { action: 'guest_username_set', username: '' });
+        if (res && res.guest) currentGuest = res.guest;
+        else if (currentGuest) currentGuest.username = '';
+    } catch (e) {
+        glassAlert("Couldn't remove it: " + ((e && e.message) || e));
+        return;
+    }
+    gaUsernameClose();
+    renderGuestAccount();
+    toast('Username removed');
+}
 async function gaPassword() {
     // An account made with an emailed code has no password: it sets one, no "current" box.
     const none = !!currentGuest && currentGuest.has_password === false;
@@ -4853,7 +5082,9 @@ async function deleteGuestAccount() {
 // via: 'device' when the password was right on a new device and a code went to the
 // person's own inbox, else ''. link/first/username/by: an invite or reset.
 // loginId: what an invite or reset files the new password under (see authIdField).
-const AU = { step: 'email', back: false, email: '', err: '', busy: '', cool: 0, isNew: false, fix: '', pk: null, via: '', mask: '', link: '', first: '', username: '', by: '', me: null, loginId: '' };
+// kind: what a name with no @ turned out to be — 'guest' (a guest's username: a code
+// went to its account's email) or 'office' (a back-office username: its password).
+const AU = { step: 'email', back: false, email: '', err: '', busy: '', cool: 0, isNew: false, fix: '', pk: null, via: '', mask: '', link: '', first: '', username: '', by: '', me: null, loginId: '', kind: '' };
 const GA_LAST = 'chb-last-guest';
 function authLast() {
     try {
@@ -4918,10 +5149,12 @@ function authPaint() {
             <p class="ga-asub">We'll email you a code.</p>
             <button type="button" class="ga-alink is-mute" data-act="authNotYou">Not you? Use another email</button>`;
     } else if (AU.step === 'email') {
+        // An email, or the username a guest chose (Your details): text, not an
+        // email field, with the email keyboard (it has the @ and the dot).
         h += `<h2 class="ga-ah">Sign in or create an account</h2>
-            <p class="ga-al">Enter your email and we'll send you a code — no password needed.</p>
-            <label class="ga-alabel" for="login-email">Email</label>
-            <div class="ga-ainp${AU.err ? ' is-bad' : ''}"><input id="login-email" type="email" inputmode="email" autocomplete="username webauthn" autocapitalize="off" autocorrect="off" spellcheck="false" placeholder="you@email.com" value="${escapeHtml(AU.email)}" data-act-input="authEmailInput" data-pass="self"></div>
+            <p class="ga-al">Enter your email or username and we'll send you a code — no password needed.</p>
+            <label class="ga-alabel" for="login-email">Email or username</label>
+            <div class="ga-ainp${AU.err ? ' is-bad' : ''}"><input id="login-email" type="text" inputmode="email" autocomplete="username webauthn" autocapitalize="off" autocorrect="off" spellcheck="false" placeholder="you@email.com or your username" value="${escapeHtml(AU.email)}" data-act-input="authEmailInput" data-pass="self"></div>
             ${err}
             ${AU.fix ? `<p class="ga-afix">Did you mean <button type="button" data-act="authUseFix">${escapeHtml(AU.fix)}</button>?</p>` : ''}
             ${authBig('pri', 'Continue', 'authContinue')}
@@ -4931,8 +5164,11 @@ function authPaint() {
         // A NEW DEVICE (the password was right) gets its code at the person's own
         // inbox, shown masked; the email-first path names the address typed.
         const dev = AU.via === 'device';
+        // Asked for by USERNAME, the code went to the account's email, which the page
+        // is never told: it says so without naming it.
+        const byName = !dev && !AU.email.includes('@');
         h += `<h2 class="ga-ah">Check your email</h2>
-            <p class="ga-al">${dev ? 'This device is new to your sign-in, so we sent a 6-digit code to' : 'We sent a 6-digit code to'} <b>${escapeHtml(dev ? AU.mask : AU.email)}</b>.</p>
+            <p class="ga-al">${byName ? 'We sent a 6-digit code to the email on your account.' : `${dev ? 'This device is new to your sign-in, so we sent a 6-digit code to' : 'We sent a 6-digit code to'} <b>${escapeHtml(dev ? AU.mask : AU.email)}</b>.`}</p>
             <div class="ga-code${AU.err ? ' is-bad' : ''}" id="ga-codebox">${Array.from({ length: 6 }, () => '<span class="ga-cell"></span>').join('')}<input id="ga-code" inputmode="numeric" autocomplete="one-time-code" maxlength="6" aria-label="The 6-digit code from the email" data-act-input="authCodeInput" data-pass="self"></div>
             ${err}
             ${AU.isNew || dev ? '' : '<p class="ga-asub">Or tap the link in the same email.</p>'}
@@ -4940,8 +5176,9 @@ function authPaint() {
             ${dev ? '' : '<button type="button" class="ga-alink is-mute" data-act="authToPassword">Use a password instead</button>'}`;
     } else if (AU.step === 'password') {
         // A username (no @) is a back-office sign-in, and a forgotten password is a
-        // link to the inbox. With an email, the code is the way back in.
-        const office = !AU.email.includes('@');
+        // link to the inbox. With an email, or a guest's username, the code is the way
+        // back in.
+        const office = !AU.email.includes('@') && AU.kind !== 'guest';
         h += `<h2 class="ga-ah">Your password</h2>
             <form class="ga-aform" data-act-submit="authPasswordSubmit" data-pass="event" novalidate>
             <div class="ga-chip">${authIdField('login-email', AU.email)}<button type="button" data-act="authToEmail">Change</button></div>
@@ -4951,7 +5188,7 @@ function authPaint() {
             ${authSubmit('Sign in', 'authPasswordGo')}
             </form>
             ${office ? '<button type="button" class="ga-alink is-mute" data-act="authForgot">Forgotten your password?</button>' : ''}
-            ${AU.email.includes('@') ? '<button type="button" class="ga-alink is-mute" data-act="authContinue">Email me a code instead</button>' : ''}`;
+            ${!office ? '<button type="button" class="ga-alink is-mute" data-act="authContinue">Email me a code instead</button>' : ''}`;
     } else if (AU.step === 'reset-sent') {
         h += `<h2 class="ga-ah">Check your email</h2>
             <p class="ga-al">If <b>${escapeHtml(AU.email)}</b> has a back-office sign-in, we’ve sent a link to choose a new password. It works for 30 minutes.</p>
@@ -5015,6 +5252,7 @@ function authGo(step, back) {
 }
 function authToEmail() {
     AU.via = '';
+    AU.kind = '';
     authGo('email', true);
 }
 // Forward from a guest's code step ("Use a password instead"), or BACK from the
@@ -5068,11 +5306,14 @@ async function authContinue() {
     if (el && AU.step === 'email') AU.email = el.value;
     const email = AU.email.trim();
     if (!email) {
-        AU.err = 'Enter the email you booked with.';
+        AU.err = 'Enter the email you booked with, or your username.';
         return authPaint();
     }
-    // The owner's USERNAME has no @ — a password is its only way in.
-    if (!email.includes('@')) return authGo('password');
+    // NO @: A USERNAME. The server says which: a guest's gets a code at its
+    // account's email, a back-office one goes to its password as it always has, and
+    // one nobody has is said so.
+    if (!email.includes('@')) return authByUsername(email);
+    AU.kind = '';
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email)) {
         AU.err = 'That doesn’t look like an email address — like you@email.com.';
         return authPaint();
@@ -5096,6 +5337,32 @@ async function authContinue() {
     }
     AU.email = email;
     AU.isNew = false;
+    authCooldown();
+    authGo('code');
+}
+async function authByUsername(name) {
+    const u = String(name || '').trim().toLowerCase();
+    AU.busy = 'authContinue';
+    authPaint();
+    let res;
+    try {
+        res = await apiPost('auth.php', { action: 'guest_code_request', email: u });
+    } catch (e) {
+        AU.busy = '';
+        AU.err = (e && e.message) || 'We couldn’t check that — check your signal and try again.';
+        return authPaint();
+    }
+    AU.busy = '';
+    AU.email = u;
+    AU.isNew = false;
+    // Only a guest's username is answered with `username`: anything else (a
+    // back-office username, or an older server) asks nothing more of a name than its
+    // password, which is what a name with no @ always meant here.
+    if (!res || !res.username) {
+        AU.kind = 'office';
+        return authGo('password');
+    }
+    AU.kind = 'guest';
     authCooldown();
     authGo('code');
 }
@@ -5474,6 +5741,7 @@ function openGuestAuthModal() {
     AU.fix = '';
     AU.__fixSeen = false;
     AU.busy = '';
+    AU.kind = '';
     AU.step = authLast() ? 'known' : 'email';
     authPaint();
     const m = document.getElementById('guest-auth-modal');
@@ -5528,35 +5796,39 @@ async function guestLogin() {
         showErr('Please enter your email/username and password.');
         return;
     }
-    // A USERNAME's password is never tried as a guest's: only the back office has one.
-    const office = !id.includes('@');
+    // A USERNAME's password: a guest's (the code step said so) is the guest's own
+    // sign-in; anyone else's is the back office's, and never tried as a guest's.
+    const guestName = !id.includes('@') && AU.kind === 'guest';
+    const office = !id.includes('@') && !guestName;
 
-    // 1) The back office first.
-    try {
-        const res = await apiPost('auth.php', { action: 'admin_login', username: id, password });
-        // A NEW device: the password was right and a code went to the person's
-        // own inbox. The sheet's own code step takes it from here.
-        if (res && res.twofa) {
-            AU.via = 'device';
-            AU.mask = res.to || '';
-            AU.isNew = false;
-            authCooldown();
-            authGo('code');
+    // 1) The back office first (never for a guest's username).
+    if (!guestName) {
+        try {
+            const res = await apiPost('auth.php', { action: 'admin_login', username: id, password });
+            // A NEW device: the password was right and a code went to the person's
+            // own inbox. The sheet's own code step takes it from here.
+            if (res && res.twofa) {
+                AU.via = 'device';
+                AU.mask = res.to || '';
+                AU.isNew = false;
+                authCooldown();
+                authGo('code');
+                return;
+            }
+            if (err) err.hidden = true;
+            authAdminIn(res && res.me, '', res && res.ownerFirst);
             return;
-        }
-        if (err) err.hidden = true;
-        authAdminIn(res && res.me, '', res && res.ownerFirst);
-        return;
-    } catch (adminErr) {
-        // Only a plain "not recognised" is worth a guest attempt; the rest is said as it is.
-        const ae = /** @type {any} */ (adminErr) || {};
-        if (office || ae.code || (ae.status && ae.status !== 401)) {
-            showErr(ae.message || 'That didn’t work. Check your signal and try again.');
-            return;
+        } catch (adminErr) {
+            // Only a plain "not recognised" is worth a guest attempt; the rest is said as it is.
+            const ae = /** @type {any} */ (adminErr) || {};
+            if (office || ae.code || (ae.status && ae.status !== 401)) {
+                showErr(ae.message || 'That didn’t work. Check your signal and try again.');
+                return;
+            }
         }
     }
 
-    // 2) Guest (email + password).
+    // 2) Guest (email or their username, + password).
     try {
         const res = await apiPost('auth.php', { action: 'guest_login', email: id, password });
         authSignedIn(res.guest, '');
@@ -16187,6 +16459,7 @@ const MODAL_CLOSERS = {
     'edit-modal': closeModal,
     'waitlist-modal': closeWaitlistModal,
     'ga-photo-sheet': gaPhotoSheetClose,
+    'ga-uname-sheet': gaUsernameClose,
     'exp-detail-modal': closeExpDetail,
     // Admin email composer — the stub loads the bundle if it isn't in yet.
     'enq-email-modal': (...a) => window.closeEnquiryEmailModal(...a),
@@ -18679,6 +18952,7 @@ function closeTopOverlay() {
     if (open('exp-detail-modal')) { closeExpDetail(); return true; }
     if (open('ga-crop')) { gaCropClose(); return true; }
     if (open('ga-photo-sheet')) { gaPhotoSheetClose(); return true; }
+    if (open('ga-uname-sheet')) { gaUsernameClose(); return true; }
     if (open('photo-upload-modal')) { closePhotoUpload(); return true; }
     if (open('exp-suggest-modal')) { closeExperienceSuggest(); return true; }
     if (open('welcome-modal')) { closeWelcomeModal(); return true; }
@@ -21921,7 +22195,7 @@ const CHB_SK_CARD = '<div class="card glass-panel sk-card"><div class="skeleton 
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'inboxonce1012';
+    const BUILD = 'usernames1';
     /** @type {any} */ (window).__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;

@@ -3,7 +3,7 @@
 //   §2 a code is asked for; a wrong code says so; the right one signs in and lands on You
 //   §3 the phone remembers who signed in — "Welcome back" — and "Not you?" forgets
 //   §4 a new email needs only a name after the code
-//   §5 a username with no @ (the owner) goes straight to a password; too many tries locks the code
+//   §5 a back-office username (no @) goes to its password; too many tries locks the code
 //   §6 codes paused for a day (auth.php code_paused) are said in words on every step that asks for one
 const { bootBrowser } = require('./ui-test-lib');
 
@@ -27,6 +27,8 @@ const ok = (c, m) => { console.log((c ? '  ✓ ' : '  ✗ ') + m); if (!c) fails
         if (url.includes('auth.php')) {
             if (body.action === 'guest_code_request') {
                 if (requestMode === 'paused') return json({ error: 'Too many wrong codes have been tried for this email today, so codes for it are paused until tomorrow. A passkey or a password still works, if you have one.', code: 'paused' }, 429);
+                // A name with no @ is looked up: the back office's own goes to its password.
+                if (!String(body.email || '').includes('@')) return json({ ok: true, office: true });
                 return json({ ok: true });
             }
             if (body.action === 'guest_code_verify') {
@@ -131,7 +133,9 @@ const ok = (c, m) => { console.log((c ? '  ✓ ' : '  ✗ ') + m); if (!c) fails
     await page.fill('#login-email', 'owner');
     await page.click('#ga-auth [data-act="authContinue"]');
     await page.waitForTimeout(300);
-    ok(/Your password/.test(await step()) && sent('guest_code_request').length === before, 'a username with no @ goes straight to a password, no code sent');
+    // A name with no @ is asked about (a guest's username gets a code), and the back
+    // office's own is told to ask for its password: no code is made for it.
+    ok(/Your password/.test(await step()) && sent('guest_code_request').length === before + 1 && sent('guest_code_request').slice(-1)[0].email === 'owner', 'a back-office username is looked up and goes to its password, no code sent');
     await page.fill('#login-password', 'wrongpass1');
     await page.click('#ga-auth [data-submit="authPasswordGo"]');
     await page.waitForTimeout(500);

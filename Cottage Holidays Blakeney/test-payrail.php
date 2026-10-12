@@ -670,7 +670,7 @@ chk('a button whose handler is still running is disabled and announced busy',
     && preg_match("/r && typeof r\.then === 'function' && el\.tagName === 'BUTTON'/", $appS) === 1);
 chk('apiPost carries the endpoint\'s code through, so the refusal is distinguishable',
     preg_match('/code: code \? String\(code\) : \x27\x27/', $appS) === 1
-    && preg_match("/throw apiErr\(data\.error \|\| .*, res\.status, data\.code(, data\.left)?\)/", $appS) === 1);
+    && preg_match("/throw apiErr\(data\.error \|\| .*, res\.status, data\.code(, data\.left(, data\.suggestions)?)?\)/", $appS) === 1);
 // previewAndSendEmail returned whether the owner CONFIRMED and called it "sent" — so an
 // inline act strip claimed success for a send that had failed or been refused, since the
 // doSend callbacks handle their own errors and nothing threw here to notice.
