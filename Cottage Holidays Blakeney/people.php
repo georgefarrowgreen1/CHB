@@ -129,19 +129,32 @@ route_actions(
                 );
             }
             $super = ($in['role'] ?? 'host') === 'super';
-            $taken = array_map('strval', db()->query('SELECT username FROM admins')->fetchAll(PDO::FETCH_COLUMN));
-            $username = people_username_from($name, $taken);
-            try {
-                db()
-                    ->prepare(
-                        "INSERT INTO admins (username, password_hash, name, email, full_access, caps, perms, twofa, invited_at, created_at)
-                         VALUES (?, '', ?, ?, ?, '', '{}', 1, NOW(), NOW())",
-                    )
-                    ->execute([$username, $name, $email, $super ? 1 : 0]);
-            } catch (\Throwable $e) {
+            // Their username skips every name already in use, a guest's included (one
+            // name, one person), and is written under the same lock a guest's save takes.
+            $newId = username_locked(function () use ($name, $email, $super) {
+                $taken = array_map('strval', db()->query('SELECT username FROM admins')->fetchAll(PDO::FETCH_COLUMN));
+                try {
+                    $taken = array_merge($taken, array_map('strval', db()->query('SELECT username FROM guests WHERE username IS NOT NULL')->fetchAll(PDO::FETCH_COLUMN)));
+                } catch (\Throwable $e) {
+                    // before migration-148 no guest has one
+                }
+                $username = people_username_from($name, $taken);
+                try {
+                    db()
+                        ->prepare(
+                            "INSERT INTO admins (username, password_hash, name, email, full_access, caps, perms, twofa, invited_at, created_at)
+                             VALUES (?, '', ?, ?, ?, '', '{}', 1, NOW(), NOW())",
+                        )
+                        ->execute([$username, $name, $email, $super ? 1 : 0]);
+                } catch (\Throwable $e) {
+                    return 0;
+                }
+                return (int) db()->lastInsertId();
+            });
+            if ($newId <= 0) {
                 json_out(['error' => 'Permissions need the latest database update — run the migrations first.'], 503);
             }
-            $row = admin_row((int) db()->lastInsertId(), true);
+            $row = admin_row($newId, true);
             $sent = $row ? admin_send_link($row, 'invite', $myFirst) : false;
             log_activity('account', 'people.invite', $myFirst . ' invited ' . $name . ' to the back office as a ' . ($super ? 'Super User' : 'Host'), ['severity' => $super ? 'warn' : 'info', 'entity' => 'admin', 'entity_id' => (string) ($row['id'] ?? '')]);
             people_done(['sent' => $sent, 'id' => (int) ($row['id'] ?? 0)]);

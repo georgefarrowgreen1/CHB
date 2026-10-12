@@ -8,8 +8,9 @@
 //          admin_invite_accept (the links people.php and the sign-in page send),
 //          admin_me_set, admin_email_begin / _finish, admin_twofa_set,
 //          admin_avatar_set / _remove (your own details)
-//  Guest:  guest_code_request / _verify / _register (the sign-in and sign-up),
-//          guest_login, guest_logout, guest_status
+//  Guest:  guest_code_request / _verify / _register (the sign-in and sign-up; an
+//          email or the guest's username), guest_login, guest_logout, guest_status,
+//          guest_username_check / _set (Your details → Username)
 // ============================================================
 // Sign-in writes the session, so this endpoint keeps its lock (session-lib.php).
 define('CHB_KEEPS_SESSION', true);
@@ -43,7 +44,7 @@ function guest_prove_address(int $gid): bool
             // Everything else the earlier claim set up goes with it: its phones would
             // go on receiving this guest's booking and payment alerts, its photo would
             // sit beside their bookings, and its chat would read as theirs.
-            foreach (['DELETE FROM push_subscriptions WHERE guest_id = ?', 'UPDATE chat_threads SET guest_id = NULL WHERE guest_id = ?'] as $sql) {
+            foreach (['DELETE FROM push_subscriptions WHERE guest_id = ?', 'UPDATE chat_threads SET guest_id = NULL WHERE guest_id = ?', 'UPDATE guests SET username = NULL WHERE id = ?'] as $sql) {
                 try {
                     db()->prepare($sql)->execute([$gid]);
                 } catch (\Throwable $e) {
@@ -67,6 +68,35 @@ function guest_prove_address(int $gid): bool
 function guest_code_hash(string $email, string $code): string
 {
     return hash_hmac('sha256', 'code:' . strtolower($email) . ':' . $code, APP_SECRET);
+}
+// WHAT A GUEST TYPED TO SIGN IN: an email, or the username they chose (it has no @).
+// A username is looked up here and its account's email is used from then on, so a
+// code still goes to the inbox that proves the account, and the address is never
+// sent back to the page. kind: 'email', 'guest' (a guest's username), 'office' (a
+// back-office username: its way in is the password), 'none' (nobody has it) or 'bad'
+// (not an email, and not something a username could be).
+function guest_ident($typed): array
+{
+    $t = strtolower(trim(is_string($typed) ? $typed : ''));
+    if ($t === '' || strpos($t, '@') !== false) {
+        return ['kind' => 'email', 'email' => $t, 'username' => ''];
+    }
+    if (username_format_problem($t) !== '') {
+        return ['kind' => 'bad', 'email' => '', 'username' => $t];
+    }
+    $own = username_owner($t);
+    if ($own && $own[0] === 'guest') {
+        $q = db()->prepare('SELECT email FROM guests WHERE id = ?');
+        $q->execute([$own[1]]);
+        $email = strtolower((string) ($q->fetchColumn() ?: ''));
+        return $email !== '' ? ['kind' => 'guest', 'email' => $email, 'username' => $t] : ['kind' => 'none', 'email' => '', 'username' => $t];
+    }
+    return ['kind' => $own ? 'office' : 'none', 'email' => '', 'username' => $t];
+}
+// The refusal for a username nobody has, in words the sign-in box shows.
+function guest_no_username(string $u): string
+{
+    return 'There’s no account with the username ' . $u . '. Check it, or sign in with your email.';
 }
 // AN EMAILED CODE IS A WHOLE SIGN-IN (a guest's, and the back office's), so wrong
 // guesses are counted over a DAY across every IP, not only the ten minutes
@@ -440,6 +470,11 @@ switch ($action) {
                 } catch (\Throwable $e) {
                 }
             }
+            // A GUEST'S USERNAME is routine here for the same reason: it is theirs to
+            // sign in with, not someone trying the back office.
+            if (!$row && strpos($username, '@') === false && (username_owner($username)[0] ?? '') === 'guest') {
+                json_out(['error' => 'Incorrect username or password'], 401);
+            }
             // Collapse a burst: log the first failure, then only at thresholds — so a
             // brute-force attempt is one or two "Needs attention" rows, not fifty.
             $fails = 1;
@@ -693,12 +728,18 @@ switch ($action) {
             if ($bad !== '') {
                 json_out(['error' => $bad], 400);
             }
-            $q = db()->prepare('SELECT COUNT(*) FROM admins WHERE username = ? AND id <> ?');
-            $q->execute([$val, (int) $me['id']]);
-            if ((int) $q->fetchColumn() > 0) {
+            // Nobody else's, a guest's included: one name, one person.
+            $clash = username_locked(function () use ($val, $me) {
+                $own = username_owner($val);
+                if ($own && !($own[0] === 'admin' && $own[1] === (int) $me['id'])) {
+                    return true;
+                }
+                db()->prepare('UPDATE admins SET username = ? WHERE id = ?')->execute([$val, (int) $me['id']]);
+                return false;
+            });
+            if ($clash) {
                 json_out(['error' => 'Someone already signs in with that username.'], 409);
             }
-            db()->prepare('UPDATE admins SET username = ? WHERE id = ?')->execute([$val, (int) $me['id']]);
         } else {
             json_out(['error' => 'Unknown field'], 400);
         }
@@ -836,48 +877,58 @@ switch ($action) {
         json_out(['error' => 'Accounts are made with a code we email you now. Reload the page, then sign in with your email.', 'code' => 'retired'], 410);
 
     case 'guest_login':
-        $email = strtolower(clean($in['email'] ?? ''));
+        // An email, or the username the guest chose (guest_ident finds its email).
+        $who = guest_ident(clean($in['email'] ?? ''));
+        $byName = $who['kind'] !== 'email';
+        $email = $who['email'];
+        // A username is throttled as itself until it names an account; then as that
+        // account, so switching between the two buys no fresh allowance.
+        $tid = 'guest:' . ($email !== '' ? $email : 'u:' . $who['username']);
         $pw = field_text($in['password'] ?? '');
-        throttle_check('guest:' . $email);
-        $stmt = db()->prepare(
-            'SELECT id, name, email, phone, address, postcode, password_hash FROM guests WHERE email = ?',
-        );
-        $stmt->execute([$email]);
-        $row = $stmt->fetch();
+        throttle_check($tid);
+        $row = false;
+        if ($email !== '') {
+            $stmt = db()->prepare(
+                'SELECT id, name, email, phone, address, postcode, password_hash FROM guests WHERE email = ?',
+            );
+            $stmt->execute([$email]);
+            $row = $stmt->fetch();
+        }
         $gHash = auth_hash_for($row);
         if (!password_verify($pw, $gHash) || !$row || $gHash === auth_dummy_hash()) {
-            throttle_record('guest:' . $email, false);
+            throttle_record($tid, false);
             // Diagnose WHY for the owner's log (the reply stays generic): the usual
             // culprits are an email we've never seen, an account that only ever
             // used magic links (no password to check), or a plain wrong password.
             $reason = !$row
-                ? 'no guest account with this email'
+                ? ($byName ? 'no guest account with this username' : 'no guest account with this email')
                 : ((string) ($row['password_hash'] ?? '') === ''
                     ? 'account has no password — they need "Email me a sign-in link" or account setup'
                     : 'wrong password');
+            $detail = $byName ? 'username: ' . mb_substr($who['username'], 0, 40) : 'email: ' . mb_substr($email, 0, 80);
             // Burst-collapsed like the owner path: first failure, then thresholds.
             $fails = 1;
             try {
                 $fq = db()->prepare(
                     "SELECT COUNT(*) FROM login_attempts WHERE identifier = ? AND success = 0 AND attempted_at > (NOW() - INTERVAL 15 MINUTE)",
                 );
-                $fq->execute(['guest:' . $email]);
+                $fq->execute([$tid]);
                 $fails = (int) $fq->fetchColumn();
             } catch (\Throwable $e) {
             }
             if ($fails === 1) {
-                $opts = ['actor' => 'system', 'severity' => 'warn', 'meta' => ['detail' => 'email: ' . mb_substr($email, 0, 80)]];
+                $opts = ['actor' => 'system', 'severity' => 'warn', 'meta' => ['detail' => $detail]];
                 if ($row) {
                     $opts['entity'] = 'guest';
                     $opts['entity_id'] = (string) $row['id'];
                 }
                 log_activity('account', 'guest.login_fail', 'Failed guest sign-in — ' . $reason, $opts);
             } elseif (in_array($fails, [5, 15, 30], true)) {
-                log_activity('account', 'guest.login_burst', $fails . ' failed guest sign-in attempts in 15 min — ' . $reason, ['actor' => 'system', 'severity' => 'action', 'meta' => ['detail' => 'email: ' . mb_substr($email, 0, 80)]]);
+                log_activity('account', 'guest.login_burst', $fails . ' failed guest sign-in attempts in 15 min — ' . $reason, ['actor' => 'system', 'severity' => 'action', 'meta' => ['detail' => $detail]]);
             }
-            json_out(['error' => 'Email or password not recognised'], 401);
+            json_out(['error' => $byName ? 'Username or password not recognised' : 'Email or password not recognised'], 401);
         }
-        throttle_record('guest:' . $email, true);
+        throttle_record($tid, true);
         if (password_needs_rehash($gHash, PASSWORD_DEFAULT)) {
             try {
                 db()->prepare('UPDATE guests SET password_hash = ? WHERE id = ?')->execute([password_hash($pw, PASSWORD_DEFAULT), (int) $row['id']]);
@@ -903,15 +954,18 @@ switch ($action) {
             // nothing about who owns them, so only the emailed link will do. With
             // nothing to claim, an unproven account signs in (it sees no stays).
             if ($verifiedAt === null && $hasStays) {
+                // Signed in by username, the address is not said: whoever typed it may
+                // not know it.
+                $at = $byName ? 'the email on your account' : $email;
                 if (!signin_mail_allowed((string) $row['email'])) {
-                    json_out(['error' => 'Please confirm your email first — use the sign-in link we sent to ' . $email . '.'], 403);
+                    json_out(['error' => 'Please confirm your email first — use the sign-in link we sent to ' . $at . '.'], 403);
                 }
                 $ts = time();
                 $url = site_base_url() . 'index.html?mlogin=' . (int) $row['id'] . '&t=' . $ts . '&k=' . login_token($row['id'], $ts);
                 require_once __DIR__ . '/mailer.php';
                 send_magic_link_email($row, $url);
                 log_activity('account', 'guest.login_unverified', 'Sign-in refused until the email is confirmed — link re-sent', ['actor' => 'guest', 'entity' => 'guest', 'entity_id' => (string) (int) $row['id']]);
-                json_out(['error' => "Please confirm your email first — we've just sent you a sign-in link at " . $email . '.'], 403);
+                json_out(['error' => "Please confirm your email first — we've just sent you a sign-in link at " . $at . '.'], 403);
             }
         } catch (\PDOException $e) {
             // migration-111 not applied — behave exactly as before.
@@ -971,9 +1025,31 @@ switch ($action) {
     // minutes (10 for the back office), and dies after 5 wrong tries; asking again
     // retires older codes. An address with a day's worth of wrong codes gets none.
     case 'guest_code_request':
-        $email = strtolower(clean($in['email'] ?? ''));
-        throttle_check('code:' . $email);
+        // An email, or a guest's USERNAME: a username's code goes to its account's
+        // email, which the page is never told. A back-office username's way in is its
+        // password, so the page is told to ask for it. A username nobody has is said
+        // so, where an email's answer never says whether it has an account: a
+        // username can be checked in Your details anyway, so the sign-in box saying
+        // it gives nothing away, and a guest who misremembered theirs is not left
+        // waiting for an email that will never come.
+        $who = guest_ident(clean($in['email'] ?? ''));
+        $email = $who['email'];
+        throttle_check('code:' . ($email !== '' ? $email : 'u:' . $who['username']));
         rate_limit('guestcode', 12, 15);
+        if ($who['kind'] === 'office') {
+            json_out(['ok' => true, 'office' => true]);
+        }
+        if ($who['kind'] === 'bad') {
+            json_out(['error' => 'Enter the email you booked with, or the username you chose.', 'code' => 'not_username'], 400);
+        }
+        if ($who['kind'] === 'none') {
+            throttle_record('code:u:' . $who['username'], false);
+            json_out(['error' => guest_no_username($who['username']), 'code' => 'no_username'], 404);
+        }
+        // A code is on its way. Asked for by username, the reply says so (the page
+        // then says it went to "the email on your account"); for an email it is the
+        // plain ok it always was, whether or not the address has an account.
+        $sentReply = ['ok' => true] + ($who['kind'] === 'guest' ? ['username' => true] : []);
         if ($email !== '' && code_paused($email)) {
             if (filter_var($email, FILTER_VALIDATE_EMAIL) && !admin_find($email)) {
                 $pq = db()->prepare('SELECT id, name, email FROM guests WHERE email = ?');
@@ -1005,7 +1081,7 @@ switch ($action) {
             $g = $stmt->fetch();
             if (!signin_mail_allowed($email)) {
                 throttle_record('code:' . $email, false);
-                json_out(['ok' => true]); // the same answer: the page never says why
+                json_out($sentReply); // the same answer: the page never says why
             }
             require_once __DIR__ . '/mailer.php';
             if ($adm) {
@@ -1017,7 +1093,7 @@ switch ($action) {
                 smtp_send($email, people_display_name($adm), $m['subject'], $m['text'], $m['html']);
                 log_activity('account', 'admin.code', 'Sign-in code emailed to ' . people_display_name($adm), ['actor' => 'system']);
                 throttle_record('code:' . $email, false);
-                json_out(['ok' => true]);
+                json_out($sentReply);
             }
             if ($g) {
                 $ts = time();
@@ -1026,13 +1102,19 @@ switch ($action) {
             } else {
                 send_magic_link_email(['name' => '', 'email' => $email], '', 'join', $code);
             }
-            log_activity('account', 'guest.code', 'Sign-in code emailed', ['actor' => 'guest', 'entity' => 'guest', 'entity_id' => $g ? (string) $g['id'] : '']);
+            log_activity('account', 'guest.code', 'Sign-in code emailed' . ($who['kind'] === 'guest' ? ' (signing in with their username)' : ''), ['actor' => 'guest', 'entity' => 'guest', 'entity_id' => $g ? (string) $g['id'] : '']);
         }
         throttle_record('code:' . $email, false);
-        json_out(['ok' => true]);
+        json_out($sentReply);
 
     case 'guest_code_verify':
-        $email = strtolower(clean($in['email'] ?? ''));
+        // A code asked for by username is checked against that account's email. A
+        // username that names nobody now (removed or changed meanwhile) has no code.
+        $who = guest_ident(clean($in['email'] ?? ''));
+        if ($who['kind'] !== 'email' && $who['kind'] !== 'guest') {
+            json_out(['error' => 'That code has expired. Send yourself a new one.', 'code' => 'expired'], 401);
+        }
+        $email = $who['email'];
         $code = preg_replace('/\D/', '', (string) ($in['code'] ?? ''));
         throttle_check('codev:' . $email);
         // Paused means paused, the right code included: a guess that happens to land
@@ -1098,7 +1180,7 @@ switch ($action) {
         session_regenerate_id(true);
         guest_session_begin((int) $row['id']);
         unset($_SESSION['admin_id']);
-        log_activity('account', 'guest.code_login', 'Guest signed in with an emailed code', ['actor' => 'guest', 'entity' => 'guest', 'entity_id' => (string) $row['id']]);
+        log_activity('account', 'guest.code_login', $who['kind'] === 'guest' ? 'Guest signed in with their username and an emailed code' : 'Guest signed in with an emailed code', ['actor' => 'guest', 'entity' => 'guest', 'entity_id' => (string) $row['id']]);
         json_out(['ok' => true, 'reset' => $reset, 'guest' => guest_me_payload((int) $row['id'])]);
 
     case 'guest_code_register':
@@ -1232,6 +1314,84 @@ switch ($action) {
         }
         json_out(['ok' => true, 'guest' => guest_me_payload((int) $_SESSION['guest_id'])]);
 
+    // ---- The guest's own username (Your details → Username) ----
+    // Checked as they type (guest_username_check) and again when they save
+    // (guest_username_set): the database refuses a second copy, and the back office's
+    // usernames are checked under the same lock (username_locked), so two people
+    // saving one name at the same moment cannot both get it. A username signs in in
+    // place of the email, so only a PROVEN account may have one: an account the old
+    // password sign-up made for an address it never proved must not be able to put a
+    // name on that address.
+    case 'guest_username_check':
+        require_guest_proven();
+        $gid = (int) $_SESSION['guest_id'];
+        rate_limit_key('uname:' . $gid, 240, 60); // a check per pause in typing, generously
+        $u = username_norm(field_text($in['username'] ?? ''));
+        $nq = db()->prepare('SELECT name FROM guests WHERE id = ?');
+        $nq->execute([$gid]);
+        json_out(['ok' => true, 'username' => $u] + username_verdict($u, $gid, (string) ($nq->fetchColumn() ?: '')));
+
+    case 'guest_username_set':
+        require_guest_proven();
+        $gid = (int) $_SESSION['guest_id'];
+        rate_limit_key('uname-set:' . $gid, 20, 60);
+        $u = username_norm(field_text($in['username'] ?? ''));
+        // An empty name removes it: the guest signs in with their email, as before.
+        if ($u === '') {
+            try {
+                db()->prepare('UPDATE guests SET username = NULL WHERE id = ?')->execute([$gid]);
+            } catch (\Throwable $e) {
+                json_out(['error' => 'Usernames need the latest database update — please try again later.'], 503);
+            }
+            log_activity('account', 'guest.username', 'A guest removed their username', ['actor' => 'guest', 'entity' => 'guest', 'entity_id' => (string) $gid]);
+            json_out(['ok' => true, 'guest' => guest_me_payload($gid)]);
+        }
+        $nq = db()->prepare('SELECT name FROM guests WHERE id = ?');
+        $nq->execute([$gid]);
+        $gname = (string) ($nq->fetchColumn() ?: '');
+        $res = username_locked(function () use ($u, $gid, $gname) {
+            $v = username_verdict($u, $gid, $gname);
+            if ($v['state'] === 'yours') {
+                return ['ok' => true, 'same' => true];
+            }
+            if ($v['state'] !== 'free') {
+                return $v;
+            }
+            try {
+                db()->prepare('UPDATE guests SET username = ? WHERE id = ?')->execute([$u, $gid]);
+            } catch (\PDOException $e) {
+                if (db_duplicate($e)) {
+                    return ['state' => 'taken', 'suggestions' => username_suggest($u, $gname)];
+                }
+                if (db_schema_missing($e)) {
+                    return ['state' => 'unmigrated'];
+                }
+                throw $e;
+            }
+            return ['ok' => true];
+        });
+        if (!empty($res['ok'])) {
+            if (empty($res['same'])) {
+                log_activity('account', 'guest.username', 'A guest chose a username', ['actor' => 'guest', 'entity' => 'guest', 'entity_id' => (string) $gid]);
+            }
+            json_out(['ok' => true, 'guest' => guest_me_payload($gid)]);
+        }
+        $state = (string) ($res['state'] ?? '');
+        if ($state === 'unmigrated') {
+            json_out(['error' => 'Usernames need the latest database update — please try again later.'], 503);
+        }
+        if ($state === 'bad') {
+            json_out(['error' => (string) ($res['message'] ?? 'That username can’t be used.'), 'code' => 'bad'], 400);
+        }
+        json_out(
+            [
+                'error' => $state === 'kept' ? $u . ' isn’t available.' : 'Someone else has ' . $u . '.',
+                'code' => $state === 'kept' ? 'kept' : 'taken',
+                'suggestions' => $res['suggestions'] ?? [],
+            ],
+            409,
+        );
+
     // The guest's own profile photo: set (a cropped JPEG from the Account page) or
     // remove. Only ever their OWN — the session decides whose, never the body.
     case 'guest_avatar_set':
@@ -1317,6 +1477,9 @@ switch ($action) {
         $acc = db()->prepare('SELECT id, name, email, phone, address, postcode, created_at FROM guests WHERE id = ?');
         $acc->execute([$gid]);
         $account = $acc->fetch() ?: [];
+        if ($account) {
+            $account['username'] = guest_username_of($gid);
+        }
         $email = (string) ($account['email'] ?? '');
         $grab = function ($sql, $params) {
             try {
@@ -1706,9 +1869,16 @@ switch ($action) {
                  FROM bookings WHERE email IS NOT NULL AND email <> ''",
             )
             ->fetchAll();
+        // Who has an account, and the username they chose (shown to the owner beside
+        // their name; private from everyone else).
         $acct = [];
-        foreach (db()->query('SELECT LOWER(email) email FROM guests')->fetchAll() as $a) {
-            $acct[$a['email']] = true;
+        try {
+            $arows = db()->query('SELECT LOWER(email) email, username FROM guests')->fetchAll();
+        } catch (\Throwable $e) {
+            $arows = db()->query('SELECT LOWER(email) email FROM guests')->fetchAll();
+        }
+        foreach ($arows as $a) {
+            $acct[$a['email']] = (string) ($a['username'] ?? '');
         }
         $g = [];
         foreach ($rows as $r) {
@@ -1755,6 +1925,7 @@ switch ($action) {
                 'fav_prop' => array_key_first($d['props']),
                 'repeat' => $d['stays'] > 1,
                 'has_account' => isset($acct[$e]),
+                'username' => $acct[$e] ?? '',
                 'invited_at' => $invited[$e] ?? '',
             ];
         }

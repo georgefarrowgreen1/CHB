@@ -13357,6 +13357,24 @@ div.ga-row {
   width: 100%;
   margin-top: 12px;
 }
+/* THE USERNAME SHEET (Your details → Username): the sign-in sheet's field with a
+   mark that says free or taken once it is checked, and free names to pick. */
+.gu-form { display: flex; flex-direction: column; gap: 12px; text-align: left; }
+.gu-field { padding-right: 4px; }
+.gu-mark { flex: 0 0 auto; width: 36px; height: 36px; display: grid; place-items: center; color: var(--text-muted); }
+.gu-mark svg { width: 20px; height: 20px; }
+.gu-mark .ga-spin { width: 16px; height: 16px; }
+.gu-mark.is-ok { color: var(--ok-text); }
+.gu-mark.is-bad { color: var(--danger-text); }
+.gu-status { margin: 0; min-height: 1.45em; font-size: var(--fs-sub); line-height: 1.45; color: var(--text-muted); text-wrap: pretty; }
+.gu-status.is-ok { color: var(--ok-text); }
+.gu-status.is-bad { color: var(--danger-text); }
+.gu-status b { font-weight: 600; }
+.gu-sugg[hidden] { display: none; }
+.gu-field.gu-nudge { animation: chbNudge 280ms var(--out); }
+.gu-form .ga-big.pri[aria-disabled="true"] { opacity: 0.5; cursor: default; }
+.gu-remove { display: block; margin: 4px auto 0; }
+@media (prefers-reduced-motion: reduce) { .gu-field.gu-nudge { animation: none; } }
 .ga-crop {
   position: fixed;
   inset: 0;

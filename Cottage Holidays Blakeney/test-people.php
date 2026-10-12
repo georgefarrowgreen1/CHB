@@ -277,6 +277,68 @@ ppl('(vacuity) the scan finds the sign-in replies it is checking (' . $meSeen . 
 ppl("every 'me' reply is admin_me_payload's" . ($meOdd ? ' — not in: ' . implode(', ', array_unique($meOdd)) : ''), !$meOdd);
 ppl("every guest sign-in reply is guest_me_payload's" . ($guestOdd ? ' — not: ' . implode('; ', $guestOdd) : ''), !$guestOdd);
 
+// One rule for every username, a guest's and the back office's (username-lib.php):
+// 3 to 40 lower-case letters or numbers with dots, dashes and underscores, starting
+// with a letter or number, never an @ (that is how the sign-in box tells it from an
+// email). Kept-back names are compared squashed, so dots can't dodge them.
+echo "\n== §14 one username rule ==\n";
+ppl('a good name passes', username_format_problem('hannah.reed') === '' && username_format_problem('h-r_2') === '' && username_format_problem(str_repeat('a', 40)) === '');
+$why = [
+    '' => 'Type a username.',
+    'han nah' => 'No spaces',
+    'h@x.com' => 'can’t have an @',
+    'hannah!' => 'Only letters a to z',
+    'zoë' => 'Only letters a to z',
+    '_hannah' => 'Start with a letter or a number.',
+    'ha' => 'At least 3 characters.',
+    str_repeat('a', 41) => 'At most 40 characters.',
+];
+$whyBad = [];
+foreach ($why as $v => $want) {
+    if (strpos(username_format_problem((string) $v), $want) === false) {
+        $whyBad[] = json_encode((string) $v) . ' → ' . username_format_problem((string) $v);
+    }
+}
+ppl('each broken rule is said in its own words' . ($whyBad ? ': ' . implode('; ', $whyBad) : ''), !$whyBad);
+ppl('a space is said before the length (fix what is in it first)', strpos(username_format_problem('a b'), 'No spaces') === 0);
+ppl('typed is stored trimmed and lower case', username_norm('  Hannah.Reed ') === 'hannah.reed' && username_norm(['x']) === '');
+ppl('the back office follows the same rule, word for word', people_username_problem('h@x') === username_format_problem('h@x') && people_username_problem('ok.name') === '');
+ppl('kept back: admin, and the business', username_kept('admin') && username_kept('cottageholidaysblakeney') && username_kept('blakeney'));
+ppl('…compared squashed, so dots and dashes can\'t dodge it', username_kept('a.d-m_i.n') && username_kept('Cottage.Holidays'));
+ppl('…not a name that only contains one', !username_kept('adminton') && !username_kept('hannah'));
+$kw = username_kept_words([['prop_key' => '21a', 'name' => '21A Westgate Street', 'slug' => '21a-westgate'], ['prop_key' => 'jollyboat', 'name' => 'Jollyboat', 'slug' => 'jollyboat'], ['prop_key' => 'pimp', 'name' => 'Pimpernél', 'slug' => '']]);
+ppl('the cottages\' names are kept back: whole name, key and slug', in_array('21awestgatestreet', $kw, true) && in_array('21a', $kw, true) && in_array('21awestgate', $kw, true) && in_array('jollyboat', $kw, true));
+ppl('…in plain letters ("Pimpernél" keeps "pimpernel")', in_array('pimpernel', $kw, true) && username_kept('pimpernel', $kw) && username_kept('jolly.boat', $kw));
+$c1 = username_candidates('hannah', 'Hannah Reed', $kw);
+ppl('names to offer: the typed one with a number first, then shapes of their name', array_slice($c1, 0, 3) === ['hannah2', 'hannah.reed', 'hannah_reed'] && in_array('hreed', $c1, true) && in_array('hannah3', $c1, true));
+ppl('…every one follows the rule, none is kept back, none repeats', !array_filter($c1, fn($c) => username_format_problem($c) !== '' || username_kept($c, $kw)) && count($c1) === count(array_unique($c1)) && count($c1) <= 12);
+$c2 = username_candidates('admin', 'Zoë Brontë', $kw);
+ppl('…a kept-back name is not offered back with a number, and a name is offered in plain letters', !array_filter($c2, fn($c) => strpos($c, 'admin') === 0) && in_array('zoe.bronte', $c2, true));
+$c3 = username_candidates(str_repeat('a', 40), 'Al', $kw);
+ppl('…a name already at 40 gets no longer copy; a one-word name gets numbers', !array_filter($c3, fn($c) => strlen($c) > 40) && in_array('al2', $c3, true));
+// The sign-in box takes a username in place of an email in all three ways in, and
+// the client says the rule in the server's own words (the box answers at once).
+$authSrc = (string) file_get_contents(__DIR__ . '/auth.php');
+$identUses = 0;
+foreach (['guest_code_request', 'guest_code_verify', 'guest_login'] as $act) {
+    $at = strpos($authSrc, "case '$act':");
+    if ($at !== false && strpos(substr($authSrc, $at, 900), 'guest_ident(') !== false) {
+        $identUses++;
+    }
+}
+ppl('every guest way in reads the typed name through guest_ident (code request, code check, password)', $identUses === 3);
+$appSrc = (string) file_get_contents(__DIR__ . '/app.js');
+$fmtAt = strpos($appSrc, 'function gaUnFmt(');
+$fmtSrc = $fmtAt !== false ? substr($appSrc, $fmtAt, 900) : '';
+$libSrc = (string) file_get_contents(__DIR__ . '/username-lib.php');
+preg_match_all("/return '([^']+)';/", $fmtSrc, $jsMsgs);
+preg_match_all("/return '([^']+)';/", substr($libSrc, (int) strpos($libSrc, 'function username_format_problem'), 1400), $phpMsgs);
+$jsSet = $jsMsgs[1];
+$phpSet = array_values(array_diff($phpMsgs[1], ['Type a username.']));
+sort($jsSet);
+sort($phpSet);
+ppl('the page says the rule in the server\'s words (' . count($jsSet) . ' sentences)', count($jsSet) >= 6 && $jsSet === $phpSet);
+
 echo "\n== Summary ==\n";
 if ($fail) {
     echo "  $fail PEOPLE CHECK(S) FAILED ❌\n";

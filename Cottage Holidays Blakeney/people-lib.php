@@ -11,6 +11,9 @@
 //  (people_cap_for → people_can), so an old link or a stray tap gets a sentence
 //  instead of the screen.
 // ============================================================
+// A back-office username follows the guests' rule (username-lib.php): one rule
+// for everyone who signs in.
+require_once __DIR__ . '/username-lib.php';
 
 // Every permission, in plain words, grouped the way the app's menu is.
 // [label, group, fixed]: 'always' is on for everyone, 'super' is a Super User's only.
@@ -242,16 +245,14 @@ function people_email_problem($email)
     return '';
 }
 // A username is what you type to sign in: letters, digits, dots, dashes and
-// underscores, 3 to 40 of them, and never an @ (an @ means an email).
+// underscores, 3 to 40 of them, and never an @ (an @ means an email). The guests'
+// rule, word for word (username_format_problem).
 function people_username_problem($u)
 {
-    $u = (string) $u;
-    if (!preg_match('/^[a-z0-9][a-z0-9._-]{2,39}$/', $u)) {
-        return 'Use 3 to 40 lower-case letters or numbers (dots, dashes and underscores are fine).';
-    }
-    return '';
+    return username_format_problem((string) $u);
 }
-// A username from a name, made unique against those already taken.
+// A username from a name, made unique against those already taken (the back
+// office's own and every guest's: the caller passes both).
 function people_username_from($name, array $taken)
 {
     $base = strtolower((string) preg_replace('/[^A-Za-z0-9]+/', '', iconv('UTF-8', 'ASCII//TRANSLIT//IGNORE', (string) $name) ?: ''));

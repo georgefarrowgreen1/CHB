@@ -194,6 +194,7 @@ $REGISTRY = [
     'csp-trial.php' => ['lib', [], 'generated: returns the CSP on trial (Report-Only) for diagnostics.php (no entry)'],
     'customers-lib.php' => ['lib', [], 'customers_group()/customers_key() shared client/server rule'],
     'people-lib.php' => ['lib', [], 'who may do what: the pure rules db.php enforces (no routes of its own)'],
+    'username-lib.php' => ['lib', [], 'the one username rule for guests and the back office; required by people-lib.php (pure, no entry)'],
     'session-lib.php' => ['lib', [], 'the session lifetime + the daily sweep of the session folder; required by db.php (no entry)'],
     'devices-lib.php' => ['lib', [], 'every device a person is signed in on; required by db.php (no entry)'],
     'photo-lib.php' => ['lib', [], 'private photos and their signed links; required by db.php and photo.php (no entry)'],
