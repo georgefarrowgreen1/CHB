@@ -144,7 +144,7 @@ if ($action === 'subscribe_admin' || $action === 'test_admin' || $action === 'un
 // completed in the activity log. Open pages still pick up the new build on their
 // own via the client-side version watcher (version.php poll).
 if ($action === 'notify_release') {
-    $isCron = isset($_GET['cron']) && hash_equals(APP_SECRET, (string) $_GET['cron']);
+    $isCron = cron_request_ok();
     if (!$isCron && empty($_SESSION['admin_id'])) {
         json_out(['error' => 'Not authorised'], 401);
     }

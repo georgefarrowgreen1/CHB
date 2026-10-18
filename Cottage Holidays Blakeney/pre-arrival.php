@@ -6,8 +6,8 @@
 //  to change). One email per booking, never repeated.
 //
 //  Set up a DAILY cron job in IONOS pointing at:
-//    https://YOURDOMAIN/YOURFOLDER/pre-arrival.php?cron=APP_SECRET
-//  (replace APP_SECRET with the value from config.php)
+//    https://YOURDOMAIN/YOURFOLDER/pre-arrival.php?cron=JOB_KEY
+//  (the job key is in the daily jobs' address Manage → Status shows)
 //
 //  A logged-in admin can also trigger a run by visiting the same
 //  URL without the cron parameter.
@@ -16,15 +16,15 @@ require_once __DIR__ . '/db.php';
 require_once __DIR__ . '/mailer.php';
 require_once __DIR__ . '/webpush.php';
 
-// Auth: cron secret OR logged-in admin
-$isCron = isset($_GET['cron']) && hash_equals(APP_SECRET, (string) $_GET['cron']);
+// Auth: the job key (cron_request_ok) OR a logged-in admin
+$isCron = cron_request_ok();
 if (!$isCron) {
     // A signed-in admin's manual run must be a POST so require_admin() enforces the
     // CSRF token — a cross-site GET link in the owner's browser must not be able to
     // fire this job via their session (same guard as cron.php / self-repair.php).
     require_admin();
     if (($_SERVER['REQUEST_METHOD'] ?? 'GET') !== 'POST') {
-        json_out(['error' => 'Run this from the back office, or use the cron URL with your secret.'], 405);
+        json_out(['error' => 'Run this from the back office, or use the daily jobs\' address from Manage → Status.'], 405);
     }
 }
 

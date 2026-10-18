@@ -1269,6 +1269,9 @@ body.light-mode ::-webkit-scrollbar-thumb {
   font-size: var(--fs-body);
   line-height: 1.6;
   white-space: pre-wrap;
+  /* A link or an address is one long word: it wraps, or the sideways scroll the line
+     below brings with it cuts it off at the box's edge. */
+  overflow-wrap: anywhere;
   color: var(--text-light);
   /* A confirm that LISTS what it is about to do (every guest a bulk send will
      email) is as long as the set. It scrolls inside the box rather than growing the

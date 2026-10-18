@@ -15,7 +15,13 @@ define('DB_CHARSET', 'utf8mb4');
 
 // --- Session / security ---
 // Used for hashing & general app config. Change to a long random string.
+// Never put it in a web address: the daily jobs have their own key, worked out from
+// this one (Manage → Status shows the address to schedule).
 define('APP_SECRET', 'change-this-to-a-long-random-string');
+// Optional: give the daily jobs a key of your own (20+ characters, different from
+// APP_SECRET) instead of the one worked out from APP_SECRET. If you set it, add the
+// same value as the CRON_SECRET repository secret so the deploy can start jobs too.
+// define('CRON_SECRET', 'a-long-random-string-different-from-APP_SECRET');
 
 // Allowed origin for the front end (your domain). Used for CORS if the
 // front end and API are on the same domain you can leave as '' .

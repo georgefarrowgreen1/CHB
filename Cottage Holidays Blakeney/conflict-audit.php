@@ -14,19 +14,19 @@
 //  A conflict that's since been resolved simply drops out of the set.
 //
 //  Run daily via cron.php, or manually as a signed-in admin:
-//    https://YOURDOMAIN/conflict-audit.php?cron=APP_SECRET
+//    https://YOURDOMAIN/conflict-audit.php?cron=JOB_KEY
 // ============================================================
 require_once __DIR__ . '/db.php';
 require_once __DIR__ . '/ical-lib.php'; // ical_block_is_reservation: a real guest is never our echo
 
-$isCron = isset($_GET['cron']) && hash_equals(APP_SECRET, (string) $_GET['cron']);
+$isCron = cron_request_ok();
 if (!$isCron) {
     // A signed-in admin's manual run must be a POST so require_admin() enforces the
     // CSRF token — a GET <img>/link in the owner's browser must not be able to fire
     // it. The loopback cron authorises with the secret above and is unaffected.
     require_admin();
     if (($_SERVER['REQUEST_METHOD'] ?? 'GET') !== 'POST') {
-        json_out(['error' => 'Run this from the back office, or use the cron URL with your secret.'], 405);
+        json_out(['error' => 'Run this from the back office, or use the daily jobs\' address from Manage → Status.'], 405);
     }
 }
 

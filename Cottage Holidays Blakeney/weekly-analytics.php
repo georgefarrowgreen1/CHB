@@ -6,7 +6,7 @@
 //
 //  Add it to the SAME daily cron as the others — it only actually sends on a
 //  Sunday, and at most once per day, so a daily trigger is safe:
-//    https://YOURDOMAIN/weekly-analytics.php?cron=APP_SECRET
+//    https://YOURDOMAIN/weekly-analytics.php?cron=JOB_KEY
 //
 //  A logged-in admin can preview/force a send any day with ?force=1.
 //  The owner can switch it off with the content key analytics-digest-off = "1".
@@ -16,14 +16,14 @@ require_once __DIR__ . '/analytics-data.php'; // analytics_summary() (+ db.php)
 require_once __DIR__ . '/mailer.php';
 require_once __DIR__ . '/jobs-lib.php'; // weekly_due
 
-$isCron = isset($_GET['cron']) && hash_equals(APP_SECRET, (string) $_GET['cron']);
+$isCron = cron_request_ok();
 if (!$isCron) {
     // A signed-in admin's manual run must be a POST so require_admin() enforces the
     // CSRF token — a cross-site GET link in the owner's browser must not be able to
     // fire this job via their session (same guard as cron.php / self-repair.php).
     require_admin();
     if (($_SERVER['REQUEST_METHOD'] ?? 'GET') !== 'POST') {
-        json_out(['error' => 'Run this from the back office, or use the cron URL with your secret.'], 405);
+        json_out(['error' => 'Run this from the back office, or use the daily jobs\' address from Manage → Status.'], 405);
     }
 }
 

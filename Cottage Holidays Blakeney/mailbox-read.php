@@ -815,7 +815,7 @@ function mailbox_selftest()
 
 // ---- Endpoint (admin fire-and-forget + cron + debug) -----------------------
 if (basename($_SERVER['SCRIPT_NAME'] ?? '') === 'mailbox-read.php') {
-    $isCron = isset($_GET['cron']) && defined('APP_SECRET') && hash_equals(APP_SECRET, (string) $_GET['cron']);
+    $isCron = cron_request_ok();
     if (!$isCron) {
         require_admin();
     }

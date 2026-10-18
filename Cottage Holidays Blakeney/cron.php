@@ -2,12 +2,11 @@
 // ============================================================
 //  cron.php — one daily cron entry point that runs ALL scheduled jobs.
 //  Instead of creating a separate IONOS cron job per task, point a single
-//  DAILY cron at this file and it pings each job in turn. The secret can be
-//  passed EITHER as a query string OR as a path segment — handy for cron
-//  panels (like IONOS) that don't allow "?" in the URL:
+//  DAILY cron at this file and it pings each job in turn. Its address carries
+//  the job key (cron-lib.php), never APP_SECRET: Manage → Status shows the
+//  address to use, as a path segment because the IONOS panel refuses a "?":
 //
-//    https://YOURDOMAIN/YOURFOLDER/cron.php/APP_SECRET     (no "?")
-//    https://YOURDOMAIN/YOURFOLDER/cron.php?cron=APP_SECRET
+//    https://YOURDOMAIN/YOURFOLDER/cron.php/JOB_KEY
 //
 //  Each job is independently safe to run daily (acts only when there's work,
 //  never repeats itself). A logged-in admin can also run it while signed in.
@@ -16,22 +15,22 @@
 require_once __DIR__ . '/db.php';
 require_once __DIR__ . '/jobs-lib.php'; // cron_result_ok
 
-// Accept the secret from ?cron=… OR from the path (/cron.php/APP_SECRET),
-// so it works even where a cron panel forbids query strings.
-$provided = (string) ($_GET['cron'] ?? '');
-if ($provided === '' && !empty($_SERVER['PATH_INFO'])) {
-    $provided = ltrim((string) $_SERVER['PATH_INFO'], '/');
+// The job key from the X-CHB-Cron header, ?cron= or the path (cron.php/<key>). An old
+// address with the master key still works; which one arrived is noted, so Status can
+// tell whether the scheduler has moved to the job key.
+$cronVia = cron_auth($_SERVER, $_GET, true);
+$isCron = $cronVia !== '';
+if ($isCron) {
+    cron_auth_note($cronVia);
 }
-$isCron = $provided !== '' && hash_equals(APP_SECRET, $provided);
 if (!$isCron) {
     // A manual run by a signed-in admin must be a POST so require_admin() enforces
     // the CSRF token — otherwise a GET <img>/link in the owner's browser could fire
-    // the whole automation (guest emails and all) via their session. The automated
-    // loopback cron authorises with the secret above and is unaffected; an owner can
-    // still run it in a browser via cron.php?cron=SECRET.
+    // the whole automation (guest emails and all) via their session. The scheduler
+    // authorises with the job key above and is unaffected.
     require_admin();
     if (($_SERVER['REQUEST_METHOD'] ?? 'GET') !== 'POST') {
-        json_out(['error' => 'Run this from the back office, or use the cron URL with your secret.'], 405);
+        json_out(['error' => 'Run this from the back office, or use the daily jobs\' address from Manage → Status.'], 405);
     }
 }
 
@@ -40,15 +39,19 @@ if (!$isCron) {
 // site_base_url(): trusted-host + proxy-aware, ONE definition — the hand-rolled
 // copy here fell back to http://localhost/ off-web and trusted any Host header.
 $base = site_base_url();
-$secret = rawurlencode(APP_SECRET);
+// The jobs are asked with the job key in a header, out of the address the server logs
+// (cron_job_request). A host that drops the header gets the key in the address from the
+// first refusal on: the job key, never the master key.
+$jobKey = cron_key();
+$keyInAddress = false;
 
 // The runner outlives any single job budget below; let it finish the list.
 @set_time_limit(0);
 @ignore_user_abort(true);
 
-// The daily jobs, in order. Each is a relative URL; the cron secret is appended.
+// The daily jobs, in order. Each is a relative URL; the job key travels in a header.
 $jobs = [
-    // FIRST, ALWAYS. migrate.php has always accepted the cron secret — it just
+    // FIRST, ALWAYS. migrate.php has always been a scheduled job — it just
     // was never in this list, so a schema change waited for the owner to
     // remember a button in Manage. Everything the deploy shipped that needs a
     // new column silently no-ops until then (measured: migrations 106 and 107
@@ -79,12 +82,12 @@ $jobs = [
     'backup.php?cron=' => 'Weekly database backup (Mondays)',
 ];
 
-$results = [];
-foreach ($jobs as $path => $label) {
-    $url = $base . $path . $secret;
-    $ch = curl_init($url);
+$askJob = function (string $path, bool $inAddress) use ($base, $jobKey): array {
+    $req = cron_job_request($base, $path, $jobKey, $inAddress);
+    $ch = curl_init($req['url']);
     curl_setopt_array($ch, [
         CURLOPT_RETURNTRANSFER => true,
+        CURLOPT_HTTPHEADER => $req['headers'],
         // A curl timeout does not stop the job — PHP keeps running it — so too
         // short a budget starts the NEXT job alongside it (autopay must finish
         // before payments-due chases). The slow ones get room.
@@ -98,6 +101,17 @@ foreach ($jobs as $path => $label) {
     $status = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
     $err = curl_error($ch);
     curl_close($ch);
+    return [$raw, $status, $err];
+};
+
+$results = [];
+foreach ($jobs as $path => $label) {
+    [$raw, $status, $err] = $askJob($path, $keyInAddress);
+    if (!$keyInAddress && cron_job_refused($status)) {
+        $keyInAddress = true;
+        log_activity('system', 'cron.key_in_address', 'The host did not pass the job key\'s header on, so the daily jobs carried it in their address', ['severity' => 'info', 'actor' => 'cron', 'entity' => 'cron']);
+        [$raw, $status, $err] = $askJob($path, true);
+    }
 
     $body = $raw ? json_decode($raw, true) : null;
     // A 2xx IS NOT ALWAYS SUCCESS (cron_result_ok): a failed migration, or a job that

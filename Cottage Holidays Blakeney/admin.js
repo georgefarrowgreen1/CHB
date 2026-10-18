@@ -28859,6 +28859,7 @@ function spHtml(r, reveal) {
             return `<div class="sp-need is-${c.status === 'fail' ? 'bad' : 'warn'}">
                 <div class="sp-nhead"><span class="sp-nlabel">${escapeHtml(c.label)}</span>${stCap(c.status === 'fail' ? 'bad' : 'warn', c.status === 'fail' ? 'Needs fixing' : 'Worth a look')}</div>
                 <div class="sp-ndetail">${escapeHtml(spFirstSentence(c.detail))}</div>
+                ${typeof c.copy === 'string' && c.copy ? `<code class="sp-ncopy">${escapeHtml(c.copy)}</code><button type="button" class="u-btn2" ${chbAttrs('spCopy', c.copy)}>Copy the address</button>` : ''}
                 ${route ? `<button type="button" class="u-btn2" data-act="settingsOpen" data-arg="${route.arg}">${escapeHtml(route.t)}</button>` : ''}
             </div>`;
         }).join('')}<button type="button" class="sp-fix" ${chbAttrs('runSelfRepair', CHB_SELF)} title="Safely fixes state drift — dead photo links, lapsed card holds, missing slugs — and flags anything ambiguous. Never touches your code or bookings.">Fix safe issues</button></section>`;
@@ -28903,6 +28904,13 @@ function spHeroTitle(r) {
     const f = checks.filter((c) => c.status === 'fail').length;
     const w = checks.filter((c) => c.status === 'warn').length;
     return f ? `${f} issue${f === 1 ? '' : 's'} need${f === 1 ? 's' : ''} you` : w ? `${w} thing${w === 1 ? '' : 's'} worth a look` : 'All systems running';
+}
+// A check that hands the owner something to paste elsewhere (the daily jobs' address).
+async function spCopy(text) {
+    let ok = false;
+    try { await navigator.clipboard.writeText(String(text)); ok = true; } catch (e) {}
+    if (ok) toast('Address copied.');
+    else glassAlert(String(text));
 }
 // What is wrong, in its first sentence: the setup notes and file names that
 // followed it are what the fix button under it leads to.

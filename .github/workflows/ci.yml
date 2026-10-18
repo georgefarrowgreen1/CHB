@@ -192,6 +192,10 @@ jobs:
         working-directory: "Cottage Holidays Blakeney"
         run: php test-csp-report.php
 
+      - name: The scheduled jobs' own key (the master key in no address)
+        working-directory: "Cottage Holidays Blakeney"
+        run: php test-cron-key.php
+
       - name: Weekly backup encryption (opens with the real openssl binary)
         working-directory: "Cottage Holidays Blakeney"
         run: php test-backup-crypt.php

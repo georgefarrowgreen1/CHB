@@ -13,7 +13,7 @@
 //      -> return saved feeds + current block count for a property
 //
 //  Can also be triggered by a cron job using a secret:
-//  ical-import.php?cron=SECRET   (SECRET = APP_SECRET) -> runs sync for all
+//  ical-import.php?cron=JOB_KEY  (the job key, cron-lib.php) -> runs sync for all
 // ============================================================
 require_once __DIR__ . '/db.php';
 require_once __DIR__ . '/pricing.php'; // get_rate() for the manual-block property check
@@ -378,7 +378,7 @@ function ical_sync_logged_today(): bool
 // ---- cron entry (no login; protected by secret) ----
 if (isset($_GET['cron'])) {
     header('Content-Type: text/plain; charset=utf-8');
-    if (!hash_equals(APP_SECRET, (string) ($_GET['cron'] ?? ''))) {
+    if (!cron_request_ok()) {
         http_response_code(403);
         echo 'Forbidden';
         exit();

@@ -4030,6 +4030,8 @@ svg.sp-rmark path { stroke-dasharray: 30; animation: spDraw 380ms var(--out) 320
 .sp-nhead { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; justify-content: space-between; }
 .sp-nlabel { font-size: var(--fs-body); font-weight: 600; color: var(--text-light); }
 .sp-ndetail { font-size: var(--fs-sub); color: var(--text-muted); line-height: 1.45; }
+/* An address to paste elsewhere: one long word, so it wraps anywhere rather than widening the page. */
+.sp-ncopy { display: block; margin: 4px 0; font: var(--fs-sub)/1.45 ui-monospace, Menlo, monospace; color: var(--text-light); overflow-wrap: anywhere; user-select: all; }
 .sp-fix { align-self: flex-start; min-height: 44px; padding: 0 16px; border-radius: var(--r-pill); border: 1px solid var(--glass-border); background: none; color: var(--text-light); font: 600 var(--fs-body)/1 var(--font-sans); cursor: pointer; }
 
 /* ---- everything checked ---- */

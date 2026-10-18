@@ -4,7 +4,7 @@
 //  which ones have run, so you never have to guess in phpMyAdmin again.
 //
 //  Auth (same pattern as pre-arrival.php): a logged-in admin, OR a cron
-//  secret:  migrate.php?cron=APP_SECRET
+//  secret:  migrate.php?cron=JOB_KEY
 //
 //  First run on a database whose migrations were ALREADY applied by hand:
 //  use  migrate.php?baseline=1  (admin) to record every current migration
@@ -27,14 +27,14 @@ if (basename($_SERVER['SCRIPT_NAME'] ?? '') !== 'migrate.php') {
 
 require_once __DIR__ . '/db.php';
 
-$isCron = isset($_GET['cron']) && hash_equals(APP_SECRET, (string) $_GET['cron']);
+$isCron = cron_request_ok();
 if (!$isCron) {
     // A signed-in admin's manual run must be a POST so require_admin() enforces the
     // CSRF token — a cross-site GET link in the owner's browser must not be able to
     // fire this job via their session (same guard as cron.php / self-repair.php).
     require_admin();
     if (($_SERVER['REQUEST_METHOD'] ?? 'GET') !== 'POST') {
-        json_out(['error' => 'Run this from the back office, or use the cron URL with your secret.'], 405);
+        json_out(['error' => 'Run this from the back office, or use the daily jobs\' address from Manage → Status.'], 405);
     }
 }
 $baseline = isset($_GET['baseline']) && $_GET['baseline'] == '1';

@@ -39,7 +39,7 @@ function ap_check($name, $cond)
 // Marker shorthands (literal substrings the file must contain).
 $ADMIN = 'require_admin(';
 $GUEST = 'require_guest(';
-$CRON = 'hash_equals(APP_SECRET'; // the ?cron=APP_SECRET check
+$CRON = 'cron_request_ok('; // the scheduled job's key check (db.php → cron-lib.php cron_auth)
 $TOKEN = 'hash_equals(';          // signed one-tap / feed / pay tokens
 $RATE = 'rate_limit(';
 
@@ -212,6 +212,7 @@ $REGISTRY = [
     'health.php' => ['dev', [], 'local health probe'],
     'setup.php' => ['dev', [], 'one-time first-admin creator'],
     'vapid-keygen.php' => ['dev', [], 'one-time VAPID key generator'],
+    'cron-lib.php' => ['lib', [], 'the scheduled jobs\' own key and how the job runner asks for a job (pure); required by db.php, no entry of its own'],
 ];
 
 // What each kind requires in the file by default.
@@ -221,6 +222,7 @@ $KIND_MARKERS = [
     'ratelimited' => [$RATE],
     'token' => [$TOKEN],
     'webhook' => [],
+    'cron' => [$CRON],
     'public' => [],
     'page' => [],
     'lib' => [],
@@ -241,6 +243,12 @@ ap_check('no stale registry entries' . ($stale ? ' — remove: ' . implode(', ',
 
 // 2. Verify each claim's markers (and reasons where required).
 $photoCheckConstTime = (bool) preg_match('/function photo_check\(.*?hash_equals\(photo_sig\(/s', (string) @file_get_contents(__DIR__ . '/photo-lib.php'));
+// cron_request_ok() (db.php) asks cron_auth() (cron-lib.php), which compares both keys in
+// constant time; cron.php calls cron_auth() itself, which satisfies the cron marker too —
+// and only while the comparison really is hash_equals.
+$cronConstTime = (bool) preg_match('/function cron_auth\(.*?hash_equals\(\$key, \$c\).*?hash_equals\(\$master, \$c\)/s', (string) @file_get_contents(__DIR__ . '/cron-lib.php'))
+    && (bool) preg_match('/function cron_request_ok\(.*?cron_auth\(\$_SERVER, \$_GET/s', (string) @file_get_contents(__DIR__ . '/db.php'));
+ap_check('the scheduled jobs\' key is compared in constant time (cron-lib.php cron_auth, via db.php cron_request_ok)', $cronConstTime);
 foreach ($REGISTRY as $file => $entry) {
     if (!in_array($file, $files, true)) {
         continue; // already reported stale
@@ -257,7 +265,8 @@ foreach ($REGISTRY as $file => $entry) {
     $missing = array_values(array_filter($markers, fn($m) => strpos($src, $m) === false
         && !($m === $GUEST && strpos($src, 'require_guest_proven(') !== false)
         && !($m === $ADMIN && strpos($src, 'require_full_access(') !== false)
-        && !($m === $TOKEN && strpos($src, 'photo_check(') !== false && $photoCheckConstTime)));
+        && !($m === $TOKEN && strpos($src, 'photo_check(') !== false && $photoCheckConstTime)
+        && !($m === $CRON && strpos($src, 'cron_auth(') !== false && $cronConstTime)));
     if ($missing) {
         ap_check("$file [$kind] — MISSING guard marker(s): " . implode(', ', $missing), false);
         continue;
