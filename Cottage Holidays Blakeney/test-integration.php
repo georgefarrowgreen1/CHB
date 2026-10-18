@@ -6678,13 +6678,15 @@ it_check('§86 …and keeps an unsubscribe, as the record of it', $nlRow86('gone
 $rootDb->exec('DELETE FROM newsletter_subscribers');
 $rootDb->exec("DELETE FROM login_attempts WHERE identifier IN ('newsletter', 'nlconfirm') OR identifier LIKE 'nlmail:%'");
 
-// §87 THE NARROWER OUTSIDE-CODE RULE, ON TRIAL (the security leftovers, step 5). The
-// browser sends what the Report-Only rule would stop to csp-report.php?trial=1; only
-// what the narrowing itself stops is kept (info, once a day per address, capped), and
-// the Status page lists the week's. The rule's own shape is test-csp-report's.
-echo "\n== §87 the narrower outside-code rule, on trial ==\n";
+// §87 THE OUTSIDE CODE IS PINNED, AND ENFORCED (the security leftovers, step 5). The
+// pinned rule ran a week as a Report-Only trial and is the enforced rule now. At the real
+// endpoint: a script from outside the pins is a real block (warn); a report about a pinned
+// file can only come from a page still holding an older rule (info); and with no trial
+// running, a trial report (a page cached before the switch-on still sends them) is not
+// kept and Status shows no trial row. The rule's own shape is test-csp-report's.
+echo "\n== §87 the outside code is pinned, and enforced ==\n";
 $rootDb->exec("DELETE FROM activity_log WHERE action IN ('csp.trial', 'csp.violation')");
-$csp87 = function ($body, $trial = true) use ($BASE) {
+$csp87 = function ($body, $trial = false) use ($BASE) {
     $ch = curl_init($BASE . '/csp-report.php' . ($trial ? '?trial=1' : ''));
     curl_setopt_array($ch, [CURLOPT_POST => true, CURLOPT_RETURNTRANSFER => true, CURLOPT_HTTPHEADER => ['Content-Type: application/csp-report'], CURLOPT_POSTFIELDS => json_encode($body)]);
     curl_exec($ch);
@@ -6692,36 +6694,35 @@ $csp87 = function ($body, $trial = true) use ($BASE) {
     curl_close($ch);
     return $code;
 };
+$viol87 = fn() => $rootDb->query("SELECT summary, severity FROM activity_log WHERE action = 'csp.violation' ORDER BY id")->fetchAll(PDO::FETCH_ASSOC);
 $trialRows87 = fn() => $rootDb->query("SELECT summary, severity FROM activity_log WHERE action = 'csp.trial' ORDER BY id")->fetchAll(PDO::FETCH_ASSOC);
 $foreign87 = 'https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js';
-$c87 = $csp87(['csp-report' => ['effective-directive' => 'script-src-elem', 'blocked-uri' => $foreign87 . '?v=1', 'disposition' => 'report']]);
-$rows87 = $trialRows87();
-it_check('§87 a script the narrowing would stop is kept, as info, by its address without the query', $c87 === 204 && count($rows87) === 1 && $rows87[0]['summary'] === 'Narrower rule would stop script-src-elem → cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js' && $rows87[0]['severity'] === 'info', json_encode($rows87));
-$csp87([['type' => 'csp-violation', 'body' => ['effectiveDirective' => 'script-src-elem', 'blockedURL' => $foreign87 . '?v=2', 'disposition' => 'report']]]);
-it_check('§87 the same address again that day is not kept twice (in the Reporting API shape too)', count($trialRows87()) === 1, json_encode($trialRows87()));
-$csp87(['csp-report' => ['effective-directive' => 'script-src-elem', 'blocked-uri' => 'https://evil.example.com/x.js']]);
-$csp87(['csp-report' => ['effective-directive' => 'script-src-elem', 'blocked-uri' => 'inline']]);
-it_check('§87 a block the enforced rule also makes, or an inline one, is not a trial finding', count($trialRows87()) === 1, json_encode($trialRows87()));
-$csp87(['csp-report' => ['effective-directive' => 'script-src-elem', 'blocked-uri' => 'https://cdn.jsdelivr.net/gh/anyone/anything@main/other.js']], false);
-it_check('§87 a report from the enforced rule is never filed as a trial finding', count($trialRows87()) === 1 && (int) $rootDb->query("SELECT COUNT(*) FROM activity_log WHERE action = 'csp.violation'")->fetchColumn() === 1, '');
+$pinned87 = 'https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js';
+$c87 = $csp87(['csp-report' => ['effective-directive' => 'script-src-elem', 'blocked-uri' => $foreign87]]);
+$v87 = $viol87();
+it_check('§87 a script from outside the pinned paths is a real block, kept as a warning', $c87 === 204 && count($v87) === 1 && $v87[0]['severity'] === 'warn' && strpos($v87[0]['summary'], $foreign87) !== false, json_encode($v87));
+$csp87([['type' => 'csp-violation', 'body' => ['effectiveDirective' => 'script-src-elem', 'blockedURL' => $pinned87]]]);
+$v87 = $viol87();
+it_check('§87 a report about a pinned file can only come from an older page: kept as info (in the Reporting API shape too)', count($v87) === 2 && $v87[1]['severity'] === 'info' && strpos($v87[1]['summary'], $pinned87) !== false, json_encode($v87));
+// A trial report about a pinned file is the one a trial would keep (the enforced rule
+// allows it), so it is what shows the endpoint keeps nothing while no trial runs.
+$c87 = $csp87(['csp-report' => ['effective-directive' => 'script-src-elem', 'blocked-uri' => $pinned87 . '?v=1', 'disposition' => 'report']], true);
+$csp87([['type' => 'csp-violation', 'body' => ['effectiveDirective' => 'img-src', 'blockedURL' => 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/images/marker-icon.png', 'disposition' => 'report']]], true);
+$csp87(['csp-report' => ['effective-directive' => 'script-src-elem', 'blocked-uri' => 'https://cdn.jsdelivr.net/gh/anyone/anything@main/other.js', 'disposition' => 'report']], true);
+it_check('§87 with no trial running, a trial report is answered and nothing is kept', $c87 === 204 && $trialRows87() === [] && count($viol87()) === 2, json_encode([$trialRows87(), $viol87()]));
 $diag87 = function () use (&$adm83) {
     $r = http($adm83, 'POST', '/diagnostics.php', ['action' => 'run']);
+    $seen = false;
     foreach (($r['json']['checks'] ?? []) as $c) {
         if (($c['label'] ?? '') === 'Outside code rule (on trial)') {
             return $c;
         }
+        $seen = true;
     }
-    return null;
+    return $seen ? null : false;
 };
-$d87 = $diag87();
-it_check('§87 the Status page names what the trial would have stopped', is_array($d87) && $d87['status'] === 'warn' && strpos($d87['detail'], 'Would have stopped a script from cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js') === 0, json_encode($d87));
-for ($i = 0; $i < 12; $i++) {
-    $csp87(['csp-report' => ['effective-directive' => 'img-src', 'blocked-uri' => 'https://cdnjs.cloudflare.com/ajax/libs/made-up-' . $i . '/1.0.0/x.png']]);
-}
-it_check('§87 one address can add at most 10 trial findings an hour', count($trialRows87()) === 10, (string) count($trialRows87()));
+it_check('§87 …and the Status page shows no trial row', $diag87() === null, '');
 $rootDb->exec("DELETE FROM activity_log WHERE action IN ('csp.trial', 'csp.violation')");
-$d87 = $diag87();
-it_check('§87 …and with nothing found it says so', is_array($d87) && $d87['status'] === 'ok' && strpos($d87['detail'], 'Nothing in the last 7 days') === 0, json_encode($d87));
 
 // §88 EVERY WAY IN DESCRIBES THE PERSON THE SAME WAY. Reported from a phone: signed in
 // with a passkey, Your details read "Add your email" over a saved address. The passkey

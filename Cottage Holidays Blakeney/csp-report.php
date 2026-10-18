@@ -26,6 +26,14 @@ if (is_file(__DIR__ . '/csp-lib.php')) {
 if (($_SERVER['REQUEST_METHOD'] ?? 'GET') !== 'POST') {
     exit;
 }
+// A trial report while no trial runs (csp-trial.php returns ''): a page cached before the
+// last trial ended still sends these, and there is no trial rule to judge them against.
+if (($_GET['trial'] ?? '') === '1') {
+    $trialNow = is_file(__DIR__ . '/csp-trial.php') ? @include __DIR__ . '/csp-trial.php' : '';
+    if (!is_string($trialNow) || $trialNow === '') {
+        exit;
+    }
+}
 
 try {
     $raw = file_get_contents('php://input', false, null, 0, 8192); // cap the body
@@ -77,8 +85,8 @@ try {
     // violated-directive, so take the name only.
     $effDir = strtolower(trim(explode(' ', (string) $directive)[0]));
 
-    // THE NARROWER RULE ON TRIAL (the security leftovers, Step 5): reports from the
-    // Content-Security-Policy-Report-Only header come to ?trial=1. Only what the
+    // A NARROWER RULE ON TRIAL (first used for the security leftovers' Step 5): reports
+    // from a Content-Security-Policy-Report-Only header come to ?trial=1. Only what the
     // narrowing itself would stop is kept (the enforced rule allows it today); a block
     // the enforced rule also makes is reported by it already. Info, once a day per
     // address, under the same caps; the Status page lists them.

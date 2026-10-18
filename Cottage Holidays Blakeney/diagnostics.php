@@ -493,9 +493,10 @@ foreach ($phpRows as [$phpLabel, $phpStatus, $phpDetail]) {
     add($checks, 'Security', $phpLabel, $phpStatus, $phpDetail);
 }
 
-// THE NARROWER OUTSIDE-CODE RULE ON TRIAL (the security leftovers, Step 5): what it
-// would have stopped in the last week, so it can be switched on with the facts in
-// front of you. Shown only while a trial runs (csp-trial.php, from htaccess.txt).
+// A NARROWER OUTSIDE-CODE RULE ON TRIAL (first used for the security leftovers' Step 5,
+// now enforced): what it would have stopped in the last week, so it can be switched on
+// with the facts in front of you. Shown only while a trial runs (csp-trial.php, from
+// htaccess.txt).
 $cspTrial = is_file(__DIR__ . '/csp-trial.php') ? (string) (@include __DIR__ . '/csp-trial.php') : '';
 if ($cspTrial !== '') {
     $seen = [];
