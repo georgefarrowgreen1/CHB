@@ -186,6 +186,46 @@ async function open(browser, base, { checks, width = 390, dark = true, reduced =
     if (shots) await page.screenshot({ path: shots + '/tools.png', fullPage: true });
     await page.close();
 
+    console.log('§8 a check that hands over an address shows it and copies it');
+    // The daily jobs' address (diagnostics' `copy` field): shown whole, wrapped rather than
+    // widening the page, escaped, and copied by its own button. A row without one gets none.
+    const JOBS = "Daily jobs' address";
+    const ADDR = 'https://example.co.uk/cron.php/0123456789abcdef0123456789abcdef01234567';
+    const RAW = 'https://example.co.uk/cron.php/<img src=x onerror=window.__pwned=1>';
+    const CHECKS_ADDR = CHECKS_OK.map((c) => (c.label === 'Outgoing email (SMTP)' ? { ...c, status: 'warn', detail: 'Slow to answer.' } : c)).concat([
+      { category: 'Automation', label: JOBS, status: 'warn', detail: 'Change your daily scheduled task in IONOS to the address below, so the master key stops appearing in the log the server keeps of every web address.', copy: ADDR },
+      { category: 'Automation', label: 'A hostile address', status: 'warn', detail: 'Escaped.', copy: RAW },
+    ]);
+    ({ page } = await open(t.browser, t.base, { checks: CHECKS_ADDR }));
+    const a1 = await page.evaluate(() => {
+      const rows = [...document.querySelectorAll('.sp-need')].map((r) => ({ label: r.querySelector('.sp-nlabel').textContent, code: r.querySelector('.sp-ncopy') ? r.querySelector('.sp-ncopy').textContent : null, codeKids: r.querySelector('.sp-ncopy') ? r.querySelector('.sp-ncopy').children.length : -1, btn: [...r.querySelectorAll('button')].map((b) => b.textContent.trim()), right: r.querySelector('.sp-ncopy') ? r.querySelector('.sp-ncopy').getBoundingClientRect().right - r.getBoundingClientRect().right : 0 }));
+      return { rows, xs: document.documentElement.scrollWidth - document.documentElement.clientWidth, pwned: !!window.__pwned };
+    });
+    const jobs = a1.rows.find((r) => r.label === JOBS) || {};
+    const mail = a1.rows.find((r) => r.label === 'Outgoing email (SMTP)') || {};
+    const hostile = a1.rows.find((r) => r.label === 'A hostile address') || {};
+    ok(jobs.code === ADDR, `the address is shown whole ("${jobs.code}")`);
+    ok((jobs.btn || []).includes('Copy the address'), `…with its own Copy button (${(jobs.btn || []).join(', ')})`);
+    ok(mail.code === null && !(mail.btn || []).includes('Copy the address'), 'a row with nothing to hand over shows no address and no Copy button');
+    ok(hostile.code === RAW && hostile.codeKids === 0 && !a1.pwned, 'an address is text, never markup');
+    ok(a1.xs <= 0 && jobs.right <= 0.5, `a long address wraps inside its card at 390 (page ${a1.xs}, card edge ${jobs.right})`);
+    if (shots) await page.screenshot({ path: shots + '/status-address-card.png' });
+    await page.evaluate(() => { window.__copied = null; Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText: async (s) => { window.__copied = s; } } }); });
+    await page.evaluate((j) => { const r = [...document.querySelectorAll('.sp-need')].find((x) => x.querySelector('.sp-nlabel').textContent === j); [...r.querySelectorAll('button')].find((b) => b.textContent.trim() === 'Copy the address').click(); }, JOBS);
+    await page.waitForFunction(() => window.__copied !== null, null, { timeout: 3000 }).catch(() => {});
+    const a2 = await page.evaluate(() => ({ copied: window.__copied, toast: document.getElementById('app-toasts') ? document.getElementById('app-toasts').textContent : '' }));
+    ok(a2.copied === ADDR, `the button copies exactly the address (${a2.copied})`);
+    ok(/Address copied\./.test(a2.toast), `…and says so ("${a2.toast.trim()}")`);
+    await page.evaluate(() => { Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText: async () => { throw new Error('denied'); } } }); });
+    await page.evaluate((j) => { const r = [...document.querySelectorAll('.sp-need')].find((x) => x.querySelector('.sp-nlabel').textContent === j); [...r.querySelectorAll('button')].find((b) => b.textContent.trim() === 'Copy the address').click(); }, JOBS);
+    await page.waitForFunction(() => { const m = document.getElementById('glass-dialog-msg'); return m && m.textContent.includes('cron.php'); }, null, { timeout: 3000 }).catch(() => {});
+    const a3 = await page.evaluate((a) => { const m = document.getElementById('glass-dialog-msg'); return { text: !!m && m.textContent.trim() === a, cut: m ? m.scrollWidth - m.clientWidth : -1 }; }, ADDR);
+    ok(a3.text, 'a browser that refuses the clipboard is shown the address to copy by hand');
+    // The paint, not the text: a long word in a box that scrolls sideways is cut off at its edge.
+    ok(a3.cut === 0, `…all of it, wrapped inside the window (${a3.cut}px cut off)`);
+    if (shots) await page.screenshot({ path: shots + '/status-address.png', fullPage: true });
+    await page.close();
+
     console.log('§6 wide');
     ({ page } = await open(t.browser, t.base, { checks: CHECKS_OK, width: 1280 }));
     const s6 = await page.evaluate(() => { const v = [...document.querySelectorAll('.sp-vital')].map((e) => Math.round(e.getBoundingClientRect().top)); return { oneRow: new Set(v).size === 1, n: v.length }; });

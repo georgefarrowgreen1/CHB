@@ -3,7 +3,7 @@
 //  autopay-run.php — collects the balances the guest agreed we could take.
 //  Daily, from cron.php.
 //
-//    https://YOURDOMAIN/autopay-run.php?cron=APP_SECRET
+//    https://YOURDOMAIN/autopay-run.php?cron=JOB_KEY
 //
 //  Ordered BEFORE payments-due.php in cron.php on purpose: collect first, chase
 //  second. The other way round emails a guest asking for money that is taken ten
@@ -22,14 +22,14 @@ require_once __DIR__ . '/autopay-lib.php';
 require_once __DIR__ . '/webpush.php';
 require_once __DIR__ . '/mailer.php';
 
-$isCron = isset($_GET['cron']) && hash_equals(APP_SECRET, (string) $_GET['cron']);
+$isCron = cron_request_ok();
 if (!$isCron) {
     // Same guard as watchers-run.php / self-repair.php: a manual run must be a
     // POST so require_admin() enforces CSRF, and a cross-site GET in the owner's
     // browser can never fire it through their session.
     require_admin();
     if (($_SERVER['REQUEST_METHOD'] ?? 'GET') !== 'POST') {
-        json_out(['error' => 'Run this from the back office, or use the cron URL with your secret.'], 405);
+        json_out(['error' => 'Run this from the back office, or use the daily jobs\' address from Manage → Status.'], 405);
     }
 }
 

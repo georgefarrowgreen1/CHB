@@ -7133,6 +7133,70 @@ $rootDb->exec("UPDATE admins SET chat_show = 1 WHERE id = $off91");
 $rootDb->exec("DELETE FROM messages WHERE thread_id = $tid91");
 $rootDb->exec("DELETE FROM chat_threads WHERE id = $tid91");
 
+// §92 THE SCHEDULED JOBS HAVE THEIR OWN KEY. A job starts when its address is asked for,
+// and the server logs every address, so the address must carry the job key (cron-lib.php),
+// never APP_SECRET. Through the real endpoints: the job key in the X-CHB-Cron header (how
+// the job runner and the deploy send it) and in ?cron= both start a job; a wrong key does
+// not; the master key in an old address still works and is noted; ical-import (which routes
+// on ?cron=) takes the header; and Status hands over the new address until a run arrives
+// with the job key.
+echo "\n== §92 the scheduled jobs' own key ==\n";
+$job92 = substr(hash_hmac('sha256', 'cron|v1', $SECRET), 0, 40);
+$get92 = function (string $path, string $header = '') use ($BASE) {
+    $h = ['Accept: application/json'];
+    if ($header !== '') {
+        $h[] = 'X-CHB-Cron: ' . $header;
+    }
+    $http_response_header = [];
+    $raw = @file_get_contents($BASE . $path, false, stream_context_create(['http' => ['method' => 'GET', 'header' => implode("\r\n", $h), 'timeout' => 60, 'ignore_errors' => true]]));
+    $code = 0;
+    foreach ($http_response_header as $line) {
+        if (preg_match('#^HTTP/\S+ (\d+)#', $line, $m)) {
+            $code = (int) $m[1];
+        }
+    }
+    return ['code' => $code, 'raw' => (string) $raw, 'json' => json_decode((string) $raw, true)];
+};
+$seen92 = function () use ($rootDb) {
+    $v = $rootDb->query("SELECT item_value FROM content WHERE item_key = 'cron-auth'")->fetchColumn();
+    $d = is_string($v) ? json_decode($v, true) : null;
+    return is_array($d) ? $d : [];
+};
+$rootDb->exec("DELETE FROM content WHERE item_key = 'cron-auth'");
+$h92 = $get92('/migrate.php?cron=header', $job92);
+it_check('§92 the job key in the X-CHB-Cron header starts a job', $h92['code'] === 200 && isset($h92['json']['migrations']), substr($h92['raw'], 0, 200));
+$q92 = $get92('/migrate.php?cron=' . $job92);
+it_check('§92 …and in ?cron= too (a scheduler panel that allows a "?")', $q92['code'] === 200 && isset($q92['json']['migrations']), substr($q92['raw'], 0, 200));
+it_check('§92 a run with the job key notes nothing (only the old key is news)', $seen92() === [], json_encode($seen92()));
+$w92 = $get92('/migrate.php?cron=header', 'not-the-key');
+$w92b = $get92('/migrate.php?cron=' . substr($job92, 0, 39));
+it_check('§92 a wrong key, or one a character short, starts nothing', $w92['code'] === 401 && $w92b['code'] === 401, $w92['code'] . ' ' . $w92b['code']);
+$m92 = $get92('/migrate.php?cron=' . rawurlencode($SECRET));
+it_check('§92 the master key in an old address still works, so a scheduler nobody changed keeps running', $m92['code'] === 200 && isset($m92['json']['migrations']), substr($m92['raw'], 0, 200));
+it_check('§92 …and is noted, for Status to ask for the address to change', (int) ($seen92()['master_at'] ?? 0) > 0, json_encode($seen92()));
+$i92 = $get92('/ical-import.php?cron=header', $job92);
+$i92b = $get92('/ical-import.php?cron=header');
+it_check('§92 the calendar sync (which routes on ?cron=) takes the key from the header', $i92['code'] === 200 && strpos($i92['raw'], 'Synced') === 0 && $i92b['code'] === 403, $i92['code'] . ' ' . substr($i92['raw'], 0, 80) . ' / ' . $i92b['code']);
+$p92 = $get92('/push.php?action=notify_release&cron=header', $job92);
+it_check('§92 the deploy\'s release ping takes the key from the header', $p92['code'] === 200, $p92['code'] . ' ' . substr($p92['raw'], 0, 120));
+$row92 = function () use (&$adm83) {
+    $r = http($adm83, 'POST', '/diagnostics.php', ['action' => 'run']);
+    foreach (($r['json']['checks'] ?? []) as $c) {
+        if (($c['label'] ?? '') === "Daily jobs' address") {
+            return $c;
+        }
+    }
+    return null;
+};
+$d92 = $row92();
+$addr92 = rtrim($BASE, '/') . '/cron.php/' . $job92;
+it_check('§92 Status asks for the scheduler\'s address to change, and hands over the new one', is_array($d92) && $d92['status'] === 'warn' && ($d92['copy'] ?? '') === $addr92, json_encode($d92));
+it_check('§92 …which carries the job key, never the master key', is_array($d92) && strpos(json_encode($d92), $SECRET) === false, '');
+$rootDb->prepare("REPLACE INTO content (item_key, item_value) VALUES ('cron-auth', ?)")->execute([json_encode(['master_at' => time() - 3600, 'key_at' => time()])]);
+$d92 = $row92();
+it_check('§92 once a daily run arrives with the job key, Status says the master key is in no address', is_array($d92) && $d92['status'] === 'ok' && !isset($d92['copy']), json_encode($d92));
+$rootDb->exec("DELETE FROM content WHERE item_key = 'cron-auth'");
+
 echo "\n== Summary ==\n";
 if ($fail) {
     echo "  $fail CHECK(S) FAILED \xE2\x9D\x8C\n\n";

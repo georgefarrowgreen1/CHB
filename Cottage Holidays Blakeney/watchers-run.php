@@ -2,7 +2,7 @@
 // ============================================================
 //  watchers-run.php — fires the owner's standing queries. Daily, from cron.php.
 //
-//    https://YOURDOMAIN/watchers-run.php?cron=APP_SECRET
+//    https://YOURDOMAIN/watchers-run.php?cron=JOB_KEY
 //
 //  A watcher only ever speaks if it is BOTH due and STILL TRUE. "Tell me if the
 //  Jollyboat gap hasn't sold by Friday" must say nothing at all when the gap sold
@@ -16,14 +16,14 @@ require_once __DIR__ . '/db.php';
 require_once __DIR__ . '/watchers-lib.php';
 require_once __DIR__ . '/webpush.php';
 
-$isCron = isset($_GET['cron']) && hash_equals(APP_SECRET, (string) $_GET['cron']);
+$isCron = cron_request_ok();
 if (!$isCron) {
     // Same guard as enquiry-nudge.php / self-repair.php: a manual run must be a
     // POST so require_admin() enforces CSRF, and a cross-site GET in the owner's
     // browser can never fire it through their session.
     require_admin();
     if (($_SERVER['REQUEST_METHOD'] ?? 'GET') !== 'POST') {
-        json_out(['error' => 'Run this from the back office, or use the cron URL with your secret.'], 405);
+        json_out(['error' => 'Run this from the back office, or use the daily jobs\' address from Manage → Status.'], 405);
     }
 }
 

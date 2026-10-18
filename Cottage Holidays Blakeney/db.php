@@ -21,6 +21,8 @@ require_once __DIR__ . '/session-lib.php';
 require_once __DIR__ . '/devices-lib.php';
 // Private photos (the chat's, and wall photos waiting for approval) and their links.
 require_once __DIR__ . '/photo-lib.php';
+// The scheduled jobs' own key (cron_request_ok below).
+require_once __DIR__ . '/cron-lib.php';
 
 // Pin all server date/time logic to UK time (the business operates in the UK),
 // so PHP date() and MySQL NOW()/CURDATE() agree regardless of the server locale.
@@ -812,6 +814,34 @@ function require_reauth($what = 'this')
             'error' => 'Confirm it is you before ' . $what . '.',
             'code' => 'reauth_required',
         ], 401);
+    }
+}
+// Whether this request is the scheduler starting a job, by the job key (cron-lib.php).
+// The master key still works, so a scheduler nobody has changed keeps running, and it is
+// noted so Status can ask for the address to change.
+function cron_request_ok(bool $allowPath = false): bool
+{
+    $via = cron_auth($_SERVER, $_GET, $allowPath);
+    if ($via === 'master') {
+        cron_auth_note('master');
+    }
+    return $via !== '';
+}
+// When a scheduled run last arrived with the master key and with the job key (internal
+// key 'cron-auth', read by the Status page). Best-effort: a note that fails never stops a job.
+function cron_auth_note(string $via): void
+{
+    if ($via !== 'master' && $via !== 'key') {
+        return;
+    }
+    try {
+        content_locked('cron-auth', function () use ($via) {
+            $seen = content_json('cron-auth', []);
+            $seen = is_array($seen) ? $seen : [];
+            $seen[$via . '_at'] = time();
+            content_set_scalar('cron-auth', $seen);
+        });
+    } catch (\Throwable $e) {
     }
 }
 function require_admin()
@@ -2007,6 +2037,10 @@ function is_internal_content_key($key)
     if ($key === 'reply-dated-since') {
         return true; // the day reply-by-email tokens began carrying their week
                      // (migration-145, msg_reply_dated_since_day) — server-only
+    }
+    if ($key === 'cron-auth') {
+        return true; // when the scheduler last used the master key and the job key
+                     // (cron_auth_note) — server-only
     }
     if ($key === 'monzo-link') {
         return true; // the Monzo Business live link's state (monzo-sync.php): which

@@ -9,7 +9,7 @@
 //  part of the site that can't be rebuilt; this is the insurance.
 //
 //  Cron (via cron.php, daily): runs on Mondays, once per ISO week.
-//    backup.php?cron=APP_SECRET
+//    backup.php?cron=JOB_KEY
 //  Admin (Settings → Health check):
 //    POST {action:'run'}      -> back up right now (ignores the weekly gate)
 //    POST {action:'status'}   -> list stored backups
@@ -25,7 +25,7 @@ require_once __DIR__ . '/db.php';
 
 $in = body();
 $action = $_GET['action'] ?? ($in['action'] ?? '');
-$isCron = isset($_GET['cron']) && hash_equals(APP_SECRET, (string) $_GET['cron']);
+$isCron = cron_request_ok();
 // ONLY THE DOWNLOADS ARE READS. require_admin() enforces CSRF on a POST, so a
 // signed-in owner's browser could be made to RUN a backup (and email it) by a
 // link on another site — a GET carries the session cookie under SameSite=Lax.
@@ -337,7 +337,7 @@ if ($action === 'verify') {
 
 // ---- Run a backup: cron (weekly gate) or admin (forced) ----
 if (!$isCron) {
-    require_admin(); // admin session + CSRF for the manual run (cron uses ?cron=SECRET)
+    require_admin(); // admin session + CSRF for the manual run (cron uses the job key)
 }
 $force = $action === 'run' || !empty($_GET['force']);
 

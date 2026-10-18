@@ -8481,7 +8481,7 @@ to `source='owner'` server-side, because deleting an import reads the cottage as
 FREE until the next sync — a real double-booking window.
 
 **Data / migrations** — MySQL. Schema in `schema.sql`; changes ship as
-`migration-*.sql` applied by `migrate.php` (admin visit or `?cron=APP_SECRET`, or
+`migration-*.sql` applied by `migrate.php` (admin visit or `?cron=JOB_KEY`, or
 Settings → System check → Run migrations). Migrations are idempotent
 (`CREATE TABLE IF NOT EXISTS`, guarded `ADD COLUMN`). **NEW migrations are named
 `migration-NNN-<slug>.sql`** (NNN ≥ 100, next free number) — smoke-test §6c-iii
@@ -11457,6 +11457,64 @@ experiences.php, `deposit_evidence_store` and `upload_publish` in db.php, `hub_b
   the path match, the CSP3 chain, a whole host back in the trial, a library version moved in the code, cron's noise
   list, an ungenerated csp-trial.php; four against §87: no trial branch, every report kept, no Status row, no
   once-a-day), each failing its own named checks.
+
+## The scheduled jobs have their own key (the master key leaves web addresses)
+
+**Asked for after a security review ("Do 1").** A scheduled job starts when its web address is asked for, and the
+web server writes every address it is asked for into its access log. Those addresses carried `APP_SECRET`, the key
+that encrypts the door codes and private photos and signs every link the app sends: the IONOS daily task once a day
+(`cron.php/APP_SECRET`), then the runner's 15 calls to the jobs, then 4 more per deploy. The repository is public
+too, so the deploy's logs are public (GitHub masks the secret, but anything worked out from it must be masked by hand).
+- **THE JOB KEY** (`cron-lib.php`, pure): `cron_key()` is `CRON_SECRET` from config.php when one is set (20+
+  characters, not the master key), else the first 40 hex of HMAC-SHA256 of `'cron|v1'` under `APP_SECRET`, so
+  nothing needs setting up. It can only start the jobs, each of which is safe to run at any time. No `APP_SECRET`
+  means no job key at all, never one anyone could work out.
+- **ONE CHECK FOR EVERY JOB** (`cron_auth($_SERVER, $_GET, $allowPath)`; db.php `cron_request_ok()` for the 17 job
+  endpoints, `cron_auth(…, true)` in cron.php for its path form). It reads the `X-CHB-Cron` header, then `?cron=`,
+  then (cron.php only) the path, and answers `'key'`, `'master'` or `''`, comparing with `hash_equals`.
+- **THE MASTER KEY STILL WORKS, AND IS NOTED**, so a scheduler nobody has changed keeps running.
+  `cron_auth_note()` writes `master_at` / `key_at` into the internal key `cron-auth` (cron.php notes both; a job
+  endpoint notes only a master-key run). Manage → Status's **"Daily jobs' address"** row (Automation) warns until a
+  run arrives with the job key at least as recently as one with the master key (`cron_master_in_use`). Its "Needs a
+  look" card shows the address (`cron_address()`: `<site>/cron.php/<job key>`, a path because the IONOS panel refuses
+  a "?") and a **Copy the address** button (`spCopy`; a check may now carry `copy`, and diagnostics' `add()` takes
+  extra fields). Owner-only: diagnostics is full access only.
+- **THE RUNNER SENDS THE KEY IN A HEADER** (`cron_job_request`): each job is asked as `<job>.php?cron=header` with
+  the key in `X-CHB-Cron`, so the logged address carries a placeholder (`ical-import.php` routes on `?cron=`). A job
+  that answers 401/403 means the host dropped the header: from that job on, the runner puts the job key (never the
+  master key) in the address, and logs `cron.key_in_address` once.
+- **THE DEPLOY DERIVES THE SAME KEY** with `openssl dgst -sha256 -hmac "$APP_SECRET"` (or the optional
+  `CRON_SECRET` / `STAGING_CRON_SECRET` repository secret, which must match config.php's), masks it with
+  `::add-mask::` and sends it in the header. Its `job()` (the same in both steps) puts the key in the address only
+  after a 401/403, as the runner does. A first draft fell back on ANY curl failure, so a migrate that timed out
+  while still running would have been started again beside itself.
+- **Docs**: the setup guides and every job's header comment name `JOB_KEY` and the Status row, never `APP_SECRET`;
+  the refusal a signed-in GET gets says to use "the daily jobs' address from Manage → Status".
+- **WHAT THE OWNER DOES ONCE**: in IONOS, change the daily scheduled task to the address the Status row shows. Until
+  then the Manage pill reads "needs a look". The old address keeps working; refusing it outright is a later step, once
+  Status shows the task has moved.
+- Gates: **`test-cron-key.php`** (57 checks, CI-wired, deploy-excluded, counter `ckc()`: the derivation, CRON_SECRET's
+  three cases in a separate PHP each, the deploy's openssl line run for real and equal to `cron_key()`, the deploy's
+  `job()` run in bash against a stand-in curl (200, 401, 403, 500, no answer, refused twice), every way a
+  request presents a key, the Status verdicts, the runner's requests, and source scans: no file compares `APP_SECRET`
+  with a request, puts it in an address or reads `?cron=` itself, no guide prints it in a cron address),
+  **test-auth-posture** (the cron marker is `cron_request_ok(`, the `cron` kind now requires it, and the comparison is
+  held to `hash_equals`), and integration **§92** (header and `?cron=` start a job, a wrong or short key does not, the
+  master key still works and is noted, ical-import and the release ping take the header, Status hands over the
+  address and turns ok after a job-key run), and **ui-test-status §8** (the address shown whole and wrapped, escaped,
+  copied by its button, and shown in a window when the browser refuses the clipboard). Thirteen mutations of the gates,
+  two of §92 and four of §8 each fail their own named checks.
+- **A LONG WORD IN A GLASS DIALOG WRAPS** (`.glass-dialog-msg { overflow-wrap: anywhere }`, app.css). The message box
+  scrolls (`overflow-y: auto`, so its x-axis scrolls too), and the clipboard fallback cut 233px off the address while
+  its text check passed: found by looking at the screenshot. §8 measures `scrollWidth` against `clientWidth`. It
+  applies to every glass dialog, guest side included (an email address or a link in a message).
+- **Checked by a throwaway run on a real stack** (a multi-worker `php -S`, since the harness's single-worker server
+  cannot serve cron.php's calls to itself): one daily run logged 16 addresses, the master key in none and the job key
+  in one (the runner's own); with the header dropped, the first job answered 401, every job still ran with the key in
+  its address, and the fallback was logged once.
+- **Not done, said plainly**: `APP_SECRET` was not rotated. It has been in the access log every day until now, so
+  anyone who could read those logs had it. Rotating it means re-encrypting everything stored under it (door codes,
+  private notes, sealed photos) and re-issuing every signed link, which is its own piece of work.
 
 ## Self-repair & error reporting
 - Errors: client capture (app.js, third-party webview noise filtered, sends

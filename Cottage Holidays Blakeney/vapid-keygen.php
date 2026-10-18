@@ -4,11 +4,11 @@
 //  the three lines into config.php, then DELETE this file.
 //
 //  Visit (logged in as admin):   https://YOURDOMAIN/vapid-keygen.php
-//  or with the cron secret:      https://YOURDOMAIN/vapid-keygen.php?cron=APP_SECRET
+//  or with the job key:          https://YOURDOMAIN/vapid-keygen.php?cron=JOB_KEY
 // ============================================================
 require_once __DIR__ . '/db.php';
 
-$isCron = isset($_GET['cron']) && hash_equals(APP_SECRET, (string) $_GET['cron']);
+$isCron = cron_request_ok();
 if (!$isCron && empty($_SESSION['admin_id'])) {
     json_out(['error' => 'Not authorised — log in as admin first.'], 401);
 }

@@ -12,19 +12,19 @@
 //  ever emailed twice — even if the run dies part-way or the cron re-fires.
 //
 //  Owner opt-out: content key 'direct-followup-off' = '1'.
-//  Run: https://YOURDOMAIN/direct-followup.php?cron=APP_SECRET
+//  Run: https://YOURDOMAIN/direct-followup.php?cron=JOB_KEY
 // ============================================================
 require_once __DIR__ . '/db.php';
 require_once __DIR__ . '/mailer.php';
 
-$isCron = isset($_GET['cron']) && hash_equals(APP_SECRET, (string) $_GET['cron']);
+$isCron = cron_request_ok();
 if (!$isCron) {
     // A signed-in admin's manual run must be a POST so require_admin() enforces the
     // CSRF token — a cross-site GET link in the owner's browser must not be able to
     // fire this job via their session (same guard as cron.php / self-repair.php).
     require_admin();
     if (($_SERVER['REQUEST_METHOD'] ?? 'GET') !== 'POST') {
-        json_out(['error' => 'Run this from the back office, or use the cron URL with your secret.'], 405);
+        json_out(['error' => 'Run this from the back office, or use the daily jobs\' address from Manage → Status.'], 405);
     }
 }
 

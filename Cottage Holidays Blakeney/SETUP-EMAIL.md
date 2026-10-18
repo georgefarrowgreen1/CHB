@@ -42,9 +42,9 @@ check-in (directions, key collection, wifi — whatever you write per cottage in
 Settings & Fees → "Arrival info email").
 
 1. Run `migration-pre-arrival.sql` once in phpMyAdmin.
-2. In IONOS, create a DAILY cron job pointing at:
-   `https://YOURDOMAIN/YOURFOLDER/pre-arrival.php?cron=APP_SECRET`
-   (replace APP_SECRET with the value from your config.php)
+2. In IONOS, create a DAILY cron job pointing at the daily jobs' address that
+   Manage → Status shows (`https://YOURDOMAIN/YOURFOLDER/cron.php/JOB_KEY`); it
+   runs this and every other scheduled task.
 3. To change how many days before check-in it sends, add to config.php:
    `define('PRE_ARRIVAL_DAYS', 3);`
 
@@ -60,33 +60,39 @@ The site does its scheduled work through small URLs you "ping" once a day.
 In the IONOS control panel, create **a single DAILY cron job** pointing at:
 
 ```
-https://YOURDOMAIN/YOURFOLDER/cron.php/APP_SECRET
+https://YOURDOMAIN/YOURFOLDER/cron.php/JOB_KEY
 ```
 
 `cron.php` runs every scheduled task in turn, so you only manage one job. That's
-all you need.
+all you need. **Copy the exact address from Manage → Status** ("Daily jobs'
+address"): `JOB_KEY` is the jobs' own key, worked out from `APP_SECRET`.
+
+> **Never put `APP_SECRET` in a cron address.** The web server keeps a log of every
+> address it is asked for, and `APP_SECRET` is the key that encrypts the door codes
+> and private photos. The job key can only start the scheduled jobs. (An old
+> address with `APP_SECRET` still works, and Status says so until it is changed.)
 
 > **No "?" needed.** IONOS (and some other panels) won't accept a `?` in the cron
-> URL, so the secret goes after a slash as shown above (`cron.php/APP_SECRET`).
-> If your panel *does* allow it, `cron.php?cron=APP_SECRET` works too.
+> URL, so the key goes after a slash as shown above (`cron.php/JOB_KEY`).
+> If your panel *does* allow it, `cron.php?cron=JOB_KEY` works too.
 
 ### Or: one cron job per task
 
 If you'd rather schedule them individually (e.g. to run some at different times),
 create **one DAILY cron job per line below** instead of using `cron.php`. Replace
-`YOURDOMAIN/YOURFOLDER` with your site, and `APP_SECRET` with the value from
-`config.php`. Mid-morning is a good time. Each one is safe to run every day — it
+`YOURDOMAIN/YOURFOLDER` with your site, and `JOB_KEY` with the job key from the
+address Manage → Status shows. Mid-morning is a good time. Each one is safe to run every day — it
 only acts when there's something to do, and never repeats itself.
 
 > These individual URLs use `?cron=…`, so they need a cron panel that allows a
-> `?` in the URL. On IONOS (which doesn't), use the single `cron.php/APP_SECRET`
+> `?` in the URL. On IONOS (which doesn't), use the single `cron.php/JOB_KEY`
 > job above instead.
 
 ```
-https://YOURDOMAIN/YOURFOLDER/pre-arrival.php?cron=APP_SECRET
-https://YOURDOMAIN/YOURFOLDER/payments-due.php?cron=APP_SECRET
-https://YOURDOMAIN/YOURFOLDER/enquiry-nudge.php?cron=APP_SECRET
-https://YOURDOMAIN/YOURFOLDER/owner-digest.php?cron=APP_SECRET
+https://YOURDOMAIN/YOURFOLDER/pre-arrival.php?cron=JOB_KEY
+https://YOURDOMAIN/YOURFOLDER/payments-due.php?cron=JOB_KEY
+https://YOURDOMAIN/YOURFOLDER/enquiry-nudge.php?cron=JOB_KEY
+https://YOURDOMAIN/YOURFOLDER/owner-digest.php?cron=JOB_KEY
 ```
 
 What each one does:

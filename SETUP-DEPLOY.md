@@ -42,6 +42,7 @@ New repository secret.** Add each of these (the names must match exactly):
 | `IONOS_SFTP_PASS`   | your SFTP password                                |
 | `IONOS_REMOTE_PATH` | your web root, usually `/`                         |
 | `IONOS_SFTP_PORT`   | *(optional)* `22` — omit to use the default       |
+| `CRON_SECRET`       | *(optional)* only if config.php sets `CRON_SECRET`; the same value |
 
 Secrets are encrypted by GitHub. They are never shown in logs and are not visible
 to me or anyone browsing the repo.
@@ -65,7 +66,9 @@ The deploy uploads files, but it can't change your **database** schema. When a
 change needs new tables/columns, run the migration tool once after deploying:
 
 - **Visit** `https://<yoursite>/migrate.php` while logged in as admin, **or** set up
-  a cron job at `https://<yoursite>/migrate.php?cron=APP_SECRET`.
+  a cron job at `https://<yoursite>/migrate.php?cron=JOB_KEY` (the job key from the
+  daily jobs' address Manage → Status shows; never `APP_SECRET`, which the server
+  would write into its access log). The daily `cron.php` job already runs it.
 - It applies any `migration-*.sql` not yet run, records them in a
   `schema_migrations` table, and is safe to re-run (already-applied changes are
   skipped).

@@ -28,11 +28,11 @@
 require_once __DIR__ . '/db.php';
 require_once __DIR__ . '/rates.php'; // library include: unique_prop_slug/next_prop_accent
 
-$isCron = isset($_GET['cron']) && hash_equals(APP_SECRET, (string) $_GET['cron']);
+$isCron = cron_request_ok();
 if (!$isCron) {
     require_admin();
     if (($_SERVER['REQUEST_METHOD'] ?? 'GET') !== 'POST') {
-        json_out(['error' => 'Run this from the back office, or use the cron URL with your secret.'], 405);
+        json_out(['error' => 'Run this from the back office, or use the daily jobs\' address from Manage → Status.'], 405);
     }
 }
 

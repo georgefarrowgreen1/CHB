@@ -98,9 +98,9 @@ function table_cols($t)
 $bcols = isset($tables['bookings']) ? table_cols('bookings') : [];
 
 $checks = [];
-function add(&$checks, $cat, $label, $status, $detail, $hint = '')
+function add(&$checks, $cat, $label, $status, $detail, $hint = '', array $extra = [])
 {
-    $checks[] = ['category' => $cat, 'label' => $label, 'status' => $status, 'detail' => $detail, 'hint' => $hint];
+    $checks[] = array_merge(['category' => $cat, 'label' => $label, 'status' => $status, 'detail' => $detail, 'hint' => $hint], $extra);
 }
 // Helper: a feature backed by one or more tables.
 function tcheck(&$checks, $tables, $cat, $label, $needed, $okMsg)
@@ -292,6 +292,7 @@ add(
 // The single most important thing to know is silent: is the daily cron running?
 // If it stops, pre-arrival emails, balance chasers, backups and re-invites all
 // quietly stop with it. cron.php stamps 'cron-last-run' on every real run.
+$jobAddress = cron_address(site_base_url());
 $cronLast = content_value('cron-last-run');
 $cronTs = $cronLast !== '' ? strtotime($cronLast) : false;
 if ($cronTs === false) {
@@ -301,7 +302,7 @@ if ($cronTs === false) {
         'Daily jobs (cron)',
         'warn',
         'No cron run recorded yet. If you have only just set it up, this clears after the first nightly run.',
-        'Point a DAILY scheduled task at cron.php?cron=APP_SECRET (see the setup notes).',
+        'Point a DAILY scheduled task at ' . $jobAddress,
     );
 } else {
     $ageH = (time() - $cronTs) / 3600;
@@ -317,11 +318,32 @@ if ($cronTs === false) {
                 'h ago (' .
                 $when .
                 ') — automation looks stopped. Pre-arrival emails, balance chasers, backups & re-invites are paused.',
-            'Check the scheduled task at your host still points at cron.php?cron=APP_SECRET.',
+            'Check the scheduled task at your host still points at ' . $jobAddress,
         );
     } else {
         add($checks, 'Automation', 'Daily jobs (cron)', 'ok', 'Last ran ' . $when . '.');
     }
+}
+
+// ---- The daily jobs' address --------------------------------------------
+// The scheduler starts the jobs by asking for a web address, and the server logs
+// every address. It must carry the job key (cron-lib.php), never the master key,
+// which encrypts the door codes and private photos and signs every link the app
+// sends. The old addresses still work so nothing stops; this row says when the
+// scheduler still uses one, and hands over the new address (owner-only page).
+$cronSeen = content_json('cron-auth', []);
+if (cron_master_in_use(is_array($cronSeen) ? $cronSeen : [])) {
+    add(
+        $checks,
+        'Automation',
+        "Daily jobs' address",
+        'warn',
+        'Change your daily scheduled task in IONOS to the address below, so the master key stops appearing in the log the server keeps of every web address.',
+        'Paste ' . $jobAddress . ' into the scheduled task.',
+        ['copy' => $jobAddress],
+    );
+} else {
+    add($checks, 'Automation', "Daily jobs' address", 'ok', 'The daily jobs start with their own key, so the master key is in no web address.');
 }
 
 // ---- Booking prices that lost their override ----------------------------
