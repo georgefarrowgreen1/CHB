@@ -106,3 +106,54 @@ function status_daily($stamps, $today)
     }
     return $out;
 }
+
+// PHP2Shell (CVE-2026-109618 and CVE-2026-109619, announced 21/10/2026): the first release
+// on each supported branch with the fix. A branch older than these gets no official fix.
+// When the next PHP security release matters, this table is what changes.
+const STATUS_PHP_FIXED = ['8.2' => 35, '8.3' => 36, '8.4' => 27, '8.5' => 12];
+
+// true: this PHP has the fix (or is a newer branch); false: a supported branch without it;
+// null: a branch that no longer gets security fixes at all.
+function status_php_patched(int $major, int $minor, int $release): ?bool
+{
+    $branch = $major . '.' . $minor;
+    if (isset(STATUS_PHP_FIXED[$branch])) {
+        return $release >= STATUS_PHP_FIXED[$branch];
+    }
+    $newest = array_key_last(STATUS_PHP_FIXED);
+    return version_compare($branch, (string) $newest, '>') ? true : null;
+}
+
+// The Status rows for the PHP the site runs on, each [label, status, detail]. The host
+// (IONOS) installs PHP, so the row asks for their update. While it is missing, a second
+// row says whether the temporary workaround for CVE-2026-109619 is in force: session
+// upload progress switched off by .user.ini. $wa: off (it is off), file (.user.ini is in
+// the top folder), reads (this PHP reads .user.ini files), ttl (seconds it caches them).
+// A first sentence is all the Status card shows, and an ok detail of 26 characters or
+// fewer is the row's note, so each one is said in that space.
+function status_php_rows(int $major, int $minor, int $release, array $wa): array
+{
+    $v = $major . '.' . $minor . '.' . $release;
+    $patched = status_php_patched($major, $minor, $release);
+    if ($patched === true) {
+        return [['PHP version', 'ok', 'PHP ' . $v . ' has the fix.']];
+    }
+    $rows = [];
+    if ($patched === false) {
+        $fix = $major . '.' . $minor . '.' . STATUS_PHP_FIXED[$major . '.' . $minor];
+        $rows[] = ['PHP version', 'fail', 'PHP ' . $v . ' needs IONOS to update it to ' . $fix . ', the release that fixes two critical flaws announced on 21/10/2026.'];
+    } else {
+        $rows[] = ['PHP version', 'fail', 'PHP ' . $v . ' gets no security fixes any more, so choose PHP 8.3 or newer in the IONOS control panel.'];
+    }
+    if (!empty($wa['off'])) {
+        $rows[] = ['PHP workaround', 'ok', 'On for one of two flaws.'];
+    } elseif (empty($wa['file'])) {
+        $rows[] = ['PHP workaround', 'warn', 'The temporary fix for one of the two flaws is missing its settings file, .user.ini, from the website\'s top folder.'];
+    } elseif (empty($wa['reads'])) {
+        $rows[] = ['PHP workaround', 'warn', 'This PHP does not read the settings file, so ask IONOS to switch off session.upload_progress for the website.'];
+    } else {
+        $mins = max(1, (int) ceil(((int) ($wa['ttl'] ?? 300)) / 60));
+        $rows[] = ['PHP workaround', 'warn', 'The temporary fix for one of the two flaws is not on yet, which can take up to ' . $mins . ' minute' . ($mins === 1 ? '' : 's') . ' after an update.'];
+    }
+    return $rows;
+}

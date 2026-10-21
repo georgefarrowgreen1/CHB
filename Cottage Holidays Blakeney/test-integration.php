@@ -7197,6 +7197,38 @@ $d92 = $row92();
 it_check('§92 once a daily run arrives with the job key, Status says the master key is in no address', is_array($d92) && $d92['status'] === 'ok' && !isset($d92['copy']), json_encode($d92));
 $rootDb->exec("DELETE FROM content WHERE item_key = 'cron-auth'");
 
+echo "\n== §93 the PHP the site runs on (PHP2Shell, 21/10/2026) ==\n";
+// The rows the real endpoint returns equal status-lib's verdict for this PHP. php -S reads
+// no .user.ini (only a CGI or FPM PHP does), and the app copy leaves the file out, so the
+// workaround row is seen both without the file and with it.
+require_once __DIR__ . '/status-lib.php';
+$php93 = function () use (&$adm83) {
+    $r = http($adm83, 'POST', '/diagnostics.php', ['action' => 'run']);
+    $out = [];
+    foreach (($r['json']['checks'] ?? []) as $c) {
+        if (in_array($c['label'] ?? '', ['PHP version', 'PHP workaround'], true)) {
+            $out[] = [$c['label'], $c['status'], $c['detail'], $c['category'] ?? ''];
+        }
+    }
+    return $out;
+};
+$want93 = fn(bool $file) => array_map(fn($r) => [$r[0], $r[1], $r[2], 'Security'], status_php_rows(PHP_MAJOR_VERSION, PHP_MINOR_VERSION, PHP_RELEASE_VERSION, [
+    'off' => !filter_var(ini_get('session.upload_progress.enabled'), FILTER_VALIDATE_BOOLEAN),
+    'file' => $file,
+    'reads' => false,
+    'ttl' => (int) ini_get('user_ini.cache_ttl'),
+]));
+$v93 = PHP_MAJOR_VERSION . '.' . PHP_MINOR_VERSION . '.' . PHP_RELEASE_VERSION;
+$patched93 = status_php_patched(PHP_MAJOR_VERSION, PHP_MINOR_VERSION, PHP_RELEASE_VERSION) === true;
+@unlink($work . '/.user.ini');
+$g93 = $php93();
+it_check('§93 Status names the PHP the site runs on under Security, with its verdict (' . $v93 . ')', $g93 === $want93(false) && strpos($g93[0][2] ?? '', 'PHP ' . $v93 . ' ') === 0 && ($g93[0][1] ?? '') === ($patched93 ? 'ok' : 'fail'), json_encode($g93));
+it_check('§93 …and while PHP lacks the fix, whether the workaround is in force (here: no settings file)', $patched93 ? count($g93) === 1 : count($g93) === 2 && strpos($g93[1][2], '.user.ini') !== false, json_encode($g93));
+copy(__DIR__ . '/.user.ini', $work . '/.user.ini');
+$g93 = $php93();
+it_check('§93 with the file in place it says whether this PHP reads it (php -S does not)', $g93 === $want93(true) && ($patched93 || strpos($g93[1][2], 'does not read the settings file') !== false), json_encode($g93));
+@unlink($work . '/.user.ini');
+
 echo "\n== Summary ==\n";
 if ($fail) {
     echo "  $fail CHECK(S) FAILED \xE2\x9D\x8C\n\n";
