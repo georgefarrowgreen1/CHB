@@ -11415,18 +11415,27 @@ experiences.php, `deposit_evidence_store` and `upload_publish` in db.php, `hub_b
   **ui-test-newsletter.js** (the footer message, the link opened, an expired link, the Newsletter page and its send
   confirm). Fourteen mutations break-tested (nine server, five page), each failing its own named check.
 
-### Step 5: outside code is pinned to exact files (a week on trial first)
+### Step 5: outside code is pinned to exact files (enforced after a week on trial)
 
 - **THE RULE PINS THE SIX PACKAGES** the site loads from jsDelivr and cdnjs to their exact versioned paths: jsPDF
   2.5.1, heic2any 0.0.4 and Leaflet 1.9.4 on cdnjs; onnxruntime-web 1.20.1, tesseract.js 5.1.1 (and its `@v5.1.1`
   worker path), tesseract.js-core v5.1.1 and the English data under `@tesseract.js-data/eng/` on jsDelivr. The same
   narrowing applies to styles and images (Leaflet), workers and downloads; `tessdata.projectnaptha.com` is dropped
-  (tesseract.js 5 reads its language data from jsDelivr). The enforced rule allowed any of millions of packages and
+  (tesseract.js 5 reads its language data from jsDelivr). The rule before it allowed any of millions of packages and
   any public GitHub project.
-- **IT SHIPS AS A TRIAL**: `Content-Security-Policy-Report-Only` beside the enforced rule in htaccess.txt, reporting to
-  `csp-report.php?trial=1`. It stops nothing; the browser reports what it would stop. The plan is a week of that, then
-  the narrowed sources move into the enforced rule and the Report-Only header goes.
-- **MEASURED FIRST, IN A BROWSER, WITH THE TRIAL RULE ENFORCED**: all six libraries load and work with no violation (a
+- **IT RAN AS A TRIAL, THEN WAS ENFORCED** (21/10/2026). The trial was a `Content-Security-Policy-Report-Only`
+  header beside the enforced rule, reporting to `csp-report.php?trial=1`; the owner read the Status row as ok (nothing
+  it would have stopped), so the pinned sources moved into the enforced `Content-Security-Policy` (keeping `upgrade-insecure-requests`
+  and `report-uri /csp-report.php`) and the Report-Only header went. A block outside the pins is now a
+  `csp.violation` warning in Needs attention. A report about a pinned file can only come from a page still holding an
+  older rule, so it is info (`csp_report_severity`'s stale-client rule).
+- **THE TRIAL MACHINERY STAYS FOR THE NEXT ONE.** To trial a change, add a Report-Only header that reports to
+  `?trial=1` and run `php test-csp-report.php --update`: `csp-trial.php` then returns it, csp-report.php keeps what
+  only the new rule would stop (`csp_trial_worth_recording`: info, `csp.trial`, capped 10 an address and 60 an hour,
+  once a day per address), the Status page shows "Outside code rule (on trial)" and `version.php?csp=1` says `trial`.
+  With no trial running (`csp-trial.php` returns `''`), csp-report.php answers a `?trial=1` report and keeps nothing,
+  because pages cached before the switch-on still send them.
+- **MEASURED FIRST, IN A BROWSER, WITH THE RULE ENFORCED**: all six libraries load and work with no violation (a
   PDF made, an iPhone HEIC photo converted to JPEG, a map with its marker images, a receipt read by OCR, the meaning
   model embedding a sentence). Two harness lessons, worth keeping: this machine's proxy relay drops browser downloads
   at random (`ERR_TOO_MANY_RETRIES`), so the check served each CDN file from a curl-fetched copy AT THE SAME URL (the
@@ -11438,25 +11447,16 @@ experiences.php, `deposit_evidence_store` and `upload_publish` in db.php, `hub_b
   match them (a trailing `/` allows everything under it, otherwise the exact file; a report naming only an origin is
   not under a pinned path), and the CSP3 chains are followed (`script-src-elem` → `script-src` → `default-src`,
   `worker-src` → `child-src` → `script-src`, the style ones likewise).
-- **ONLY WHAT THE NARROWING ITSELF WOULD STOP IS KEPT** (`csp_trial_worth_recording`: the enforced rule allows it
-  today). A block the enforced rule also makes is already reported by it; inline and empty are not addresses. Kept as
-  info, `csp.trial` (a machine report: capped 10 an address and 60 an hour, pruned with the rest; cron.php's list
-  follows activity-lib's), once a day per address without its query.
-- **The Status page lists the week's** ("Outside code rule (on trial)", Security): ok with nothing, warn naming what
-  would have been stopped ("Would have stopped a script from cdn.jsdelivr.net/…"), shown only while
-  `csp-trial.php` (generated from htaccess.txt by `php test-csp-report.php --update`, parity-gated) says a trial runs.
-  `version.php?csp=1` says `trial`.
 - **Updating a library means changing its address in the rule too**: test-csp-report scans app.js, admin.js and
-  guest-app.js for every jsDelivr and cdnjs address and fails if the trial rule would stop one.
-- Gates: **test-csp-report.php** (the trial is the enforced rule narrowed and nothing else, no whole-host source,
-  every pin versioned, every address in the code and everything the libraries fetch at run time allowed, the demo's
-  three foreign addresses allowed today and stopped by the trial, paths, the CSP3 chains, which reports are kept) and
-  integration **§87** (a foreign script kept as info by its address, the Reporting API shape, the same address once a
-  day, a block the enforced rule makes or an inline one not kept, an enforced report never filed as a trial finding,
-  the Status page naming it, the cap, the empty state). Ten mutations break-tested (six against test-csp-report:
-  the path match, the CSP3 chain, a whole host back in the trial, a library version moved in the code, cron's noise
-  list, an ungenerated csp-trial.php; four against §87: no trial branch, every report kept, no Status row, no
-  once-a-day), each failing its own named checks.
+  guest-app.js for every jsDelivr and cdnjs address and fails if the enforced rule would stop one.
+- Gates: **test-csp-report.php** (no rule left on trial, no whole-host source, every pin versioned, tessdata gone, the
+  upgrade and the report address kept, every address in the code and everything the libraries fetch at run time
+  allowed, three foreign addresses a whole-host rule allows stopped and graded a warning, paths, the CSP3 chains,
+  which trial reports are kept) and integration **§87** (a foreign script a warning, a pinned file info in both report
+  shapes, nothing kept from a trial report while no trial runs, no Status row). Break-tested: five mutations against
+  test-csp-report (a whole host back, a Report-Only header left behind, Leaflet's images path dropped, the upgrade
+  dropped, an unversioned pin) and two against §87 (the no-trial guard removed, the old whole-host rule restored),
+  each failing its own named checks.
 
 ## The scheduled jobs have their own key (the master key leaves web addresses)
 
