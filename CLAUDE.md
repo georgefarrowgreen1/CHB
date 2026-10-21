@@ -11516,6 +11516,40 @@ too, so the deploy's logs are public (GitHub masks the secret, but anything work
   anyone who could read those logs had it. Rotating it means re-encrypting everything stored under it (door codes,
   private notes, sealed photos) and re-issuing every signed link, which is its own piece of work.
 
+## PHP2Shell: the workaround file and the PHP version row (21/10/2026)
+
+**Asked for after NSA's and the NCSC's warnings ("Do 2,3").** Two critical flaws in PHP itself (CVE-2026-109618
+and CVE-2026-109619): one crafted request, no login, code running on the server. The trigger is inside PHP, so
+nothing in the app's own code can stop it. Fixed in PHP 8.5.12, 8.4.27, 8.3.36 and 8.2.35. IONOS installs PHP on
+the shared hosting, so the fix is theirs to install; the app can only work around one flaw and say where it stands.
+- **`.user.ini`** in the top folder sets `session.upload_progress.enabled = 0`, PHP's own workaround for
+  CVE-2026-109619. The workaround for CVE-2026-109618 (an unlimited `memory_limit`) was left out: on shared hosting
+  it trades the flaw for running out of memory.
+  - IONOS runs PHP as CGI, which reads `.user.ini` from the script's folder up to the document root and re-reads it
+    every `user_ini.cache_ttl` (300s).
+  - Checked under a real `php-cgi` (8.4): off for a script in the top folder and in a subfolder, on without the file.
+  - The site never uses upload progress (test-status scans for the `PHP_SESSION_UPLOAD_PROGRESS` field and the
+    `upload_progress_` session keys), so switching it off changes nothing.
+  - The deploy ships it (`cp -r "$SRC"/. "$OUT"/` copies top-level dotfiles), and htaccess now denies `\.ini$` in both
+    FilesMatch blocks. Keep it after PHP is patched: it is harmless.
+- **Manage → Status, "PHP version"** (`status_php_rows` in status-lib.php, pure; `STATUS_PHP_FIXED` per branch):
+  - with the fix it is ok, "PHP 8.3.36 has the fix.", short enough to be the row's own note (`spNote`, 26 characters);
+  - without it, it is a failure in one sentence, because the Status card shows only the first: "PHP 8.3.35 needs IONOS
+    to update it to 8.3.36, the release that fixes two critical flaws announced on 21/10/2026.";
+  - a branch with no fix at all says to choose PHP 8.3 or newer in the IONOS control panel.
+
+  While PHP lacks the fix, a **"PHP workaround"** row says whether the file is in force: ok, or why not (the file is
+  missing; this PHP does not read it, so ask IONOS; or not yet, with the minutes from `user_ini.cache_ttl`). A failing
+  row turns the Manage pill red until IONOS patches, which is the point.
+- **A version number is all the row can read**: a host that backports the fix without changing the number reads as
+  unpatched, and only IONOS can say otherwise.
+- **The next PHP security release**: update `STATUS_PHP_FIXED` and the wording in `status_php_rows`.
+- Gates: **test-status.php** (the boundary on every branch, newer and unsupported branches, every wording's first
+  sentence, the wiring, the file's setting, both deny rules, the deploy, the site's non-use of upload progress) and
+  integration **§93** (the real endpoint's rows equal the verdict for the harness's PHP, without and with the file;
+  `php -S` reads no `.user.ini`). Four mutations of test-status (no deny rule, the file switched on, the rows not added,
+  an off-by-one at the boundary) and one of §93 (the rows not added) each fail their own named checks.
+
 ## Self-repair & error reporting
 - Errors: client capture (app.js, third-party webview noise filtered, sends
   stack/build/view) + server capture (db.php exception/shutdown handlers) both

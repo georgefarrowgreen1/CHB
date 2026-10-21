@@ -479,6 +479,20 @@ if (defined('REPLY_INBOX') && REPLY_INBOX) {
     );
 }
 
+// THE PHP THE SITE RUNS ON (PHP2Shell, 21/10/2026): whether it has the fix, which only the
+// host can install, and while it does not, whether the temporary workaround in .user.ini
+// (session upload progress off) is in force. status-lib.php decides the words.
+require_once __DIR__ . '/status-lib.php';
+$phpRows = status_php_rows(PHP_MAJOR_VERSION, PHP_MINOR_VERSION, PHP_RELEASE_VERSION, [
+    'off' => !filter_var(ini_get('session.upload_progress.enabled'), FILTER_VALIDATE_BOOLEAN),
+    'file' => is_file(__DIR__ . '/.user.ini'),
+    'reads' => in_array(PHP_SAPI, ['cgi-fcgi', 'fpm-fcgi'], true) && ini_get('user_ini.filename') === '.user.ini',
+    'ttl' => (int) ini_get('user_ini.cache_ttl'),
+]);
+foreach ($phpRows as [$phpLabel, $phpStatus, $phpDetail]) {
+    add($checks, 'Security', $phpLabel, $phpStatus, $phpDetail);
+}
+
 // THE NARROWER OUTSIDE-CODE RULE ON TRIAL (the security leftovers, Step 5): what it
 // would have stopped in the last week, so it can be switched on with the facts in
 // front of you. Shown only while a trial runs (csp-trial.php, from htaccess.txt).
