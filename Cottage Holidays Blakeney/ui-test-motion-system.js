@@ -505,20 +505,27 @@ const EXPS = [
         // loaded runner is after ownerBoot hands the page back — so wait for a painted
         // one instead of sampling the first frame it might not exist in.
         await op.waitForFunction((s) => [...document.querySelectorAll(s)].some((x) => { const r = x.getBoundingClientRect(); return r.width > 6 && r.height > 6; }), sel, { timeout: 5000 }).catch(() => {});
-        const marked = await op.evaluate((s) => {
-            document.querySelectorAll('[data-msprobe]').forEach((e) => e.removeAttribute('data-msprobe'));
-            const el = [...document.querySelectorAll(s)].find((x) => { const b = x.getBoundingClientRect(); return b.width > 6 && b.height > 6; });
-            if (!el) return false;
-            el.setAttribute('data-msprobe', '1');
-            return true;
-        }, sel);
+        // FOUND, SCROLLED AND MEASURED AS ONE TRY, and tried again if the list was
+        // re-rendered in between: the strip repaints when the page's data lands, and
+        // under the battery's load that landed after the row was marked, so the marked
+        // row was gone by the time it was measured (one run in many, passing alone).
         let box = null;
-        if (marked) {
+        for (let attempt = 0; attempt < 5 && !box; attempt++) {
+            if (attempt) await op.waitForTimeout(300);
+            const marked = await op.evaluate((s) => {
+                document.querySelectorAll('[data-msprobe]').forEach((e) => e.removeAttribute('data-msprobe'));
+                const el = [...document.querySelectorAll(s)].find((x) => { const b = x.getBoundingClientRect(); return b.width > 6 && b.height > 6; });
+                if (!el) return false;
+                el.setAttribute('data-msprobe', '1');
+                return true;
+            }, sel);
+            if (!marked) continue;
             const h = await op.$('[data-msprobe]');
             try { if (h) await h.scrollIntoViewIfNeeded(); } catch (e) {}
             await op.waitForTimeout(120);
-            const bb = h ? await h.boundingBox() : null;
-            if (bb && bb.y > 74 && bb.y + bb.height < 896) box = { x: Math.round(bb.x + Math.min(bb.width / 2, 24)), y: Math.round(bb.y + bb.height / 2), w: Math.round(bb.width) };
+            const bb = h ? await h.boundingBox().catch(() => null) : null;
+            const live = await op.evaluate(() => !!document.querySelector('[data-msprobe]'));
+            if (live && bb && bb.y > 74 && bb.y + bb.height < 896) box = { x: Math.round(bb.x + Math.min(bb.width / 2, 24)), y: Math.round(bb.y + bb.height / 2), w: Math.round(bb.width) };
         }
         if (!box) { check(false, `${label}: a painted one to press`, sel); return; }
         const read = () => op.evaluate(() => {

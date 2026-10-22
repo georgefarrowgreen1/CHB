@@ -7937,6 +7937,136 @@ it_check('§100 …and a changed record comes whole, the duties still "same"',
     ($c100['json']['inbox']['since'] ?? '') === '2026-01-01' && !isset($c100['json']['inbox']['same']) && ($c100['json']['dismissed']['same'] ?? null) === true, substr($c100['raw'], 0, 200));
 $rootDb->exec("DELETE FROM content WHERE item_key IN ('inbox-state', 'duty-dismissed')");
 $rootDb->exec("DELETE FROM bookings WHERE email = 'list100@example.com'");
+
+// §101 A VISITOR IS SENT THE REVIEWS THE PAGE SHOWS (reviews.php reviews_summary). Every
+// review rode every visitor's first load (on a five-year business 211KB of the 233KB). A
+// visitor now gets the figures the page states and the reviews on screen; "Read all" asks
+// ?all=1. Checked against that full list: the figures are its figures, and the reviews
+// sent are the ones each surface shows, in its order. The owner keeps the whole list.
+echo "\n== §101 a visitor is sent the reviews the page shows ==\n";
+$props101 = $rootDb->query('SELECT prop_key FROM properties WHERE archived_at IS NULL ORDER BY prop_key LIMIT 2')->fetchAll(PDO::FETCH_COLUMN);
+$keepReviews101 = $rootDb->query("SELECT item_value FROM content WHERE item_key = 'reviews'")->fetchColumn();
+$gIns101 = $rootDb->prepare("INSERT INTO guests (name, email, phone, address, postcode, password_hash, email_verified_at) VALUES (?, ?, '', '', '', '', NOW())");
+$rIns101 = $rootDb->prepare("INSERT INTO guest_reviews (guest_id, prop_key, stars, review_text, status, created_at) VALUES (?, ?, ?, ?, ?, NOW() - INTERVAL ? HOUR)");
+for ($i = 1; $i <= 7; $i++) {
+    $gIns101->execute(["Reviewer $i", "rev101-$i@example.com"]);
+    $gid = (int) $rootDb->lastInsertId();
+    foreach ($props101 as $j => $pk) {
+        $rIns101->execute([$gid, $pk, 3 + (($i + $j) % 3), "A lovely stay, number $i at $pk, would come back", 'approved', $i * 3 + $j]);
+    }
+}
+$gIns101->execute(['Reviewer Pending', 'rev101-p@example.com']);
+$rIns101->execute([(int) $rootDb->lastInsertId(), $props101[0], 1, 'IT101 pending, never public', 'pending', 1]);
+$lIns101 = $rootDb->prepare("INSERT INTO direct_leads (prop_key, name, email, stars, review_text, status) VALUES (?, ?, ?, ?, ?, ?)");
+$lIns101->execute([$props101[0], 'Lead One', 'lead101a@example.com', 5, 'Through the link: perfect from start to finish', 'approved']);
+$lIns101->execute([$props101[1], 'Lead Two', 'lead101b@example.com', 4, 'Through the link: very good', 'approved']);
+$cur101 = [];
+for ($i = 1; $i <= 10; $i++) {
+    $cur101[] = ['name' => "Imported $i", 'stars' => $i % 4 === 0 ? '' : 5 - ($i % 2), 'text' => "Imported review $i, from another site, with words", 'prop' => $props101[$i % 2], 'source' => 'Airbnb'];
+}
+$cur101[] = ['name' => 'No words', 'stars' => 1, 'text' => '   ', 'prop' => $props101[0]];
+$rootDb->prepare("INSERT INTO content (item_key, item_value) VALUES ('reviews', ?) ON DUPLICATE KEY UPDATE item_value = VALUES(item_value)")->execute([json_encode($cur101)]);
+$noJar101 = [];
+$all101 = http($noJar101, 'GET', '/reviews.php?all=1');
+$full101 = is_array($all101['json']['list'] ?? null) ? $all101['json']['list'] : [];
+$star101 = fn(array $r): int => max(1, min(5, (int) ($r['stars'] ?? 0) ?: 5));
+$texts101 = array_map(fn($r) => (string) ($r['text'] ?? ''), $full101);
+it_check('§101 "Read all" gets every review the site shows: the guests\' newest first, then the owner\'s own, never a pending one or one with no words (' . count($full101) . ')',
+    count($full101) >= 26 && ($full101[0]['src'] ?? '') === 'g' && ($full101[count($full101) - 1]['src'] ?? '') === 'c'
+        && !in_array('IT101 pending, never public', $texts101, true) && !in_array('   ', $texts101, true)
+        && array_search('Imported review 1, from another site, with words', $texts101, true) < array_search('Imported review 2, from another site, with words', $texts101, true),
+    substr($all101['raw'], 0, 160));
+// The suite's http() neither returns headers nor sends extra ones: a plain GET for both.
+$raw101 = function (array $hdr) use ($BASE): array {
+    $http_response_header = [];
+    @file_get_contents($BASE . '/reviews.php?all=1', false, stream_context_create(['http' => ['method' => 'GET', 'header' => implode("\r\n", $hdr), 'timeout' => 30, 'ignore_errors' => true]]));
+    return $http_response_header;
+};
+$etag101 = '';
+foreach ($raw101([]) as $hl) {
+    if (stripos($hl, 'ETag:') === 0) {
+        $etag101 = trim(substr($hl, 5));
+    }
+}
+$nm101 = ['code' => 0];
+if ($etag101 !== '') {
+    foreach ($raw101(['If-None-Match: ' . substr($etag101, 0, -1) . '-gzip"']) as $hl) {
+        if (preg_match('#^HTTP/\S+ (\d+)#', $hl, $m)) {
+            $nm101['code'] = (int) $m[1];
+        }
+    }
+}
+it_check('§101 …revalidated, and answered 304 when the visitor already has it (the -gzip form included)', $etag101 !== '' && ($nm101['code'] ?? 0) === 304, $etag101);
+$boot101 = http($noJar101, 'GET', '/bootstrap.php');
+$rv101 = is_array($boot101['json']['reviews'] ?? null) ? $boot101['json']['reviews'] : [];
+$list101 = is_array($rv101['list'] ?? null) ? $rv101['list'] : [];
+$props101f = [];
+$sum101 = 0;
+$ld101 = [0, 0];
+foreach ($full101 as $r) {
+    $s = $star101($r);
+    $sum101 += $s;
+    $p = (string) ($r['prop'] ?? '');
+    $props101f[$p] = [($props101f[$p][0] ?? 0) + 1, ($props101f[$p][1] ?? 0) + $s];
+    if (($r['src'] ?? '') === 'g' && trim((string) ($r['text'] ?? '')) !== '') {
+        $ld101 = [$ld101[0] + 1, $ld101[1] + $s];
+    }
+}
+$propsSent101 = is_array($rv101['props'] ?? null) ? $rv101['props'] : [];
+ksort($propsSent101);
+ksort($props101f);
+it_check('§101 a visitor\'s boot carries the figures of every review: the count, the stars, each cottage\'s, and the guests\' with words (a missing star counted as 5)',
+    ($rv101['v'] ?? 0) === 2 && ($rv101['n'] ?? -1) === count($full101) && ($rv101['sum'] ?? -1) === $sum101 && $propsSent101 === $props101f && ($rv101['ld'] ?? null) === $ld101,
+    json_encode(array_diff_key($rv101, ['list' => 1])) . ' against n ' . count($full101) . ' sum ' . $sum101);
+// The reviews sent are a part of the full list, in its order, holding what each surface
+// shows: each cottage's first four, the first twelve quotes the homepage rotates, and the
+// first twelve guests' reviews with words the search-result markup lists.
+$key101 = fn(array $r): string => json_encode([$r['name'] ?? '', $r['text'] ?? '', $r['prop'] ?? '', $r['src'] ?? '']);
+$pos101 = [];
+foreach ($full101 as $i => $r) {
+    $pos101[$key101($r)] = $i;
+}
+$at101 = array_map(fn($r) => $pos101[$key101($r)] ?? -1, $list101);
+$ordered101 = !in_array(-1, $at101, true) && $at101 === array_values(array_unique($at101)) && $at101 === (function ($a) { sort($a); return $a; })($at101);
+$want101 = [];
+$per101 = [];
+$rot101 = 0;
+$ldn101 = 0;
+foreach ($full101 as $i => $r) {
+    $p = (string) ($r['prop'] ?? '');
+    if (($per101[$p] ?? 0) < 4) {
+        $want101[$i] = true;
+        $per101[$p] = ($per101[$p] ?? 0) + 1;
+    }
+    $t = trim((string) ($r['text'] ?? ''));
+    if ($rot101 < 12 && strlen($t) > 20) {
+        $want101[$i] = true;
+        $rot101++;
+    }
+    if (($r['src'] ?? '') === 'g' && $t !== '' && $ldn101 < 12) {
+        $want101[$i] = true;
+        $ldn101++;
+    }
+}
+ksort($want101);
+it_check('§101 …and only the reviews on screen, in the site\'s order: each cottage\'s first four, the homepage\'s twelve quotes, the twelve the search markup lists (' . count($list101) . ' of ' . count($full101) . ')',
+    $ordered101 && $at101 === array_keys($want101) && count($list101) < count($full101), json_encode($at101));
+it_check('§101 …and the owner\'s own reviews are not in a visitor\'s content (they are in the figures)',
+    is_array($boot101['json']['content']['content'] ?? null) && !array_key_exists('reviews', $boot101['json']['content']['content']), '');
+$own101 = http($adm83, 'GET', '/bootstrap.php');
+it_check('§101 the owner keeps every review: the guests\' in the reviews part, their own in the content',
+    !isset($own101['json']['reviews']['v']) && is_array($own101['json']['reviews']['reviews'] ?? null)
+        && count($own101['json']['reviews']['reviews']) === count(array_filter($full101, fn($r) => ($r['src'] ?? '') === 'g'))
+        && count((array) ($own101['json']['content']['content']['reviews'] ?? [])) === count($cur101),
+    substr($own101['raw'], 0, 120));
+$rootDb->exec("DELETE r FROM guest_reviews r JOIN guests g ON g.id = r.guest_id WHERE g.email LIKE 'rev101-%'");
+$rootDb->exec("DELETE FROM guests WHERE email LIKE 'rev101-%'");
+$rootDb->exec("DELETE FROM direct_leads WHERE email LIKE 'lead101%'");
+if ($keepReviews101 === false) {
+    $rootDb->exec("DELETE FROM content WHERE item_key = 'reviews'");
+} else {
+    $rootDb->prepare("UPDATE content SET item_value = ? WHERE item_key = 'reviews'")->execute([$keepReviews101]);
+}
 $rootDb->exec("DELETE FROM activity_log WHERE entity = 'booking' AND entity_id IN ('93200', '93201', '96400', '99600')");
 $rootDb->exec('DELETE FROM messages WHERE thread_id IN (93300, 96500, 99700)');
 $rootDb->exec('DELETE FROM chat_threads WHERE id IN (93300, 96500, 99700)');

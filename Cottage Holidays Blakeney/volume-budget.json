@@ -3,8 +3,8 @@
   "engine": "mariadb",
   "measuredOn": "2026-10-22",
   "visitor boot": {
-    "bytes": 256570,
-    "gz": 63489,
+    "bytes": 30120,
+    "gz": 8125,
     "statements": 9,
     "rowsRead": 1885,
     "ms": 1000
@@ -14,6 +14,13 @@
     "gz": 1906,
     "statements": 6,
     "rowsRead": 419,
+    "ms": 1000
+  },
+  "visitor all reviews": {
+    "bytes": 238146,
+    "gz": 57760,
+    "statements": 6,
+    "rowsRead": 1335,
     "ms": 1000
   },
   "owner boot": {
