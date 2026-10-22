@@ -367,7 +367,12 @@ const d = require('./ui-test-lib').d; // the harness's day, on that same clock
   ok(await page.evaluate(() => !!document.getElementById('offline-daysheet')), '(fixture) offline boot lands on the day sheet');
   await page.evaluate(() => { window.__noReloadMarker = 43; });
   apiDead = false;
-  await page.waitForTimeout(17000);
+  // (c) showed the 15s probe firing by itself; the question here is what the day
+  // sheet does when a probe SUCCEEDS, so the probe runs now (as §19's does) rather
+  // than being waited for a second time, and the check waits on the screen.
+  await page.evaluate(() => chbNetProbe());
+  await page.waitForFunction(() => !document.getElementById('offline-daysheet') && !document.body.classList.contains('offline-snap'),
+    null, { timeout: 15000 }).catch(() => {});
   ok(await page.evaluate(() => !document.getElementById('offline-daysheet') && !document.body.classList.contains('offline-snap')),
     'the day sheet swaps itself for the live Today when the probe succeeds');
   ok(await page.evaluate(() => window.__noReloadMarker === 43), '…again with no reload');
@@ -759,7 +764,8 @@ const d = require('./ui-test-lib').d; // the harness's day, on that same clock
     'the crown stays — the assistant answers from the snapshot');
   // (c) the SLOW data lands late → the live Today swaps in by itself
   apiHang = false;
-  await page.waitForTimeout(6000);
+  await page.waitForFunction(() => !document.getElementById('offline-daysheet') && !document.body.classList.contains('offline-snap'),
+    null, { timeout: 6000 }).catch(() => {});
   ok(await page.evaluate(() => !document.getElementById('offline-daysheet') && !document.body.classList.contains('offline-snap')),
     'the late-landing data swapped the sheet for the live Today — no reload, nothing tapped');
   ok(await dockVis('view-inbox') && await dockVis('view-accounts') && await dockVis('view-settings'),
@@ -803,7 +809,8 @@ const d = require('./ui-test-lib').d; // the harness's day, on that same clock
   // …and the existing recovery arc brings everything back
   apiDead = false;
   await page.evaluate(() => chbNetProbe());
-  await page.waitForTimeout(2500);
+  await page.waitForFunction(() => !document.body.classList.contains('offline-snap') && !document.getElementById('offline-daysheet'),
+    null, { timeout: 2500 }).catch(() => {});
   ok(await page.evaluate(() => !document.body.classList.contains('offline-snap') && !document.getElementById('offline-daysheet')),
     'the first live probe swaps it all back — sheet gone, live Today');
   ok(await dockVis('view-inbox'), 'and the full menu returns');
@@ -1143,7 +1150,7 @@ const d = require('./ui-test-lib').d; // the harness's day, on that same clock
   });
   apiDead = false;
   await page.evaluate(() => chbNetProbe());
-  await page.waitForTimeout(2500);
+  await page.waitForFunction(() => !document.getElementById('offline-daysheet'), null, { timeout: 2500 }).catch(() => {});
   ok(await page.evaluate(() => !document.getElementById('offline-daysheet')), '(fixture) recovered clean');
 
   console.log(fails ? `\n${fails} CHECK(S) FAILED ❌` : '\nOFFLINE SUITE PASSED ✅');

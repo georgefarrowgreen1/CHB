@@ -18,6 +18,14 @@
 // The stall ABORTS after a delay, which is what a dead mobile link does — not a
 // 500, which the app already handles. Every check below break-tests: revert the
 // matching hunk and it fails.
+//
+// The delay is short (STALL_MS). What the app does with a dropped request does not
+// depend on how long it hung: a transport failure is retried once after 600ms
+// however long it took, and only the app's own 15s timeout is handled differently.
+// At 8s, every stalled refresh cost 33s (two requests, each tried twice), and the
+// suite spent 200 of its 252s waiting. A check that needs a request still IN FLIGHT
+// ("opens immediately") HOLDS it instead (holdStalls), which does not depend on the
+// clock at all, and asserts that one really is held.
 const { boot } = require('./ui-test-lib'); // pins TZ=Europe/London at require time
 let fails = 0;
 const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails++; };
@@ -41,15 +49,41 @@ const d = require('./ui-test-lib').d; // the harness's day (today, UK)
     // part of the navigation story above, and stalling them from the start would
     // starve the boot.
     let stallMore = false;
+    const STALL_MS = 400;
+    // While `held` is set, a stalled request waits for releaseStalls() rather than
+    // the clock; `inFlight` counts the stalled requests not yet dropped.
+    let held = null;
+    let releaseHeld = null;
+    let inFlight = 0;
+    const holdStalls = () => { held = new Promise((r) => { releaseHeld = r; }); };
+    // Drop everything held, then wait until no stalled request has been in flight
+    // for 800ms: a dropped READ is retried once 600ms later, and that retry stalls too.
+    const releaseStalls = async () => {
+        if (releaseHeld) releaseHeld();
+        held = null;
+        releaseHeld = null;
+        for (let quiet = 0; quiet < 8; ) {
+            await new Promise((r) => setTimeout(r, 100));
+            quiet = inFlight > 0 ? 0 : quiet + 1;
+        }
+    };
+    const hang = async () => {
+        inFlight++;
+        try {
+            await (held || new Promise((r) => setTimeout(r, STALL_MS)));
+        } finally {
+            inFlight--;
+        }
+    };
     await page.route(/\.php/, async (route) => {
         const url = route.request().url();
         const json = (o) => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(o) });
         if (stall && stallMore && /(expenses|content)\.php/.test(url)) {
-            await new Promise((r) => setTimeout(r, 800));
+            await hang();
             return route.abort('failed');
         }
         if (stall && /(bookings|accounts|enquiries|admin-bootstrap|ical-import)\.php/.test(url)) {
-            await new Promise((r) => setTimeout(r, 8000));
+            await hang();
             return route.abort('failed');
         }
         // `logs` carries a marker row so §7 can WAIT for the booking hub's own
@@ -90,11 +124,14 @@ const d = require('./ui-test-lib').d; // the harness's day (today, UK)
     // ── 2. Tapping Payments lands on Payments, at once ──────────────────────
     // Not after the request: the year list is a dropdown ON the page, never
     // permission to show it.
+    holdStalls();
     await page.evaluate(() => { window.openAccounts(); });
-    await page.waitForTimeout(600); // far inside the 8s stall
+    await page.waitForTimeout(300);
     const early = await view();
+    const pending = inFlight;
     ok(early === 'view-accounts', `Payments opens IMMEDIATELY on a stalled link, not after it (${early})`);
-    await page.waitForTimeout(8200); // let the dropped request land
+    ok(pending > 0, `…while its request is still held (${pending} in flight), so the check above is not vacuous`);
+    await releaseStalls(); // let the dropped request land
     const settled = await page.evaluate(() => ({
         v: (document.querySelector('.page-view.active') || {}).id,
         blocking: !!document.querySelector('#glass-dialog.open'),
@@ -135,10 +172,14 @@ const d = require('./ui-test-lib').d; // the harness's day (today, UK)
     // ── 5. Bookings lands at once too ───────────────────────────────────────
     await page.evaluate(() => { nav('view-inbox'); });
     await page.waitForTimeout(150);
+    holdStalls();
     await page.evaluate(() => { window.openBookings(); });
-    await page.waitForTimeout(600);
+    await page.waitForTimeout(300);
     const bk = await view();
+    const bkPending = inFlight;
     ok(bk === 'view-backoffice', `Bookings opens immediately on a stalled link (${bk})`);
+    ok(bkPending > 0, `…while its request is still held (${bkPending} in flight)`);
+    await releaseStalls();
 
     // ── 6. And with a GOOD signal nothing above changed the happy path ──────
     stall = false;

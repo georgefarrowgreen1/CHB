@@ -437,6 +437,14 @@ async function main() {
     if (by('skipped').length) console.log(`  · skipped as asked: ${by('skipped').map((r) => r.id).join(', ')}`);
     const slow = by('pass').concat(failed).sort((a, b) => b.ms - a.ms).slice(0, 4);
     if (slow.length) console.log(`  slowest: ${slow.map((r) => `${r.id} ${secs(r.ms)}`).join(', ')}`);
+    // The browser suites are one gate and most of the run, so name their own slowest too.
+    const ui = results.find((r) => r.id === 'ui-tests' && r.log);
+    if (ui) {
+        try {
+            const m = fs.readFileSync(ui.log, 'utf8').match(/^\s*slowest: (.+)$/m);
+            if (m) console.log(`  slowest browser suites: ${m[1]}`);
+        } catch (e) { /* no log */ }
+    }
     console.log(`  logs: ${logs}`);
     const ok = !failed.length && !notRun.length;
     // A run that left gates out on purpose is not the gate; say which kind it was.
