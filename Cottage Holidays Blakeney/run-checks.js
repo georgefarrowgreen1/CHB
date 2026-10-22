@@ -399,6 +399,15 @@ async function main() {
         console.log(`  … running: ${[...running].map(([id, r]) => `${id} ${secs(Date.now() - r.started)}`).join(', ')}`);
     }, 60000);
     let dbUsed = false;
+    // THE DATABASE GATES TAKE TURNS. test-integration reads the server-wide statement
+    // counter (its §24 and §76 budgets), so another gate's queries in the same seconds
+    // would count against it. A slot that reaches a database gate while another one
+    // runs takes the next gate that needs no database, or waits for its turn.
+    let dbBusy = null;
+    const nextGate = () => {
+        const i = queue.findIndex((g) => !(g.needsDb && dbBusy));
+        return i < 0 ? null : queue.splice(i, 1)[0];
+    };
     const dropDb = () => {
         if (!dbUsed) return;
         php(`try { $p = new PDO("mysql:host=" . (getenv("CHB_IT_DB_HOST") ?: "127.0.0.1") . ";port=" . (getenv("CHB_IT_DB_PORT") ?: "3306"), getenv("CHB_IT_DB_USER") ?: "root", getenv("CHB_IT_DB_PASS") !== false ? getenv("CHB_IT_DB_PASS") : "root"); $p->exec("DROP DATABASE IF EXISTS \`${dbName}\`"); } catch (Throwable $e) {}`, env);
@@ -418,7 +427,14 @@ async function main() {
     await Promise.all([
         ...longPole.map(runGate),
         ...Array.from({ length: Math.min(slots, queue.length) }, async () => {
-            for (let g = queue.shift(); g; g = queue.shift()) await runGate(g);
+            while (queue.length) {
+                const g = nextGate();
+                if (!g) { await dbBusy; continue; }
+                if (g.needsDb) {
+                    dbBusy = runGate(g).finally(() => { dbBusy = null; });
+                    await dbBusy;
+                } else await runGate(g);
+            }
         }),
     ]);
     clearInterval(heartbeat);

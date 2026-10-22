@@ -1374,6 +1374,51 @@ the guest date picker's twelve page turns 10,299 → 4,600 (433 → 176ms).
   check-css-conventions' `:has()` invariant (47 hits on main's stylesheets). Break-tested seven ways; putting the
   chat rule back ALONE passes the browser gate (it is free without the body rules) and fails the static one, which is
   why there are two.
+
+## A five-year business in the battery (second round, upgrade 2)
+
+Every other gate runs on a handful of rows, so what years of trading cost was found by hand, one audit at a time (the
+booking list's 216 extra statements, the 2.3MB owner payload, the restyle above). **`volume-test.js`** keeps them
+found. **`test-volume-seed.php`** fills a fresh database with five years ending today: 1,387 bookings, 3,218 payments,
+40,000 activity rows, 800 chats with 5,617 messages, 3,000 enquiries, 6,000 bank lines, 54,000 page views, and the
+reviews, waitlist, platform stays and settings around them. It seeds with `mt_srand(7)`, so every run is the same
+business, dated from today (or `CHB_VOLUME_TODAY`). The gate serves the real app on it with `php -S`, measures fourteen
+reads the screens make and Today in a browser, and holds them to **`volume-budget.json`**. It is its own job in ci.yml,
+so every battery runs it (about 25s).
+- **WHAT IS MEASURED**: per read, the bytes and gzipped bytes, the statements run, the rows the database read (each the
+  least of three asks: a first visit's last-seen write is not what every visit costs) and the time (the middle of
+  three). In a browser at 390px: Today's element count, and how many elements three small changes restyle (a line of
+  text, a class on one element, a row added and taken away; ui-test-stylecost's changes, here on a full Today: 0, 4
+  and 2 of 5,102).
+- **COUNTED PER DATABASE USER**, never with the server-wide counter. The copy connects as its own user, and MariaDB's
+  `USER_STATISTICS` (`userstat` switched on for the run, put back after) or MySQL's `performance_schema` counts that
+  user alone, so another gate's queries cannot move these numbers. `rowsRead` is compared only on the engine the budget
+  was written on: the two count rows differently.
+- **ONE NIGHT OF THE DAILY JOBS FIRST** (`self-repair.php`). Without the analytics roll-up the Analytics page read every
+  raw page view (77 statements, 895,745 rows; after it 51 and 173,566). The roll-up's lock is named for the whole
+  database SERVER (`GET_LOCK('chb_pv_rollup', 0)`, not waited for), so a run beside another one can find it busy and
+  sum nothing. The gate asks again until `pv_rollup` has a watermark, and says so if it never does. Found by running
+  three break-tests at once: one failed Analytics for no reason in its own change.
+- **A BUDGET IS A CEILING WITH ROOM**, written by `node volume-test.js --update`: bytes and rows +10%, statements +2,
+  time ×5 and at least a second (it catches a regression of several times over; it is not a timing gate), each
+  restyle at most 40. A figure that came down is listed with the budget it would now get. Never raise one to get green
+  without saying in the PR what grew and why.
+- **A RESTYLE CHANGE MUST REPLACE NODES.** The first version edited a text node's data in place, and with the old
+  whole-page rules put back it still passed: a `characterData` change touches no element, so the `:has()` rules never
+  look. Replacing the text, as `textContent =` and every render do, restyled 5,916 elements with those rules back.
+- **Break-tested three ways**, each failing its own named figure: the booking list's ledger read made one query per plan
+  again (`booking_ledger_warm` a no-op) → owner boot 1,741 statements against 54; `BOOKINGS_ADMIN_OMIT` emptied → owner
+  boot 2,810KB against 2,541KB; the old `:has()` rules back (the chat rule and the drift's body rule, or the whole
+  stylesheets from before upgrade 1) → Today restyled 5,916 and 6,149 elements for a line of text.
+- **run-checks lets the database gates take turns**: test-integration's §24 and §76 budgets read the server-wide
+  `Questions` counter, so this gate's statements in the same seconds would count against them.
+- **What it shows today** (the reads upgrade 3 is for): the owner's first boot is 2.3MB (219KB gzipped), the email log
+  481KB, the chat list 147KB, the settings 127KB; a boot naming the parts it holds is 36KB.
+- **Not budgeted here, said plainly**: what a first visit fetches before the page shows. It moved with timing from one
+  run to the next (21 or 23 requests, 255ms or 3.3s), so it is measured where it is the subject (upgrade 5). The seed
+  answers 404 on the web, and the deploy strips `test-*.php`, `*-test.js` and `*-budget.json`. `CHB_VOLUME_DB` names
+  the database, so two runs can sit side by side (their roll-ups then take turns).
+
 ## Automatic collection: finished plans, Square's silences, two passes at once (round 5)
 
 Found by the scheduled-jobs review and each reproduced against the real collector code.

@@ -1,0 +1,109 @@
+{
+  "comment": "Ceilings for volume-test.js, written by `node volume-test.js --update` from a run with headroom: bytes and rows +10%, statements +2, time x5 (at least 1s), each small change at most 40 restyled elements. Lower a figure when a change brings it down; never raise one to get green without saying in the PR what grew and why.",
+  "engine": "mariadb",
+  "measuredOn": "2026-10-22",
+  "visitor boot": {
+    "bytes": 256570,
+    "gz": 63489,
+    "statements": 9,
+    "rowsRead": 1885,
+    "ms": 1000
+  },
+  "visitor availability": {
+    "bytes": 15529,
+    "gz": 1906,
+    "statements": 6,
+    "rowsRead": 419,
+    "ms": 1000
+  },
+  "owner boot": {
+    "bytes": 2601750,
+    "gz": 246534,
+    "statements": 54,
+    "rowsRead": 18989,
+    "ms": 1000
+  },
+  "owner boot, parts held": {
+    "bytes": 40897,
+    "gz": 3378,
+    "statements": 46,
+    "rowsRead": 7178,
+    "ms": 1000
+  },
+  "owner settings": {
+    "bytes": 143418,
+    "gz": 31124,
+    "statements": 6,
+    "rowsRead": 521,
+    "ms": 1000
+  },
+  "owner chat list": {
+    "bytes": 164967,
+    "gz": 31816,
+    "statements": 6,
+    "rowsRead": 11160,
+    "ms": 1000
+  },
+  "owner email log": {
+    "bytes": 541632,
+    "gz": 72093,
+    "statements": 6,
+    "rowsRead": 19281,
+    "ms": 1000
+  },
+  "owner Payments": {
+    "bytes": 32514,
+    "gz": 4755,
+    "statements": 25,
+    "rowsRead": 32715,
+    "ms": 1000
+  },
+  "owner analytics": {
+    "bytes": 4300,
+    "gz": 1173,
+    "statements": 53,
+    "rowsRead": 190943,
+    "ms": 1040
+  },
+  "owner activity log": {
+    "bytes": 39177,
+    "gz": 3722,
+    "statements": 12,
+    "rowsRead": 9556,
+    "ms": 1000
+  },
+  "owner activity week": {
+    "bytes": 1798,
+    "gz": 608,
+    "statements": 14,
+    "rowsRead": 14400,
+    "ms": 1000
+  },
+  "owner guest list": {
+    "bytes": 160263,
+    "gz": 19513,
+    "statements": 8,
+    "rowsRead": 2185,
+    "ms": 1000
+  },
+  "owner search": {
+    "bytes": 4198,
+    "gz": 949,
+    "statements": 18,
+    "rowsRead": 16570,
+    "ms": 1000
+  },
+  "guest stays": {
+    "bytes": 20501,
+    "gz": 2755,
+    "statements": 24,
+    "rowsRead": 100,
+    "ms": 1000
+  },
+  "Today in a browser": {
+    "elements": 5613,
+    "restyledByText": 40,
+    "restyledByClass": 40,
+    "restyledByRow": 40
+  }
+}
