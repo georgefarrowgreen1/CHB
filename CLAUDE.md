@@ -16,7 +16,8 @@ build step**); PHP backend files sit alongside it. App-style guest shell lives i
      the tracing JIT on, children included; check-versions diffs against the merge base with
      origin/main, uncommitted changes included. It ends "ALL CHECKS PASSED — fine to merge" or names
      each failure with its log. `--only=` / `--skip=` take gate or job names; `--list` shows the plan.
-     Measured on this machine: 18 minutes with the browser suites (the long pole), about 5 without.
+     Measured on this machine: 12 minutes with the browser suites (the long pole; 17 before upgrade 4), about 2
+     without.
      A run with `--only` or `--skip` says so in its last line instead of "fine to merge".
   2. **Then open the PR and squash-merge it at once**, and resync the branch at the start of the next
      task. Never wait on, poll or consult GitHub's CI, and don't start a manual run unless the owner
@@ -1290,6 +1291,42 @@ every figure the same. Code: the DAILY TOTALS block in analytics-data.php, migra
   grouping, a visitor seen after the summed days), each failing its own named check.
 - NB the break-tests must run one at a time on a shared server: the lock name is server-wide (the app's other
   job locks are too), so parallel copies skip each other's summing.
+
+## Faster local checks (architectural upgrade 4)
+
+The browser suites were most of `run-checks.js` (16 of 17 minutes), so this is where the time went. Measured first:
+every suite timed (92 suites, 2,729 suite-seconds at three at a time). The whole battery now takes 12 minutes.
+- **ui-tests.js names each suite's time** (in its header line) and prints the ten slowest and the total;
+  run-checks repeats that list as "slowest browser suites". Read it before adding a long suite.
+- **Longest first** (ui-tests.js): each run records how long each PASSING suite took in
+  `<tmpdir>/chb-ui-suite-times.json` and the next run starts the slowest first; a suite with no time yet is ranked
+  by file size (about 1.1KB per second). The run ends when its last suite does, and alphabetical order started
+  long suites late (simulated over the measured times: 965s against 910s ideal, three at a time). The order only
+  moves time around; nothing is skipped.
+- **ui-test-poorsignal: 252s → 44s.** It hung each "dead link" request 8s before dropping it, and the app retries a
+  dropped read once after 600ms, so each stalled refresh cost 33s, six times over. What the app does with a drop
+  does not depend on how long it hung (only its own 15s timeout is handled differently), so the hang is 400ms
+  (`STALL_MS`); where a check needs a request still IN FLIGHT ("Payments opens immediately") the request is HELD
+  until the check has looked (`holdStalls`/`releaseStalls`), and the suite asserts that one was held, so the
+  check cannot pass vacuously. Break-tested three ways (Payments and Bookings loading before they navigate, a
+  dropped refresh wiping the bookings), each failing its own check.
+- **ui-test-offline: 215s → 184s.** The second probe wait (17s, after §9(c) has shown the 15s probe firing by
+  itself) runs the probe instead, and three more fixed sleeps wait on the screen with the same limit. Its other
+  waits are left: several sit before checks that COUNT (two loads, not four) or assert an ABSENCE (no second
+  toast), and a wait that ends at the first sign of the expected state would let the failure arrive after the
+  check.
+- **One suite per core** (ui-tests.js, was cores minus one, i.e. three here): a suite averages under one core,
+  because it waits on timers and the network as often as it renders. Measured over the whole set: three at a time
+  kept 2.7 of the 4 cores busy and took 14.0 minutes; four kept 3.4 busy and took 11.3, each suite about 9%
+  slower and every one passing. `UI_TESTS_JOBS` still overrides (1 = serial, for debugging).
+- **Measured and NOT done**:
+  - Playwright's headless shell instead of full Chrome: about 8% less CPU, no faster alone, and ui-test-hig
+    fails two checks on it (the header's shadow renders).
+  - Making an idle page cheaper: an owner page with nothing moving costs about 0.04 cores, and a pending
+    `waitForFunction` about 0.1. The decorative animations already pause on owner pages and off the home page.
+  The suites' CPU goes on real work (page loads, rendering, interactions). NB `top` shows a GPU process near
+  100%: in headless Chrome that is software rendering, not a stuck process. And `time` around a suite reports
+  almost nothing: the browser's processes are not counted, so measure the machine (`/proc/stat`) instead.
 
 ## Automatic collection: finished plans, Square's silences, two passes at once (round 5)
 
