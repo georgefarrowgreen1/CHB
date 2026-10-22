@@ -1,15 +1,16 @@
 name: CI
 
-# Tiny safety net: lint every PHP file and run the front-end smoke test on each
-# pull request (and on pushes to main) so a broken edit can't reach production.
+# Every check this repository has. It starts ONLY BY HAND (Actions → CI → Run workflow):
+# since 22/10/2026 the checks run on the developer's machine before a merge, with
+# `node run-checks.js` in the app folder, which reads its list from this file. Waiting
+# on GitHub slowed every merge, and these jobs queued beside the deploy for the same
+# runners (the owner's ask). A new check is still added HERE, as one command, and
+# run-checks.js picks it up.
 
 on:
-  push:
-    branches: [ main ]
-  pull_request: {}
+  workflow_dispatch: {}
 
-# One live run per PR: a new push cancels the previous (possibly hung) run
-# instead of queueing behind it. Pushes to main never cancel each other.
+# One live run per ref.
 concurrency:
   group: ci-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
@@ -39,11 +40,12 @@ jobs:
       # PIN PHP: ubuntu-latest's default PHP jumps whenever GitHub rolls the
       # runner image — tests would silently start running on a version the
       # IONOS host doesn't. Keep this pinned to the host's PHP major.minor
-      # (check Manage → System diagnostics) and bump both together.
-      - name: Set up PHP 8.3 (pinned to the production host)
+      # (check Manage → System diagnostics) and bump both together. The host
+      # runs 8.4 (8.4.27, October 2026).
+      - name: Set up PHP 8.4 (pinned to the production host)
         uses: shivammathur/setup-php@eb7c497e18156a6bbabfef1d3a82760b9eda3962 # 2.40.0
         with:
-          php-version: '8.3'
+          php-version: '8.4'
           extensions: mbstring, pdo_mysql, mysqli, gd, curl
           coverage: none
 
@@ -380,10 +382,10 @@ jobs:
           persist-credentials: false
 
       # Same PHP pin as the checks job (see the comment there).
-      - name: Set up PHP 8.3 (pinned to the production host)
+      - name: Set up PHP 8.4 (pinned to the production host)
         uses: shivammathur/setup-php@eb7c497e18156a6bbabfef1d3a82760b9eda3962 # 2.40.0
         with:
-          php-version: '8.3'
+          php-version: '8.4'
           extensions: mbstring, pdo_mysql, mysqli, gd, curl
           coverage: none
 
@@ -423,10 +425,12 @@ jobs:
         run: |
           if [ "${{ github.event_name }}" = "pull_request" ]; then
             RANGE="${{ github.event.pull_request.base.sha }} ${{ github.event.pull_request.head.sha }}"
-          else
+          elif [ "${{ github.event_name }}" = "push" ]; then
             RANGE="${{ github.event.before }} ${{ github.sha }}"
+          else
+            RANGE=""   # started by hand: no diff to judge, so everything runs
           fi
-          CHANGED=$(git diff --name-only $RANGE 2>/dev/null || echo __DIFF_FAILED__)
+          CHANGED=$( [ -n "$RANGE" ] && git diff --name-only $RANGE 2>/dev/null || echo __DIFF_FAILED__)
           if [ "$CHANGED" = "__DIFF_FAILED__" ] || echo "$CHANGED" | grep -qE 'index\.html|admin-views\.html|app\.(css|js)|admin\.(js|css)|guest-app\.(js|css)|sw\.js|manifest\.json|home\.php|cottage\.php|experiences-page\.php|status\.(php|js)|e2e-test\.js|ui-tests?\.js|ui-test-.*\.js|layout-test\.js|a11y-(test\.js|budget\.json)|\.github/workflows/ci\.yml'; then
             echo "run=true" >> "$GITHUB_OUTPUT"; echo "Frontend touched → running browser tests."
           else
@@ -548,10 +552,12 @@ jobs:
         run: |
           if [ "${{ github.event_name }}" = "pull_request" ]; then
             RANGE="${{ github.event.pull_request.base.sha }} ${{ github.event.pull_request.head.sha }}"
-          else
+          elif [ "${{ github.event_name }}" = "push" ]; then
             RANGE="${{ github.event.before }} ${{ github.sha }}"
+          else
+            RANGE=""   # started by hand: no diff to judge, so everything runs
           fi
-          CHANGED=$(git diff --name-only $RANGE 2>/dev/null || echo __DIFF_FAILED__)
+          CHANGED=$( [ -n "$RANGE" ] && git diff --name-only $RANGE 2>/dev/null || echo __DIFF_FAILED__)
           if [ "$CHANGED" = "__DIFF_FAILED__" ] || echo "$CHANGED" | grep -qE 'index\.html|admin-views\.html|app\.(css|js)|admin\.(js|css)|guest-app\.(js|css)|sw\.js|manifest\.json|home\.php|cottage\.php|experiences-page\.php|status\.(php|js)|e2e-test\.js|ui-tests?\.js|ui-test-.*\.js|layout-test\.js|a11y-(test\.js|budget\.json)|\.github/workflows/ci\.yml'; then
             echo "run=true" >> "$GITHUB_OUTPUT"; echo "Frontend touched → running layout gate."
           else
