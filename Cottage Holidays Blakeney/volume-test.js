@@ -238,6 +238,7 @@ const freePort = () => new Promise((resolve) => {
     const READS = [
         ['visitor boot', 'visitor', 'GET', '/bootstrap.php'],
         ['visitor availability', 'visitor', 'GET', '/availability.php?all=1'],
+        ['visitor all reviews', 'visitor', 'GET', '/reviews.php?all=1'],
         ['owner boot', 'owner', 'GET', '/admin-bootstrap.php'],
         ['owner boot, parts held', 'owner', 'GET', '/admin-bootstrap.php?have=' + encodeURIComponent(have)],
         ['owner settings', 'owner', 'POST', '/content.php', { action: 'get_all' }],
@@ -425,6 +426,41 @@ const freePort = () => new Promise((resolve) => {
         ok(merged.logs && came(/bookings\.php/), `…the email log after one email, likewise (a delta came: ${came(/bookings\.php/)})`);
         ok(merged.threads && came(/messages\.php/), `…the chat list after one message, likewise (a delta came: ${came(/messages\.php/)})`);
         await ctx.close();
+
+        // A VISITOR'S PAGE ON FIVE YEARS OF REVIEWS: sent the figures and the reviews on
+        // screen (reviews.php reviews_summary), each cottage card states the figures of the
+        // whole list "Read all" fetches, and "Read all" shows that whole list.
+        const allRev = (await call('visitor', 'GET', '/reviews.php?all=1')).json;
+        const revList = allRev && Array.isArray(allRev.list) ? allRev.list : [];
+        const byProp = {};
+        for (const r of revList) {
+            const p = r.prop || '';
+            byProp[p] = byProp[p] || [0, 0];
+            byProp[p][0]++;
+            byProp[p][1] += Math.max(1, Math.min(5, parseInt(r.stars) || 5));
+        }
+        const vctx = await browser.newContext({ viewport: { width: 390, height: 844 } });
+        await vctx.addInitScript(() => { if (navigator.serviceWorker) navigator.serviceWorker.register = () => new Promise(() => {}); });
+        const vpage = await vctx.newPage();
+        await vpage.goto(base + '/index.html');
+        await vpage.waitForFunction(() => /review/.test((document.querySelector('[id^="card-rating-"]') || {}).textContent || ''), null, { timeout: 60000 });
+        const cards = await vpage.evaluate(() => Object.fromEntries([...document.querySelectorAll('[id^="card-rating-"]')].map((e) => [e.id.slice('card-rating-'.length), e.textContent.replace(/\s+/g, ' ').trim()])));
+        const wrong = Object.entries(cards).filter(([k, t]) => {
+            const f = byProp[k];
+            return t !== (f ? `★ ${(f[1] / f[0]).toFixed(1)} · ${f[0]} review${f[0] === 1 ? '' : 's'}` : 'New · no reviews yet');
+        });
+        ok(revList.length > 100 && Object.keys(cards).length > 0 && !wrong.length, `a visitor's cottage cards state the figures of all ${revList.length} reviews${wrong.length ? ' — wrong: ' + JSON.stringify(wrong) : ''}`);
+        const pk = Object.keys(cards).filter((k) => byProp[k]).sort((a, b) => byProp[b][0] - byProp[a][0])[0];
+        const shown = pk
+            ? await vpage.evaluate(async (k) => {
+                  openProperty(k);
+                  openAllReviews(k);
+                  for (let i = 0; i < 200 && document.querySelector('#reviews-modal-list .reviews-more'); i++) await new Promise((r) => setTimeout(r, 50));
+                  return document.querySelectorAll('#reviews-modal-list .review-card').length;
+              }, pk)
+            : -1;
+        ok(!!pk && shown === byProp[pk][0], `…and "Read all" on ${pk} shows every one of its ${pk ? byProp[pk][0] : 0} (${shown})`);
+        await vctx.close();
     } finally {
         await browser.close();
     }

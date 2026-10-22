@@ -1115,8 +1115,9 @@ CSV and PDF restated the profit from the client's own expense list.
 
 Asked for as "lighter page loads". **Measured first, on the live site and in the harness:**
 - **The visitor's boot payload** is 33.9KB raw / 11.0KB gzipped, and 304s after the first visit. The
-  owner-entered `reviews` content key is 18KB of it (5.7KB gzipped). The homepage rotation shows every
-  review, so taking them off the boot would move those bytes later, not remove them. Left as it is.
+  owner-entered `reviews` content key is 18KB of it (5.7KB gzipped). The homepage rotation showed every
+  review, so taking them off the boot would have moved those bytes later, not removed them. Left as it was
+  then; superseded by "A visitor is sent the reviews on screen" (the rotation now shows the newest dozen).
 - **The owner's payload** carried every booking ever taken on every trip to Today and every save (69
   columns, about 1.6KB of JSON a stay).
 - **The open guest chat** asked for the whole thread every 4 seconds.
@@ -1469,6 +1470,51 @@ five-year business, recording one payment sent 2.3MB (219KB gzipped) of bookings
   shift). To the page the copy was 46 hours old, fresh enough to paint, and the "dated afresh" checks measured three
   hours of skew. Every time the page stamps or reads is on the page's clock: the lib's `now()`. Reproduced on main 4
   runs in 4 at 22:30, and passing with the shift forced on and forced off.
+
+## A visitor is sent the reviews on screen (second round, upgrade 4)
+
+Every approved review rode every visitor's first load: on the five-year business 211KB of the 233KB boot (57.7KB
+gzipped), for pages that show four reviews a cottage and a dozen quotes. Code: reviews.php `reviews_summary` /
+`reviews_all` / `review_star`; app.js `__revSum`, `reviewFigures`, `reviewStar` and `openAllReviews`; content.php
+leaves the owner's `reviews` key out of a visitor's content.
+- **A visitor gets the FIGURES and the reviews on screen** (`v: 2`): `n` and `sum` over every review, `props`
+  {cottage: [count, star sum]}, `ld` [count, star sum] of the guests' reviews with words (the search-result markup's
+  rating), and `list`: each cottage's first four (the cottage page), the first twelve quotes over 20 bytes (the
+  homepage), and the first twelve guests' reviews with words (the markup), in the site's order (the guests' newest
+  first, then the owner's own in editor order), each marked `src` g or c. The owner keeps the old shape: the guests'
+  reviews in the part and their own in the content, because the owner's screens read every review.
+- **EVERY FIGURE ON THE PAGE READS `reviewFigures(prop)`**: the cottage cards and their Guest favourite badge, the
+  cottage page's heading and stat row, the enquiry summary, the homepage rating and the host card. From the summary
+  for a visitor and from the list for the owner, so "Read all 206 reviews" counts the 206 the list holds. One star
+  rule on both sides: 1 to 5, a missing star counts as 5 (`review_star` / `reviewStar`); the cottage cards alone
+  counted a missing one as 0.
+- **"Read all" asks for the rest** (`reviews.php?all=1`: `no-cache, private`, an ETag and the -gzip-tolerant 304). It
+  opens at once on what the page holds, saying "Loading the rest…", then shows the whole list. A failed ask keeps the
+  newest and says so; an answer that lands after its window closed, or after another opened, paints nothing
+  (`__revAllAsk`). Once an answer has landed the window opens on it and the ask only refreshes it; a failed refresh
+  leaves it as it was.
+- **The homepage now rotates the newest dozen quotes, not every review.** Said plainly because it is a product
+  change: suggestion 4 left the reviews on the boot because the rotation showed all of them, which on five years is
+  545 quotes at one every few seconds. The first ones shown are the same as before.
+- **The owner's `reviews` key still rides the one content query** (§24's statement ratchet) and is dropped from a
+  visitor's output by name; the summary reads it from that warm memo, so it costs no statement.
+- Measured on the five-year business and budgeted in volume-test: the visitor's boot is 27KB / 7.4KB gzipped (was
+  233KB / 57.7KB); "Read all" is 212KB / 51KB, asked for only when tapped. volume-test also opens a visitor's page on
+  the 545 reviews: every cottage card states the whole list's figures, and "Read all" shows all 206 of Jollyboat's.
+- Gates:
+  - test-integration **§101** (the full list's order and what it leaves out, the 304, the boot's figures equal to the
+    full list's, the reviews sent are each surface's picks in order, the owner's key out of a visitor's content, the
+    owner's shape kept);
+  - **ui-test-reviewsum.js** (every surface's figure from a summary whose on-screen reviews give different counts
+    and averages, the four cards and "Read all <n>", the loading line, a failure, a late answer, the held list, the
+    markup's rating and its twelve reviews, the owner asking nothing);
+  - volume-test (both visitor reads budgeted, and the page on five years of reviews).
+
+  Break-tested eleven ways, each failing its own named check. Server: a visitor given the old whole list, the owner's
+  key left in the content, the count taken from the list sent, no 304, the owner's reviews first. Client: the figures
+  counted from the list, no ask stamp, no ask, no held list, the markup's rating from the list, the owner asking.
+  The suite's first fixture averaged 4.2 on screen and overall, so the homepage rating check could not fail; the
+  vacuity guard now requires the averages to differ as well as the counts.
 
 ## Automatic collection: finished plans, Square's silences, two passes at once (round 5)
 
@@ -1957,8 +2003,8 @@ rows); each change is gated by a count or a plan, not a timing.
 - Gates: test-integration **§76** (ten more card plans cost no more statements on the probe's own connection, the
   same states booking by booking, the omitted columns and that no client file names them, the register links, both
   content outputs, the ping prune, the two plans, the analytics field) and §72 re-aimed.
-- **Not done, said plainly** (the rest of that review): every approved review still rides the visitor's boot, the chat
-  thread list is unbounded and fetched on Today only to count, the email log has hit its 3,000-row cap, the money reports read the whole ledger, and search scans each table with
+- **Not done, said plainly** (the rest of that review): every approved review still rode the visitor's boot (since done:
+  "A visitor is sent the reviews on screen"), the chat thread list is unbounded and fetched on Today only to count, the email log has hit its 3,000-row cap, the money reports read the whole ledger, and search scans each table with
   `LIKE '%q%'`. Each needs a client change with the server one.
 
 ## Reply by email, against a mailbox that answers (round 7)
@@ -4559,7 +4605,10 @@ seating, the killswitch and the connector each fail their NAMED checks (3/1/2/2/
   `held()`: the probe is marked and found in two round trips, and a re-render between
   them crashed the suite with a `TypeError` instead of failing a check. A flake that
   will not reproduce under load is usually waiting on a CLOCK: lengthen the thing it
-  waits for and it reproduces on demand.
+  waits for and it reproduces on demand. **And the row is found, scrolled to and
+  measured as ONE try, repeated if the list re-rendered in between**: a full battery run
+  failed "`.ny-row`: a painted one to press" because the strip repainted when the page's
+  data landed, after the row was marked and before it was measured.
 
 ## Sentence case on the controls — the brand keeps its caps where they are the voice (built)
 

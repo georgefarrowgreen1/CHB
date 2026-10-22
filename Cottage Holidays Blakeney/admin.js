@@ -39341,3 +39341,6 @@ window.__ADMIN_LOADED = true;
 // The Appearance row ships saying "light" and setThemeLabel ran before the views
 // were injected — so a dark back office said "currently light". Say it now.
 try { setThemeLabel(); } catch (e) {}
+// A page that signed in after loading as a visitor holds a visitor's reviews (the ones
+// on screen and the figures): the owner's screens read every review, so ask as the owner.
+try { if (__revSum) loadPublicReviews(); } catch (e) {}

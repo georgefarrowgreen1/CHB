@@ -7,7 +7,7 @@
 // the window properties when the bundle loads. Deploy checklist: bump ADMIN_V
 // whenever admin.js changes (it is the ?v= cache-buster).
 // ============================================================
-const ADMIN_BUNDLE_V = 802;
+const ADMIN_BUNDLE_V = 803;
 // admin.css is the owner-only stylesheet, split out of app.css so guests never
 // download it. Injected here (not a static <link>) and version-stamped on its
 // own — bump when admin.css changes. Kept OUT of the sw.js CORE precache.
@@ -10848,9 +10848,7 @@ const hostVal = (k) => {
 // Reviews total + rating from the posted reviews (all cottages) — ONE
 // derivation, read by the cottage page's card and the owner's profile page.
 function hostReviewFigures() {
-    const reviews = allReviews();
-    const cnt = reviews.length;
-    const avg = cnt ? reviews.reduce((s, r) => s + Math.max(1, Math.min(5, parseInt(r.stars) || 5)), 0) / cnt : 0;
+    const { n: cnt, avg } = reviewFigures(null);
     // On the stars' own scale, at one decimal, as every other rating on the site.
     return { cnt, count: cnt ? String(cnt) : 'New', rating: cnt ? avg.toFixed(1) + ' ★' : '—' };
 }
@@ -14645,11 +14643,22 @@ async function accomRemovePhoto(k, i) {
 
 // ---- Guest reviews: public renderer + Settings editor ----
 let publicGuestReviews = []; // approved guest-submitted reviews
+// THE REVIEWS A VISITOR IS SENT ARE THE ONES THE PAGE SHOWS (reviews.php reviews_summary;
+// see CLAUDE.md): the counts and star sums the page states, and only the reviews on
+// screen, already in the site's order. Null for the owner, who holds every review.
+/** @type {any} */
+let __revSum = null;
 async function loadPublicReviews(pre) {
     try {
         // `pre` = this endpoint's payload already fetched via bootstrap.php.
         const res = pre || (await apiGet('reviews.php'));
-        publicGuestReviews = Array.isArray(res.reviews) ? res.reviews : [];
+        if (res && res.v === 2 && Array.isArray(res.list)) {
+            __revSum = res;
+            publicGuestReviews = res.list.filter((r) => r && r.src === 'g');
+        } else {
+            __revSum = null;
+            publicGuestReviews = Array.isArray(res.reviews) ? res.reviews : [];
+        }
     } catch (e) {
         /* keep last-good reviews on a transient failure */
     }
@@ -14722,9 +14731,9 @@ function updateHeritageStats() {
             const n = liveCottageKeys().length;
             if (n > 0) cnt.textContent = n;
         }
-        const ratings = allReviews().map((r) => Math.max(1, Math.min(5, parseInt(r.stars) || 5)));
-        if (ratings.length >= 3) {
-            const avg = ratings.reduce((s, n) => s + n, 0) / ratings.length;
+        const all = reviewFigures(null);
+        if (all.n >= 3) {
+            const avg = all.avg;
             const el = document.getElementById('heritage-rating');
             const item = document.getElementById('heritage-rating-item');
             if (el && item) {
@@ -14890,6 +14899,7 @@ function reviewCardHtml(r, opts) {
 //     each tagged with its source so visitors see where it came from.
 // Both feed the per-cottage and host counts/ratings.
 function allReviews() {
+    if (__revSum) return __revSum.list.slice(); // a visitor's: the ones on screen
     const guest = Array.isArray(publicGuestReviews) ? publicGuestReviews : [];
     const curated = (Array.isArray(siteContent.reviews) ? siteContent.reviews : []).filter(
         (r) => r && (r.text || '').toString().trim(),
@@ -14897,6 +14907,24 @@ function allReviews() {
     // On-site submissions first (freshest, already newest-first), then the
     // owner-imported reviews in editor order.
     return guest.concat(curated);
+}
+// One review's stars as every figure counts them: 1 to 5, a missing one 5
+// (reviews.php review_star).
+function reviewStar(r) {
+    return Math.max(1, Math.min(5, parseInt(r && r.stars) || 5));
+}
+// How many reviews and their average, overall (null) or for one cottage: the server's
+// figures for a visitor, who holds only the reviews on screen; the list's own otherwise.
+function reviewFigures(prop) {
+    const one = prop !== null && prop !== undefined;
+    if (__revSum) {
+        const f = one ? (__revSum.props || {})[prop] || [0, 0] : [__revSum.n, __revSum.sum];
+        const n = Number(f[0]) || 0;
+        return { n, avg: n ? (Number(f[1]) || 0) / n : 0 };
+    }
+    const list = allReviews().filter((r) => !one || r.prop === prop);
+    const n = list.length;
+    return { n, avg: n ? list.reduce((t, r) => t + reviewStar(r), 0) / n : 0 };
 }
 function renderReviews() {
     // The homepage/per-cottage review SECTIONS were replaced by renderGuestWords()
@@ -14906,16 +14934,41 @@ function renderReviews() {
         renderCardRatings();
     } catch (e) {}
 }
+let __revAllAsk = 0,
+    __revAllAt = 0;
+/** @type {any[] | null} */
+let __revAllList = null;
 function openAllReviews(propKey) {
     const m = document.getElementById('reviews-modal');
     const body = document.getElementById('reviews-modal-list');
     if (!m || !body) return;
-    let list = allReviews();
     const scoped = !!propKey;
-    if (scoped) list = list.filter((r) => r.prop === propKey);
-    body.innerHTML = list.map((r) => reviewCardHtml(r, { scoped })).join('');
+    const draw = (all, note) => {
+        const list = scoped ? all.filter((r) => r.prop === propKey) : all;
+        body.innerHTML = list.map((r) => reviewCardHtml(r, { scoped })).join('') + (note ? `<p class="reviews-more" role="status">${escapeHtml(note)}</p>` : '');
+    };
+    // A visitor holds only the reviews on screen, so the rest are asked for now; once one
+    // answer has landed the window opens on it and the ask only refreshes it.
+    const held = __revSum ? __revAllList : null;
+    draw(held || allReviews(), __revSum && !held ? 'Loading the rest…' : '');
     overlayHistPush(); // Back closes this overlay
     m.classList.add('open');
+    if (!__revSum) return;
+    // An answer that lands after this window closed, or after another one opened, paints nothing.
+    const ask = ++__revAllAsk;
+    const mine = () => ask === __revAllAsk && m.classList.contains('open');
+    apiGet('reviews.php?all=1')
+        .then((res) => {
+            if (!res || !Array.isArray(res.list)) throw new Error('no list');
+            if (ask > __revAllAt) {
+                __revAllList = res.list;
+                __revAllAt = ask;
+            }
+            if (mine()) draw(res.list, '');
+        })
+        .catch(() => {
+            if (mine() && !held) draw(allReviews(), "Couldn't load every review just now. These are the newest.");
+        });
 }
 // Per-cottage reviews on the property page (Airbnb-style: score + count + cards).
 function renderPropReviews(propKey) {
@@ -14923,16 +14976,14 @@ function renderPropReviews(propKey) {
     if (!wrap) return;
     const divider = document.getElementById('reviews-divider');
     const list = allReviews().filter((r) => r.prop === propKey);
-    if (!list.length) {
+    const { n: count, avg } = reviewFigures(propKey);
+    if (!count || !list.length) {
         wrap.style.display = 'none';
         wrap.innerHTML = '';
         if (divider) divider.style.display = 'none'; // avoid a double rule above "Where you'll be"
         return;
     }
     if (divider) divider.style.display = '';
-    const count = list.length;
-    const avg =
-        list.reduce((s, r) => s + Math.max(1, Math.min(5, parseInt(r.stars) || 5)), 0) / count;
     const show = list.slice(0, 4);
     // THE SAME AFFORDANCE ON EVERY COTTAGE PAGE. Was `count > show.length`, so the
     // button needed five reviews — 21A (16) had it, a cottage with one to four did not,
@@ -14970,11 +15021,7 @@ const IC_MEDAL =
 function renderPropStats(propKey) {
     const el = document.getElementById('prop-stats');
     if (!el) return;
-    const list = allReviews().filter((r) => r.prop === propKey);
-    const count = list.length;
-    const avg = count
-        ? list.reduce((s, r) => s + Math.max(1, Math.min(5, parseInt(r.stars) || 5)), 0) / count
-        : 0;
+    const { n: count, avg } = reviewFigures(propKey);
     const fav = count >= 5 && avg >= 4.8; // "Guest favourite" only when genuinely well-rated
     const ratingCell = count
         ? `<div class="prop-stat"><div class="prop-stat-top">${avg.toFixed(1)}</div><div class="prop-stat-stars">${'★'.repeat(Math.round(avg))}</div></div>`
@@ -15254,11 +15301,7 @@ function openEnquireModal() {
     if (nameEl) nameEl.innerText = (propertyMeta[key] && propertyMeta[key].name) || key;
     const rateEl = document.getElementById('enq-sum-rating');
     if (rateEl) {
-        const list = allReviews().filter((r) => r.prop === key);
-        const cnt = list.length;
-        const avg = cnt
-            ? list.reduce((s, r) => s + Math.max(1, Math.min(5, parseInt(r.stars) || 5)), 0) / cnt
-            : 0;
+        const { n: cnt, avg } = reviewFigures(key);
         rateEl.innerText = cnt
             ? `★ ${avg.toFixed(1)} · ${cnt} review${cnt === 1 ? '' : 's'}`
             : 'New · no reviews yet';
@@ -15513,25 +15556,20 @@ async function updateRate(propKey, field, value) {
 // Star rating + review count on each cottage listing card (social proof at
 // the point of choosing). Shows "New" until a cottage has approved reviews.
 function renderCardRatings() {
-    let all = [];
-    try {
-        all = typeof allReviews === 'function' ? allReviews() : [];
-    } catch (e) {
-        all = [];
-    }
     Object.keys(propertyRates || {}).forEach((k) => {
         const fav = document.getElementById('cott-fav-' + k);
-        const rs = all.filter((r) => r.prop === k);
+        // The one rule for a review's stars: these cards alone counted a missing one as 0.
+        const f = reviewFigures(k);
         let html;
-        if (!rs.length) {
+        if (!f.n) {
             html = `<span class="cr-new">New · no reviews yet</span>`;
             if (fav) fav.hidden = true;
         } else {
-            const avg = rs.reduce((s, r) => s + (parseInt(r.stars, 10) || 0), 0) / rs.length;
-            html = `<span class="cr-star">★</span> ${avg.toFixed(1)} <span class="cr-count">· ${rs.length} review${rs.length === 1 ? '' : 's'}</span>`;
+            const avg = f.avg;
+            html = `<span class="cr-star">★</span> ${avg.toFixed(1)} <span class="cr-count">· ${f.n} review${f.n === 1 ? '' : 's'}</span>`;
             // "Guest favourite" badge for highly-rated cottages (Airbnb-style).
             if (fav) {
-                const show = rs.length >= 3 && avg >= 4.8;
+                const show = f.n >= 3 && avg >= 4.8;
                 if (show && fav.hidden) fav.classList.add('is-in'); // it arrives, so it appears
                 fav.hidden = !show;
             }
@@ -18844,12 +18882,15 @@ function injectSeoSchema() {
             ? publicGuestReviews.filter((r) => r && (r.text || '').trim())
             : [];
         if (reviews.length) {
+            // A visitor holds only the reviews on screen: the figures are the server's
+            // (every guest review with words, as below), the reviews listed its first 12.
+            const ld = __revSum && Array.isArray(__revSum.ld) && __revSum.ld[0] > 0 ? __revSum.ld : null;
             const ratings = reviews.map((r) => clamp(r.stars));
-            const avg = ratings.reduce((s, n) => s + n, 0) / ratings.length;
+            const avg = ld ? ld[1] / ld[0] : ratings.reduce((s, n) => s + n, 0) / ratings.length;
             biz.aggregateRating = {
                 '@type': 'AggregateRating',
                 ratingValue: avg.toFixed(1),
-                reviewCount: String(reviews.length),
+                reviewCount: String(ld ? ld[0] : reviews.length),
                 bestRating: '5',
                 worstRating: '1',
             };
@@ -22368,7 +22409,7 @@ const CHB_SK_CARD = '<div class="card glass-panel sk-card"><div class="skeleton 
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'heldlists1';
+    const BUILD = 'reviewsum1';
     /** @type {any} */ (window).__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;

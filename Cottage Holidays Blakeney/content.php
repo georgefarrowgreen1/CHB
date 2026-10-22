@@ -101,6 +101,12 @@ function content_public_payload()
         if ($limited && is_internal_content_key($key) && !people_content_readable($me, $key)) {
             continue;
         }
+        // The owner's own reviews go to a visitor as the reviews part's figures and the
+        // ones on screen (reviews.php reviews_summary), not as the whole list. Still read
+        // by the one query above, so the summary built from them costs no statement.
+        if (!$isAdmin && $key === 'reviews') {
+            continue;
+        }
         // Cottage GPS coordinates (geo-<propKey>) ARE exposed publicly so the cottage
         // page can show an exact-pin "Where you'll be" map. They're still used
         // server-side for the on-arrival key-code unlock too.
