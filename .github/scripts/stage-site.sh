@@ -39,7 +39,7 @@ rm -f "$OUT"/test-*.php "$OUT"/test-*.js "$OUT"/ui-test*.js "$OUT"/*-test.js \
     "$OUT"/phpstan*.neon* "$OUT/package.json" "$OUT/package-lock.json"
 rm -f "$OUT/lint-js.js" "$OUT/bump.js" "$OUT/check-versions.js" "$OUT/typecheck.js" \
     "$OUT/perf-budget.js" "$OUT/check-css-conventions.js" "$OUT/darkstar-build.js" \
-    "$OUT/nlu-testset.js"
+    "$OUT/nlu-testset.js" "$OUT/run-checks.js"
 rm -rf "$OUT/layout-shots" "$OUT/node_modules" "$OUT/.phpstan-cache"
 
 # The runtime folders ship as their guard files only. A clean checkout has nothing

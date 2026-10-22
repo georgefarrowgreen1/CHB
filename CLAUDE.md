@@ -6,70 +6,59 @@ build step**); PHP backend files sit alongside it. App-style guest shell lives i
 `guest-app.js` / `guest-app.css`.
 
 ## Workflow preferences
-- **Always merge.** When a PR is opened for completed, verified work, squash-merge it
-  to `main` without asking first (then sync the branch to main). Skip only if CI is
-  failing or the work is explicitly a draft/WIP.
-- **NEVER SIT AND WATCH CI.** Measured on three consecutive PRs (#959–#961): the jobs
-  finished in 4–5 minutes and GitHub's PR **check-runs** endpoint went on reporting
-  `in_progress` for up to **two hours** afterwards — the steps frozen mid-list while
-  the run was long over. Polling it costs the session and buys nothing. So:
-  1. **Open the PR and go straight to the next piece of work.** Merge at the next
-     natural checkpoint — one status check, then merge — and resync the branch
-     (`git checkout -B <branch> origin/main`) at the START of the next task rather
-     than the end of the last one. An open, green PR sitting for twenty minutes
-     costs nothing; twenty minutes of polling costs twenty minutes.
-  2. **`enable_pr_auto_merge` does NOT work here** — tried on #962 and refused with
-     "the pull request is in unstable status", which is what GitHub calls a PR whose
-     checks are merely PENDING. It is only accepted once the checks have passed, i.e.
-     exactly when a plain merge would do. Don't reach for it again expecting to walk
-     away; the walking away is step 1.
-  3. When a status IS wanted, ask the **JOB** (`actions_get get_workflow_job`) or the
-     run's job list — both were fresher than the PR's check-runs list every time —
-     and never more than once between real pieces of work.
-  4. Job LOGS are the honest oracle the status field is not: they 404 while a job is
-     running and download once it is done.
-- **`test-integration.php` needs MySQL — CHECK whether this container has any before
-  believing either claim.** It is the gate that bites (migrations are ONLY exercised
-  there; #963 shipped one that passed every other gate and failed §2 in CI), so run
-  it when you can: `mysqladmin -h127.0.0.1 -uroot -proot status`, or
-  `sudo service mariadb start` first. But do NOT assume it is there — this note used
-  to assert flatly that the container HAS MariaDB, and a later session found no
-  mysqld, no mariadb service and no mysqladmin at all, having trusted the line. The
-  container image is not stable across sessions: **node_modules is not committed
-  either** (ci.yml does `npm init -y` + `npm install playwright@<pinned>` per run), so
-  the ui-test suites may need `npm install playwright` before they will run, and the
-  preinstalled Chromium may not match a newer playwright — pass
-  `CHB_CHROMIUM=/opt/pw-browsers/chromium-1194/chrome-linux/chrome` (ui-test-lib's
-  own override) when the launch complains about a missing browser revision.
-  When you genuinely cannot run it, SAY so in the PR rather than implying CI-parity.
-  The container can also RESTART mid-session (`uptime` resets, files survive): MariaDB and any `php -S` you started
-  are gone, and a suite started then dies with "Connection refused". `service mariadb start` brings it back.
-- **CI's PHP runs with the TRACING JIT ON; a local `php` does not.** setup-php enables it by default, and PHP
-  8.3.35's JIT miscompiled a hand-written CSV character loop (the first file read in a process grew eight extra
-  header fields; the same file a moment later read fine) — a failure that passed every local run for days. To
-  reproduce a CI-only PHP failure, run with `-d opcache.enable_cli=1 -d opcache.jit=1235 -d
-  opcache.jit_buffer_size=128M`; for test-integration, put those in an ini file and point `PHP_INI_SCAN_DIR` at
-  `/etc/php/8.3/cli/conf.d:<that dir>` so the `php -S` it spawns gets them too. Prefer PHP's own C parsers
-  (`fgetcsv`, `str_getcsv`) over character loops.
+- **TEST HERE, MERGE ON THE LOCAL RESULT — GitHub runs no tests (the owner's ask, 22/10/2026).**
+  Waiting on GitHub slowed every merge, and its jobs queued beside the deploy for the same
+  runners. `ci.yml` now starts only by hand; nothing on GitHub tests a PR or a push.
+  1. **`node run-checks.js`** (in the app folder) is the gate. It reads its list FROM ci.yml, so a new
+     check is still added there as one command, and runs it all concurrently: the checks job, PHPStan,
+     test-integration (a database of its own, dropped afterwards), and the browser and layout suites
+     when a file matching ci.yml's front-end pattern changed (`--all` runs them anyway). PHP runs with
+     the tracing JIT on, children included; check-versions diffs against the merge base with
+     origin/main, uncommitted changes included. It ends "ALL CHECKS PASSED — fine to merge" or names
+     each failure with its log. `--only=` / `--skip=` take gate or job names; `--list` shows the plan.
+     Measured on this machine: 18 minutes with the browser suites (the long pole), about 5 without.
+     A run with `--only` or `--skip` says so in its last line instead of "fine to merge".
+  2. **Then open the PR and squash-merge it at once**, and resync the branch at the start of the next
+     task. Never wait on, poll or consult GitHub's CI, and don't start a manual run unless the owner
+     asks. The PR body says what ran ("run-checks: 61 passed in 18m"), and anything skipped.
+  3. **What could not run is never a pass.** No MySQL, no Playwright or no PHPStan download fails the
+     run until fixed, or until skipped by name (`--skip=integration`), and a skip goes in the PR body.
+     test-integration is the one gate that runs the migrations (#963 shipped one that passed every
+     other gate and failed there), so a skip of it is the one to avoid.
+     The one exception is the WebKit layout leg: this container has no WebKit and browsers may not be
+     installed here, so the runner reports it and passes. Safari-only layout checks therefore run
+     only in a manual CI run now.
+- **The container is not stable across sessions.** MariaDB may be missing or stopped (run-checks tries
+  `service mariadb start` itself, then fails integration with the reason), `node_modules` is not
+  committed (run-checks prints the install line for eslint/typescript or playwright when one is
+  missing), the preinstalled Chromium may not match playwright's revision (run-checks then finds
+  `/opt/pw-browsers/chromium-*` and passes it as `CHB_CHROMIUM`), and the container can RESTART
+  mid-session (`uptime` resets, files survive): MariaDB and any `php -S` are gone, and a suite started
+  then dies with "Connection refused".
+- **CI ran PHP with the TRACING JIT ON, and run-checks.js does too** (an ini on `PHP_INI_SCAN_DIR`, so
+  a spawned `php -S` gets it). PHP 8.3.35's JIT miscompiled a hand-written CSV character loop (the
+  first file read in a process grew eight extra header fields; the same file a moment later read
+  fine), a failure that passed every run without the JIT for days. To reproduce one by hand: `-d
+  opcache.enable_cli=1 -d opcache.jit=1235 -d opcache.jit_buffer_size=128M`. Prefer PHP's own C
+  parsers (`fgetcsv`, `str_getcsv`) over character loops. The host runs PHP 8.4 (8.4.27 in October
+  2026); ci.yml's pin follows it.
 - **A guarded migration is a plain `ALTER TABLE ... ADD COLUMN`.** migrate.php
   treats a duplicate-column error as already-applied. Do NOT reach for the
   information_schema + `PREPARE`/`EXECUTE` guard: the no-op branch (`SELECT 1`)
   leaves a result set nobody reads, and the open cursor kills the NEXT migration
   with PDO error 2014 ("cannot execute queries while other unbuffered queries are
   active"). Measured, and break-tested against the real database.
-- **Run the local gauntlet CONCURRENTLY**, in the background, not one suite at a time.
-  It is the local run that catches things (CI has never once caught what the full local
-  battery missed), and in parallel it finishes in minutes.
+- **Run run-checks.js in the background** and carry on: it is the local run that catches things (CI
+  never once caught what the full local battery missed).
 
 ## Deploy checklist (do this whenever shipping frontend changes)
 - **`node bump.js <new-build-stamp>`** does the WHOLE chain in one go (stamp =
   lowercase/digits, ≥6 chars): BUILD (app.js last statement), CACHE (sw.js), the
   `?v=` pins in index.html + sw.js CORE for whichever assets git says changed, and
   ADMIN_BUNDLE_V / ADMIN_CSS_V when admin.js / admin.css changed. `--dry` previews.
-- CI enforces it: `check-versions.js` diffs the PR against its base and fails if a
-  changed cached asset kept its version; smoke-test §6c checks the static half
-  (sw.js CORE ?v= == index.html ?v=, BUILD well-formed ≥6 chars).
-- Then run `node smoke-test.js` and `php test-pricing.php` — must pass (CI runs both).
+- run-checks.js enforces it: `check-versions.js` diffs your branch (uncommitted changes included)
+  against its merge base with origin/main and fails if a changed cached asset kept its version;
+  smoke-test §6c checks the static half (sw.js CORE ?v= == index.html ?v=, BUILD well-formed ≥6 chars).
 
 ## The emails are a design system, and mailer.php is it
 
@@ -9576,7 +9565,8 @@ deleting — both now FIXED, and they are worth keeping here as the pattern to e
   and the design gate `node layout-test.js` (layout invariants — no horizontal
   overflow, no content cut off, key content rendered — on the public views at
   390/768/1280 AND the six back-office screens at phone width; screenshots
-  uploaded as the `layout-shots` CI artifact) on each PR — merge only on green.
+  uploaded as the `layout-shots` CI artifact). Since 22/10/2026 it runs only by hand; the same list runs
+  here through `node run-checks.js` before every merge (see Workflow preferences).
   **The browser and layout jobs run only when a front-end file changed**, judged by one
   `grep -qE` pattern in ci.yml. `admin-views.html`, `sw.js` and `manifest.json` were missing
   from it for months, so a PR touching only the back office's markup went green with no
