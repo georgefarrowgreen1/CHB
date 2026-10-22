@@ -752,12 +752,18 @@ function payload_have(string $raw): array
     return $have;
 }
 // Replaces each named part the caller already holds with {"same": true}, and says
-// every part's hash in `hashes` so the next ask can name what it holds.
-function payload_parts_diff(array $out, array $keys, string $haveRaw): array
+// every part's hash in `hashes` so the next ask can name what it holds. `$known`: a
+// part left unbuilt because its fingerprint says it is the hash the caller holds.
+function payload_parts_diff(array $out, array $keys, string $haveRaw, array $known = []): array
 {
     $have = payload_have($haveRaw);
     $hashes = [];
     foreach ($keys as $k) {
+        if (!isset($out[$k]) && isset($known[$k], $have[$k]) && hash_equals((string) $known[$k], $have[$k])) {
+            $out[$k] = ['same' => true];
+            $hashes[$k] = (string) $known[$k];
+            continue;
+        }
         if (!isset($out[$k])) {
             continue;
         }
@@ -772,6 +778,71 @@ function payload_parts_diff(array $out, array $keys, string $haveRaw): array
     }
     $out['hashes'] = (object) $hashes;
     return $out;
+}
+// AN UNCHANGED BOOKINGS PART IS NOT BUILT AGAIN (see CLAUDE.md). It is the whole cost
+// of the owner's payload (measured on a five-year business: 48ms to build and 12ms to
+// encode and hash), and the page names the copy it holds on every load. A FINGERPRINT
+// of everything the part is made from is remembered beside the hash it produced
+// (payload_memo_*), and admin-bootstrap answers "same" without building when both match:
+//  - a checksum of each table it reads (CHECKSUM TABLE: bookings keeps no updated-at,
+//    and a row checksum cannot miss a column; about 4ms for the six);
+//  - the settings it reads, by name (PAYLOAD_FP_CONTENT);
+//  - the hour (every date in it moves by the day; the hour bounds anything finer);
+//  - the address its links are built on, and the deployed code (each PHP file's name,
+//    time and size), so a deploy that changes the part's shape is never answered "same".
+// test-integration §97 runs the real build under MySQL's statement log and fails if it
+// reads a table or a setting the fingerprint leaves out. '' (anything unreadable) means
+// no fingerprint: the part is built, as before.
+const PAYLOAD_FP_TABLES = ['bookings', 'payments', 'properties', 'guest_registrations', 'guest_ratings', 'guests'];
+const PAYLOAD_FP_CONTENT = ['square-deposit-pct'];
+function payload_bookings_fingerprint(?int $now = null): string
+{
+    try {
+        $code = [];
+        foreach (glob(__DIR__ . '/*.php') ?: [] as $f) {
+            $code[] = basename($f) . ':' . (int) @filemtime($f) . ':' . (int) @filesize($f);
+        }
+        $sums = [];
+        foreach (db()->query('CHECKSUM TABLE ' . implode(', ', PAYLOAD_FP_TABLES))->fetchAll() as $r) {
+            if (!isset($r['Checksum'])) {
+                return ''; // a table that is not there
+            }
+            $sums[] = (string) $r['Table'] . '=' . (string) $r['Checksum'];
+        }
+        if (count($sums) !== count(PAYLOAD_FP_TABLES)) {
+            return '';
+        }
+        $s = db()->prepare('SELECT item_key, item_value FROM content WHERE item_key IN (' . implode(',', array_fill(0, count(PAYLOAD_FP_CONTENT), '?')) . ') ORDER BY item_key');
+        $s->execute(PAYLOAD_FP_CONTENT);
+        $settings = $s->fetchAll(PDO::FETCH_KEY_PAIR);
+        $json = json_encode([md5(implode('|', $code)), date('Y-m-d H', $now ?? time()), site_base_url(), $sums, $settings]);
+        return $json === false ? '' : substr(hash('sha256', $json), 0, 32);
+    } catch (\Throwable $e) {
+        return '';
+    }
+}
+// The fingerprint and the hash it produced, per part (internal key `payload-memo`).
+function payload_memo_get(string $part): array
+{
+    $m = content_json('payload-memo', []);
+    $e = is_array($m[$part] ?? null) ? $m[$part] : [];
+    return ['fp' => (string) ($e['fp'] ?? ''), 'h' => (string) ($e['h'] ?? '')];
+}
+function payload_memo_put(string $part, string $fp, string $h): void
+{
+    if ($fp === '' || !preg_match('/^[0-9a-f]{16}$/', $h)) {
+        return;
+    }
+    try {
+        $m = content_json('payload-memo', []);
+        $m = is_array($m) ? $m : [];
+        if (($m[$part]['fp'] ?? '') === $fp && ($m[$part]['h'] ?? '') === $h) {
+            return;
+        }
+        $m[$part] = ['fp' => $fp, 'h' => $h];
+        content_set_scalar('payload-memo', $m);
+    } catch (\Throwable $e) {
+    }
 }
 function body()
 {
@@ -2085,6 +2156,10 @@ function is_internal_content_key($key)
     if ($key === 'cron-auth') {
         return true; // when the scheduler last used the master key and the job key
                      // (cron_auth_note) — server-only
+    }
+    if ($key === 'payload-memo') {
+        return true; // the owner payload's fingerprint and the hash it produced
+                     // (payload_memo_put) — server-only
     }
     if ($key === 'monzo-link') {
         return true; // the Monzo Business live link's state (monzo-sync.php): which

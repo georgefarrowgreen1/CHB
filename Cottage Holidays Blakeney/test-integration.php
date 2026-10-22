@@ -148,6 +148,9 @@ $cfg .= "\ndefine('MONZO_API_BASE', 'http://127.0.0.1:$MONZO_PORT');\ndefine('MO
 $cfg .= "\ndefine('CHB_OP_LOCK_WAIT', 2);\n";
 // …and the Monzo link's: §54 holds the sync's lock to show a disconnect waits for it.
 $cfg .= "\ndefine('CHB_MONZO_LOCK_WAIT', 2);\n";
+// …and a build that changes under an unchanged fingerprint is refused, so every section
+// that loads the owner's payload after changing something tests it (§97).
+$cfg .= "\ndefine('CHB_PAYLOAD_FP_STRICT', true);\n";
 $cfg .= "\ndefine('MAIL_POP_HOST', '127.0.0.1');\ndefine('MAIL_POP_PORT', $POP_PORT);\n";
 $cfg .= "\ndefine('STAGING_SANDBOX', true);\ndefine('STAGING_GATE_USER', 'it-gate');\ndefine('STAGING_GATE_PASS', 'it-gate-pass');\n";
 file_put_contents($work . '/config.php', $cfg);
@@ -7387,6 +7390,130 @@ $t96e = http($anon96, 'POST', '/messages.php', ['action' => 'thread', 'token' =>
 it_check('§96 a "have" that is not a hash gets the whole thread', count($t96e['json']['messages'] ?? []) === 2, $t96e['raw']);
 $rootDb->prepare('DELETE FROM messages WHERE thread_id = ?')->execute([$tid96]);
 $rootDb->prepare('DELETE FROM chat_threads WHERE id = ?')->execute([$tid96]);
+
+echo "\n== §97 an unchanged bookings part is not built again ==\n";
+// A stay of each shape the part is made from: a plan, a payment, a register, a rating, a
+// guest photo.
+$rootDb->prepare("INSERT INTO bookings (prop_key, name, email, check_in, check_out, adults, children, payment, deposit_paid, agreed_total, agreed_nightly, agreed_txn_fee, agreed_nights, deposit_pct_override)
+    VALUES (?, 'Finger Ninetyseven', 'fp97@example.com', ?, ?, 2, 0, 'deposit', 100, 400, 400, 0, 3, 30)")->execute([$propKey, $ukPlus(40), $ukPlus(43)]);
+$bk97 = (int) $rootDb->lastInsertId();
+$rootDb->exec("INSERT INTO payments (booking_id, kind, amount, status, square_payment_id) VALUES ($bk97, 'deposit', 100, 'COMPLETED', 'sq_fp97')");
+$rootDb->exec("INSERT INTO guest_registrations (booking_id, party_enc, guest_count, submitted_at) VALUES ($bk97, '', 2, NOW())");
+$rootDb->exec("INSERT INTO guest_ratings (booking_id, overall, rated_at) VALUES ($bk97, 4, NOW())");
+$rootDb->prepare("INSERT INTO guests (name, email, phone, address, postcode, password_hash, email_verified_at, avatar) VALUES ('Finger Ninetyseven', 'fp97@example.com', '', '', '', '', NOW(), ?)")->execute([str_repeat('ab', 16) . '.jpg']);
+$memo97 = function () use ($rootDb) {
+    $v = json_decode((string) $rootDb->query("SELECT item_value FROM content WHERE item_key = 'payload-memo'")->fetchColumn(), true);
+    return is_array($v['bookings'] ?? null) ? $v['bookings'] : ['fp' => '', 'h' => ''];
+};
+$q97 = fn() => (int) ($rootDb->query("SHOW GLOBAL STATUS LIKE 'Questions'")->fetch()['Value'] ?? 0);
+
+// What a real build reads, from MySQL's own statement log: every table and setting must
+// be in the fingerprint, or a change to it would be answered "same".
+file_put_contents($work . '/it97-probe.php', '<?php
+$_SERVER["SCRIPT_NAME"] = "/it97-probe.php"; $_SERVER["REQUEST_METHOD"] = "GET"; $_SERVER["HTTP_HOST"] = "127.0.0.1";
+require __DIR__ . "/db.php"; require_once __DIR__ . "/rates.php"; require_once __DIR__ . "/bookings.php";
+if (($argv[1] ?? "") === "fp") { echo json_encode([payload_bookings_fingerprint(mktime(10, 5, 0, 6, 1, 2026)), payload_bookings_fingerprint(mktime(10, 50, 0, 6, 1, 2026)), payload_bookings_fingerprint(mktime(11, 5, 0, 6, 1, 2026))]); exit; }
+if (($argv[1] ?? "") === "lists") { echo json_encode([PAYLOAD_FP_TABLES, PAYLOAD_FP_CONTENT]); exit; }
+fwrite(STDOUT, (int) db()->query("SELECT CONNECTION_ID()")->fetchColumn() . "\n");
+fgets(STDIN);
+$p = bookings_admin_payload();
+fwrite(STDOUT, count($p["bookings"] ?? []) . "\n");
+');
+[$fpTables97, $fpContent97] = json_decode((string) shell_exec('php ' . escapeshellarg($work . '/it97-probe.php') . ' lists'), true) ?: [[], []];
+$logWas = $rootDb->query('SELECT @@GLOBAL.log_output o, @@GLOBAL.general_log g')->fetch();
+$proc97 = proc_open('exec php ' . escapeshellarg($work . '/it97-probe.php'), [0 => ['pipe', 'r'], 1 => ['pipe', 'w'], 2 => ['pipe', 'w']], $pp97, $work);
+$cid97 = (int) trim((string) fgets($pp97[1]));
+$rootDb->exec("SET GLOBAL log_output = 'TABLE'");
+$rootDb->exec('SET GLOBAL general_log = 1');
+fwrite($pp97[0], "go\n");
+$rows97 = (int) trim((string) fgets($pp97[1]));
+$err97 = stream_get_contents($pp97[2]);
+proc_close($proc97);
+$rootDb->exec('SET GLOBAL general_log = ' . (int) $logWas['g']);
+$rootDb->exec('SET GLOBAL log_output = ' . $rootDb->quote((string) $logWas['o']));
+$stmts97 = $rootDb->query('SELECT CONVERT(argument USING utf8mb4) FROM mysql.general_log WHERE thread_id = ' . $cid97 . " AND command_type IN ('Query', 'Execute')")->fetchAll(PDO::FETCH_COLUMN);
+$tables97 = [];
+$keys97 = [];
+foreach ($stmts97 as $sql) {
+    if (preg_match_all('/\b(?:FROM|JOIN)\s+`?([a-z_0-9]+)`?/i', (string) $sql, $m)) {
+        foreach ($m[1] as $t) {
+            $tables97[strtolower($t)] = true;
+        }
+    }
+    if (preg_match_all("/item_key\s*(?:=|IN\s*\()\s*'([^']*)'/i", (string) $sql, $m)) {
+        foreach ($m[1] as $k) {
+            $keys97[$k] = true;
+        }
+    }
+}
+unset($tables97['content']); // read by name: the settings below
+it_check('§97 (vacuity) the build ran under the statement log (' . count($stmts97) . ' statements, ' . $rows97 . ' stays)', $rows97 > 0 && count($stmts97) >= 8 && count($tables97) >= 5, $err97 . ' ' . implode(',', array_keys($tables97)));
+it_check('§97 every table the build reads is in the fingerprint (' . implode(', ', array_keys($tables97)) . ')',
+    array_diff(array_keys($tables97), $fpTables97) === [], implode(',', array_diff(array_keys($tables97), $fpTables97)));
+it_check('§97 …and every setting it reads (' . implode(', ', array_keys($keys97)) . ')',
+    array_diff(array_keys($keys97), $fpContent97) === [], implode(',', array_diff(array_keys($keys97), $fpContent97)));
+
+// The skip: a page naming the hash the remembered fingerprint produced is answered "same"
+// with nothing built.
+$a97 = http($adm83, 'GET', '/admin-bootstrap.php');
+$h97 = (string) ($a97['json']['hashes']['bookings'] ?? '');
+it_check('§97 a full load remembers its fingerprint beside the hash it produced', $h97 !== '' && $memo97()['h'] === $h97 && strlen($memo97()['fp']) === 32, json_encode($memo97()));
+$skipOnce = function () use ($adm83, $h97, $q97) {
+    $q0 = $q97();
+    $r = http($adm83, 'GET', '/admin-bootstrap.php?have=' . rawurlencode('bookings.' . $h97));
+    return [$r, $q97() - $q0];
+};
+[$b97, $qs97] = $skipOnce();
+$q0 = $q97();
+$c97 = http($adm83, 'GET', '/admin-bootstrap.php');
+$qb97 = $q97() - $q0;
+if (!($qs97 + 5 <= $qb97)) {
+    [$b97, $qs97] = $skipOnce(); // once more, in case the hour turned between the two
+}
+it_check('§97 the page naming it hears "same"…', ($b97['json']['bookings']['same'] ?? null) === true && ($b97['json']['hashes']['bookings'] ?? '') === $h97, substr($b97['raw'], 0, 160));
+it_check("§97 …with nothing built: $qs97 statements against $qb97 for a full load", $qs97 > 0 && $qs97 + 5 <= $qb97, "$qs97 / $qb97");
+it_check('§97 …and the full load built the same part', ($c97['json']['hashes']['bookings'] ?? '') === $h97, (string) ($c97['json']['hashes']['bookings'] ?? ''));
+
+// Each thing the part is made from moves the fingerprint.
+$moves97 = [
+    'a payment' => fn() => $rootDb->exec("UPDATE payments SET amount = 120 WHERE square_payment_id = 'sq_fp97'"),
+    'a stay' => fn() => $rootDb->exec("UPDATE bookings SET adults = 3 WHERE id = $bk97"),
+    'a rating' => fn() => $rootDb->exec("UPDATE guest_ratings SET overall = 2 WHERE booking_id = $bk97"),
+    'a register' => fn() => $rootDb->exec("UPDATE guest_registrations SET guest_count = 3 WHERE booking_id = $bk97"),
+    'a guest photo' => fn() => $rootDb->exec("UPDATE guests SET avatar = '" . str_repeat('cd', 16) . ".jpg' WHERE email = 'fp97@example.com'"),
+    'a cottage\'s rates' => fn() => $rootDb->prepare('UPDATE properties SET couple_rate = couple_rate + 1 WHERE prop_key = ?')->execute([$propKey]),
+    'the deposit setting' => fn() => $rootDb->exec("INSERT INTO content (item_key, item_value) VALUES ('square-deposit-pct', '\"35\"') ON DUPLICATE KEY UPDATE item_value = '\"35\"'"),
+    'a deploy' => fn() => file_put_contents($work . '/bookings.php', file_get_contents($work . '/bookings.php') . "\n"),
+];
+foreach ($moves97 as $what => $move) {
+    http($adm83, 'GET', '/admin-bootstrap.php');
+    $before = $memo97()['fp'];
+    $move();
+    $r = http($adm83, 'GET', '/admin-bootstrap.php');
+    it_check("§97 $what moves the fingerprint", $r['code'] === 200 && $before !== '' && $memo97()['fp'] !== $before, $r['code'] . ' ' . substr($r['raw'], 0, 120));
+}
+$fps97 = json_decode((string) shell_exec('php ' . escapeshellarg($work . '/it97-probe.php') . ' fp'), true);
+it_check('§97 the same hour keeps the fingerprint, the next hour moves it', is_array($fps97) && $fps97[0] !== '' && $fps97[0] === $fps97[1] && $fps97[1] !== $fps97[2], json_encode($fps97));
+
+// The check every build makes: a remembered fingerprint that comes back with a different
+// part is refused here (CHB_PAYLOAD_FP_STRICT), so each section above tested it too.
+http($adm83, 'GET', '/admin-bootstrap.php');
+$m97 = $memo97();
+$rootDb->prepare("UPDATE content SET item_value = ? WHERE item_key = 'payload-memo'")->execute([json_encode(['bookings' => ['fp' => $m97['fp'], 'h' => str_repeat('0', 16)]])]);
+$r = http($adm83, 'GET', '/admin-bootstrap.php');
+it_check('§97 a part that changed under an unchanged fingerprint is refused, never served as current', $r['code'] === 500 && ($r['json']['code'] ?? '') === 'fp_stale', $r['code'] . ' ' . substr($r['raw'], 0, 120));
+$r = http($adm83, 'GET', '/admin-bootstrap.php');
+it_check('§97 …and the next load is whole again, remembered afresh', $r['code'] === 200 && isset($r['json']['bookings']['bookings']) && $memo97()['h'] === ($r['json']['hashes']['bookings'] ?? ''), $r['code'] . ' ' . substr($r['raw'], 0, 120));
+it_check('§97 the remembered fingerprint never reaches a browser', !isset((http($adm83, 'POST', '/content.php', ['action' => 'get_all'])['json']['content'] ?? [])['payload-memo']), '');
+
+unlink($work . '/it97-probe.php');
+$rootDb->exec("DELETE FROM content WHERE item_key IN ('payload-memo', 'square-deposit-pct')");
+$rootDb->exec("DELETE FROM payments WHERE booking_id = $bk97");
+$rootDb->exec("DELETE FROM guest_registrations WHERE booking_id = $bk97");
+$rootDb->exec("DELETE FROM guest_ratings WHERE booking_id = $bk97");
+$rootDb->exec("DELETE FROM bookings WHERE id = $bk97");
+$rootDb->exec("DELETE FROM guests WHERE email = 'fp97@example.com'");
+$rootDb->prepare('UPDATE properties SET couple_rate = couple_rate - 1 WHERE prop_key = ?')->execute([$propKey]);
 
 echo "\n== Summary ==\n";
 if ($fail) {

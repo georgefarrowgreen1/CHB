@@ -22,11 +22,19 @@ function ckc($cond, $msg)
     }
 }
 // Source with comments removed, so a scan never reads its own explanation.
+// The code without its comments, found by PHP's own tokenizer: a pattern read
+// glob(__DIR__ . '/*.php') in db.php as a comment opener and dropped everything up to
+// the next '*/', cron_request_ok included.
 function ckc_code(string $file): string
 {
-    $src = (string) @file_get_contents(__DIR__ . '/' . $file);
-    $src = preg_replace('#/\*.*?\*/#s', '', $src);
-    return (string) preg_replace('#(^|[^:])//[^\n]*#', '$1', (string) $src);
+    $out = '';
+    foreach (token_get_all((string) @file_get_contents(__DIR__ . '/' . $file)) as $t) {
+        if (is_array($t) && ($t[0] === T_COMMENT || $t[0] === T_DOC_COMMENT)) {
+            continue;
+        }
+        $out .= is_array($t) ? $t[1] : $t;
+    }
+    return $out;
 }
 
 echo "\n== The job key ==\n";

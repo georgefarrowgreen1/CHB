@@ -1123,8 +1123,9 @@ Asked for as "lighter page loads". **Measured first, on the live site and in the
 So:
 - **`payload_hash` / `payload_have` / `payload_parts_diff`** (db.php). A caller names what it holds
   (`have=bookings.<16 hex>,…`). A part that hashes the same comes back as `{"same": true}`, and every reply
-  carries `hashes`. Nothing is kept on the server and nothing reaches the HTTP cache (admin-bootstrap stays
-  no-store). A malformed or stale claim costs a full answer, never a wrong one.
+  carries `hashes`. No data is kept on the server (the bookings part's fingerprint is, below) and nothing
+  reaches the HTTP cache (admin-bootstrap stays no-store). A malformed or stale claim costs a full answer,
+  never a wrong one.
 - **admin-bootstrap.php** applies it to bookings, enquiries, blocks and rates, after the permission trims,
   so a hash describes exactly what this person is sent. In the integration harness an unchanged trip went
   from the full answer to under a third of it (§96 prints both sizes). On a seeded five-year business
@@ -1184,6 +1185,42 @@ server answers. Code: the "OWNER'S DATA KEPT ON THE PHONE" block after `abHeldRe
   load withdrawing the copy; a copy that will not open; sign-out). Ten rules break-tested one at a time,
   each failing its own named check. NB compression alone hides a name from a byte search, so the
   sealed check also tries to gunzip the stored bytes.
+
+## An unchanged bookings part is not built again (architectural upgrade 6)
+
+"Same" saved the bytes, but the server still built the whole bookings part to find out it was the same.
+Measured on the five-year database (1,387 stays): the bookings part is the whole cost of the owner's
+payload, 48ms to build plus 12ms to encode and hash (enquiries 2ms, rates and blocks under 1ms each).
+- **A FINGERPRINT of everything the part is made from** (`payload_bookings_fingerprint`, db.php), about
+  5ms:
+  - `CHECKSUM TABLE` over the six tables the build reads (`PAYLOAD_FP_TABLES`: bookings, payments,
+    properties, guest_registrations, guest_ratings, guests). bookings keeps no updated-at, and a row
+    checksum cannot miss a column;
+  - the settings it reads, by name (`PAYLOAD_FP_CONTENT`: `square-deposit-pct`). Not the whole content
+    table: the job stamps and sync states in it change every few minutes;
+  - the hour (every date in the part moves by the day; the hour bounds anything finer);
+  - the address its links are built on, and the deployed code (each PHP file's name, time and size), so a
+    deploy that changes the part's shape is never answered "same".
+- **The fingerprint is remembered beside the hash it produced** (internal key `payload-memo`, server-only).
+  When both match what the page names, admin-bootstrap answers "same" with nothing built
+  (`payload_parts_diff`'s `$known`). Anything unreadable (a table missing, CHECKSUM refused) is no
+  fingerprint, and the part is built as before.
+- **EVERY BUILD CHECKS IT**: a build under a remembered fingerprint must produce the remembered hash. If not,
+  the fingerprint missed something: a server error is logged (Needs attention) and the memo replaced.
+  Under `CHB_PAYLOAD_FP_STRICT`, which the integration harness defines, the answer is a 500 `fp_stale`, so
+  every section that changes data and then loads the owner's payload tests the fingerprint too.
+- The build sorts by `check_in, id`: ties in the old `check_in` order were the server's choice, and the same
+  rows must always encode the same way.
+- Gates: test-integration **§97** (19 checks): the real build run under MySQL's statement log (every table
+  and setting it reads must be in the lists); the skip measured in statements (34 against 42 in the
+  harness); eight changes (a payment, a stay, a rating, a register, a guest photo, a cottage's rates, the
+  deposit setting, a deploy) each moving the fingerprint; the hour; the strict check firing on a tampered
+  memo and the next load remembered afresh; the memo never reaching a browser. Six rules break-tested one at
+  a time; with a table or the setting left out of the lists, the strict check refused the next load by
+  itself (500 `fp_stale`), which is the protection working.
+- **test-cron-key now strips comments with PHP's tokenizer.** Its pattern read `glob(__DIR__ . '/*.php')`
+  in db.php as a comment opener and dropped everything up to the next `*/`, `cron_request_ok` included, so
+  a correct file failed. The deploy stripper's lesson again: find comments with a parser.
 
 ## Automatic collection: finished plans, Square's silences, two passes at once (round 5)
 
