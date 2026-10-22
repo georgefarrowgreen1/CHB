@@ -1129,7 +1129,8 @@ So:
   so a hash describes exactly what this person is sent. In the integration harness an unchanged trip went
   from the full answer to under a third of it (§96 prints both sizes). On a seeded five-year business
   (1,387 bookings) it went from 2.36MB / 227KB gzipped to 37KB / 3KB; the server still builds every part
-  to hash it (77ms → 65ms), and the held copy lives in memory, so a fresh app open pays the full answer.
+  to hash it (77ms → 65ms). The held copy is kept on the phone now (next section), so a fresh app open
+  names it too.
 - **The client keeps each part as the TEXT it arrived as** (`__abHeld`, `abFetch`, `abHeldResolve`) and
   re-reads it on "same". It cannot keep the parsed object: the loaders hand pieces of what they are given
   to the stores (`propertySeasons` IS the rates part's seasons object), so a held object drifts from what
@@ -1148,6 +1149,41 @@ So:
   ways and six client ways, each failing its own named check. NB the client break-test that keeps the
   parsed object needed a mutated store to see it: the bookings mapper builds new objects, the rates
   loader does not.
+
+## The owner's data is kept on the phone (architectural upgrade 1)
+
+The held parts above lived in memory, so every fresh open of the app downloaded every booking ever taken
+before Today could paint. They are kept on the phone now, sealed, and Today paints from them while the
+server answers. Code: the "OWNER'S DATA KEPT ON THE PHONE" block after `abHeldResolve` in admin.js
+(`abHeldRestore`, `abHeldSave`, `abSeal`, `abOpen`), `loadData(held)` and `chbStoresLive` in app.js.
+- **Where and how**: IndexedDB `chb-db` **v4** gains a `held` store (app.js `oqDB` and sw.js `swQueueDB`
+  bump together, the VersionError rule). One record per part: gzipped (`CompressionStream`), then AES-GCM
+  under the same non-extractable key as the day sheet (`chbSecKey`). Without WebCrypto nothing is kept;
+  never the history in the clear. Measured on a synthetic five-year bookings part (1,387 rows, 1.9MB):
+  sealing 45ms, opening 7ms, parsing 4ms on this machine.
+- **Whose**: a record carries `who`, the person's id plus a hash of `[full, perms]` (`abHeldWho`), and is
+  read only by the same person with the same permissions. A copy made before a change to what someone may
+  see is never painted, since the paint comes before the server has said anything.
+- **What a restore does** (`abHeldRestore`, once per page, before the first load): every record that opens
+  fills `__abHeld`, so the first request names it (`have=`) and the server can answer "same". The paint uses
+  only records the server confirmed within the day sheet's 48 hours (`CHB_SNAP_MAX_AGE_H`), and only when
+  the bookings are among them. A confirmed copy is dated afresh at most hourly (`AB_HELD_RESTAMP_MS`), and
+  a date from a clock gone backwards reads as old.
+- **THE COPY IS NEVER AN ANSWER.** `loadData(held)` marks each part it applies (`__fromPhone`), and
+  **`chbStoresLive()`** is the one question "is there live data?": the patience window, the dead-bookings
+  decision, `chbDayRows`, the offline assistant answers and `odsRetry` all ask it. A load from the server
+  clears the mark; a load that fails WITHDRAWS the copy rather than keeping it as the last good data, so a
+  poor signal still gets the day sheet with its "saved at" marker, never a two-day-old Today.
+- **Never offline** (`navigator.onLine` false or the verdict off): the day sheet is the screen there.
+- **Sign-out**: `chbSecForget` clears `held` in the key's own transaction, and `abHeldSave` writes nothing
+  once `isAuthenticated` is false (it re-checks after sealing, since a save could be mid-way).
+- `boPaintToday()` is the calendar-and-bookings paint, shared by every load and the early paint.
+- Gates: **ui-test-oneload §8** (35 checks: kept and sealed, compressed, the bytes not opening without the
+  key; painted before the server answers and named; another person and changed permissions shown nothing
+  and naming nothing; offline; a copy over two days old not painted but named, then dated afresh; a failed
+  load withdrawing the copy; a copy that will not open; sign-out). Ten rules break-tested one at a time,
+  each failing its own named check. NB compression alone hides a name from a byte search, so the
+  sealed check also tries to gunzip the stored bytes.
 
 ## Automatic collection: finished plans, Square's silences, two passes at once (round 5)
 

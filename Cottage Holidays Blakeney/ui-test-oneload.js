@@ -18,7 +18,13 @@
 //      the page never held asks the part's own endpoint
 //   7. the open guest chat names the thread it holds, and a "same" answer moves
 //      only the typing line
-const { bootBrowser } = require('./ui-test-lib');
+//   8. the owner's data is kept on the phone, sealed: the next visit paints Today
+//      from it before the server answers and names it so the server can answer
+//      "same"; never for another person or after a change to what they may see,
+//      never a copy that will not open or is over two days old (still named),
+//      never kept as current when the load fails, never offline, never written
+//      after signing out, and signing out removes it
+const { bootBrowser, appReadyGoto, bootVerdict, d } = require('./ui-test-lib');
 let fails = 0;
 const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails++; };
 
@@ -240,6 +246,196 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
   await g.evaluate(() => chatPoll());
   ok(!asks[asks.length - 1].have, 'an older server (no hash) is asked in full every time, as before');
   ok(before.includes('Is there parking'), '(vacuity) the thread rendered before the polls');
+
+  console.log('8. the owner\'s data is kept on the phone, sealed');
+  // One context: its pages share IndexedDB the way visits to the site share a phone.
+  const ctx = await t.browser.newContext({ viewport: { width: 390, height: 844 }, serviceWorkers: 'block' });
+  const kept = { gate: null, open: () => {}, haves: [], fail: false };
+  const mkK = (id, name) => Object.assign(mkB(id, name), { check_in: d(10), check_out: d(13) });
+  const K = { bk: [mkK(701, 'Ada Kept'), mkK(702, 'Bo Kept')], bkH: '7777777777777777', rtH: 'cccccccccccccccc' };
+  await ctx.route(/\.php/, async (route) => {
+    const req = route.request();
+    const url = req.url();
+    let body = {}; try { body = JSON.parse(req.postData() || '{}'); } catch (e) {}
+    const json = async (o) => { try { await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(o) }); } catch (e) {} };
+    if (url.includes('admin-bootstrap.php')) {
+      const have = new URL(url).searchParams.get('have') || '';
+      kept.haves.push(have);
+      if (kept.gate) await kept.gate;
+      if (kept.fail) { try { await route.abort(); } catch (e) {} return; }
+      const h = Object.fromEntries(have.split(',').filter(Boolean).map((x) => x.split('.')));
+      return json({ ok: true, feeds: [], dismissed: {}, hashes: { bookings: K.bkH, rates: K.rtH },
+        bookings: h.bookings === K.bkH ? { same: true } : { bookings: K.bk },
+        rates: h.rates === K.rtH ? { same: true } : parts.rates });
+    }
+    if (kept.fail && /\/bookings\.php/.test(url) && !body.action) { try { await route.abort(); } catch (e) {} return; }
+    return json({ ok: true, bookings: [], enquiries: [], threads: [], reviews: [], photos: [], experiences: [], events: [], logs: {}, content: {}, blocks: [], payments: [], seasons: {}, occupancy: {}, properties: [] });
+  });
+  const ME = (id, full) => ({ id, name: 'Owner One', first: 'Owner', full, role: full ? 'super' : 'host', perms: full ? { 'bk.see': true, 'mo.view': true } : { 'bk.see': true, 'mo.view': false }, caps: {}, photo: '', state: 'active' });
+  const open = [];
+  const visit = async (me, opts = {}) => {
+    const pg = appReadyGoto(await ctx.newPage());
+    open.push(pg);
+    pg.on('pageerror', (e) => { console.log('  PAGEERR:', e.message); fails++; });
+    if (opts.offline) await pg.addInitScript(() => { Object.defineProperty(navigator, 'onLine', { configurable: true, get: () => false }); });
+    await pg.goto(t.base + '/index.html');
+    await bootVerdict(pg);
+    await pg.evaluate((m) => { isAuthenticated = true; document.body.classList.add('owner-mode'); chbSetMe(m); }, me);
+    await pg.evaluate(() => window.loadAdminBundle());
+    await pg.waitForFunction(() => !!window.__ADMIN_LOADED, null, { timeout: 20000 });
+    return pg;
+  };
+  const leave = async (pg) => { try { await pg.close(); } catch (e) {} };
+  const hold = () => { kept.gate = new Promise((r) => { kept.open = () => { kept.gate = null; r(); }; }); };
+  const storeNames = (pg) => pg.evaluate(() => Object.values(dbBookings).flat().map((b) => b.name).sort().join(', '));
+  const records = (pg) => pg.evaluate(() => new Promise((res) => {
+    const r = indexedDB.open('chb-db');
+    r.onerror = () => res(null);
+    r.onsuccess = () => {
+      const db = r.result;
+      if (!db.objectStoreNames.contains('held')) return res([]);
+      const q = db.transaction('held', 'readonly').objectStore('held').getAll();
+      q.onsuccess = () => res(q.result.map((x) => ({ id: x.id, who: String(x.who || ''), h: x.h, at: x.at, z: !!(x.seal && x.seal.z), ct: x.seal && x.seal.ct ? Array.from(new Uint8Array(x.seal.ct)) : [] })));
+      q.onerror = () => res(null);
+    };
+  }));
+  const putRecords = (pg, change) => pg.evaluate((ch) => new Promise((res) => {
+    const r = indexedDB.open('chb-db');
+    r.onsuccess = () => {
+      const tx = r.result.transaction('held', 'readwrite');
+      const st = tx.objectStore('held');
+      const q = st.getAll();
+      q.onsuccess = () => {
+        q.result.forEach((x) => {
+          if (ch.at) x.at = ch.at;
+          if (ch.spoil === x.id && x.seal && x.seal.ct) { const b = new Uint8Array(x.seal.ct); b[0] ^= 0xff; b[b.length - 1] ^= 0xff; x.seal.ct = b.buffer; }
+          st.put(x);
+        });
+      };
+      tx.oncomplete = () => res(true);
+      tx.onerror = () => res(false);
+    };
+    r.onerror = () => res(false);
+  }), change);
+  const waitFor = async (fn, ms = 8000) => { const t0 = Date.now(); while (Date.now() - t0 < ms) { if (await fn()) return true; await new Promise((r) => setTimeout(r, 120)); } return false; };
+  const bytesHave = (arr, s) => { const n = Buffer.from(s, 'utf8'); for (let i = 0; i + n.length <= arr.length; i++) { let j = 0; while (j < n.length && arr[i + j] === n[j]) j++; if (j === n.length) return true; } return false; };
+
+  // 8a. A first visit keeps what the server sent, sealed.
+  let pg = await visit(ME(7, true));
+  await pg.evaluate(() => { window.initBackOffice(); });
+  ok(await waitFor(async () => ((await records(pg)) || []).some((x) => x.id === 'bookings')), 'a first visit keeps the bookings on the phone');
+  let recs = await records(pg);
+  const bkRec = recs.find((x) => x.id === 'bookings') || { ct: [], who: '' };
+  ok(recs.some((x) => x.id === 'rates') && bkRec.h === K.bkH, `…with the server's hash, beside the other parts (${recs.map((x) => x.id).sort().join(', ')})`);
+  ok(bkRec.who.startsWith('7:'), `…kept as this person's (${bkRec.who})`);
+  ok(bkRec.ct.length > 0 && !bytesHave(bkRec.ct, 'Ada Kept') && !bytesHave(bkRec.ct, 'b701@x.com'), 'sealed: no guest name or email is readable in what is stored');
+  ok(bkRec.z, '…and compressed before it was sealed');
+  // Compression alone would hide the name from a byte search, so the stored bytes must
+  // not open WITHOUT the key either: not as gzip, not as text.
+  const opensBare = await pg.evaluate(async (ct) => {
+    const b = new Uint8Array(ct);
+    try {
+      const ds = new Blob([b]).stream().pipeThrough(new DecompressionStream('gzip'));
+      const t = new TextDecoder().decode(await new Response(ds).arrayBuffer());
+      return /Ada Kept/.test(t) ? 'gzip' : '';
+    } catch (e) {}
+    return /Ada Kept/.test(new TextDecoder().decode(b)) ? 'text' : '';
+  }, bkRec.ct);
+  ok(opensBare === '', `…and the stored bytes do not open without the key (${opensBare || 'they do not'})`);
+  await leave(pg);
+
+  // 8b. The next visit paints from it before the server answers, and names it.
+  hold();
+  pg = await visit(ME(7, true));
+  const haves0 = kept.haves.length;
+  await pg.evaluate(() => { window.initBackOffice(); });
+  const painted = await waitFor(async () => (await storeNames(pg)) === 'Ada Kept, Bo Kept' && await pg.evaluate(() => (document.getElementById('bookings-list') || {}).textContent.includes('Ada Kept')), 6000);
+  ok(painted && kept.gate !== null, 'the next visit paints Today from the phone before the server answers');
+  ok(await waitFor(async () => kept.haves.length > haves0, 4000), '(vacuity) the load was asked for while the answer was held');
+  const have8b = kept.haves[kept.haves.length - 1] || '';
+  ok(have8b.includes('bookings.' + K.bkH) && have8b.includes('rates.' + K.rtH), `…and names what it holds, so the server can answer "same" (${have8b})`);
+  ok(await pg.evaluate(() => chbStoresLive()) === false, '…and until the server answers, the copy is not live data');
+  kept.open();
+  ok(await waitFor(() => pg.evaluate(() => chbStoresLive())), 'once the server answers "same", the copy is current');
+  ok((await storeNames(pg)) === 'Ada Kept, Bo Kept', `…and the stores are what was kept (${await storeNames(pg)})`);
+  await leave(pg);
+
+  // 8c/8d. Never someone else's copy, never one from before a change to what they may see.
+  for (const [label, me] of [['another person', ME(8, true)], ['the same person after a change to what they may see', ME(7, false)]]) {
+    hold();
+    pg = await visit(me);
+    const n0 = kept.haves.length;
+    await pg.evaluate(() => { window.initBackOffice(); });
+    ok(await waitFor(async () => kept.haves.length > n0, 6000), `(vacuity) ${label}: the load was asked for`);
+    ok((await storeNames(pg)) === '', `${label} is shown nothing from the phone while the server answers (${await storeNames(pg)})`);
+    ok(kept.haves[kept.haves.length - 1] === '', `…and names nothing (${kept.haves[kept.haves.length - 1]})`);
+    await leave(pg);
+    kept.open();
+  }
+  ok(((await (async () => { const q = await visit(ME(7, true)); const r = await records(q); await leave(q); return r; })()) || []).every((x) => x.who.startsWith('7:')), '…and neither replaced the first person\'s copy');
+
+  // 8e. Offline, the day sheet is the screen: the copy is not painted.
+  hold();
+  pg = await visit(ME(7, true), { offline: true });
+  await pg.evaluate(() => { window.initBackOffice(); });
+  await new Promise((r) => setTimeout(r, 1500));
+  ok((await storeNames(pg)) === '', `offline, nothing is painted from the phone (${await storeNames(pg)})`);
+  await leave(pg);
+  kept.open();
+
+  // 8f. A copy over two days old is not painted, but is still named.
+  pg = await visit(ME(7, true));
+  await putRecords(pg, { at: Date.now() - 49 * 3600000 });
+  await leave(pg);
+  hold();
+  pg = await visit(ME(7, true));
+  let n1 = kept.haves.length;
+  await pg.evaluate(() => { window.initBackOffice(); });
+  ok(await waitFor(async () => kept.haves.length > n1, 6000), '(vacuity) the load was asked for');
+  ok((await storeNames(pg)) === '', `a copy over two days old is not painted (${await storeNames(pg)})`);
+  const have8f = kept.haves[kept.haves.length - 1] || '';
+  ok(have8f.includes('bookings.' + K.bkH), `…but is still named, so the server can confirm it (${have8f})`);
+  kept.open();
+  ok(await waitFor(async () => (await storeNames(pg)) === 'Ada Kept, Bo Kept'), '…and confirmed "same", it fills the stores');
+  ok(await waitFor(async () => ((await records(pg)) || []).every((x) => Date.now() - x.at < 600000), 8000), '…and is dated afresh, now the server has said it is current');
+  await leave(pg);
+
+  // 8g. A failed load withdraws the copy: it never stands in for an answer.
+  hold();
+  pg = await visit(ME(7, true));
+  await pg.evaluate(() => { window.initBackOffice(); });
+  ok(await waitFor(async () => (await storeNames(pg)) === 'Ada Kept, Bo Kept', 6000), '(vacuity) painted from the phone');
+  kept.fail = true;
+  kept.open();
+  ok(await waitFor(async () => (await storeNames(pg)) === '', 12000), `when the load fails, the copy is withdrawn from the stores (${await storeNames(pg)})`);
+  ok(await pg.evaluate(() => chbStoresLive()) === false, '…so nothing reads it as live data');
+  ok(await pg.evaluate(() => document.body.classList.contains('offline-snap') || !(document.getElementById('bookings-list') || {}).textContent.includes('Ada Kept')), '…and Today does not present it as current');
+  kept.fail = false;
+  await leave(pg);
+
+  // 8h. A copy that will not open is absent; the part is fetched whole and kept again.
+  pg = await visit(ME(7, true));
+  await putRecords(pg, { spoil: 'bookings' });
+  await leave(pg);
+  hold();
+  pg = await visit(ME(7, true));
+  n1 = kept.haves.length;
+  await pg.evaluate(() => { window.initBackOffice(); });
+  ok(await waitFor(async () => kept.haves.length > n1, 6000), '(vacuity) the load was asked for');
+  ok((await storeNames(pg)) === '', `a copy that will not open is not painted (${await storeNames(pg)})`);
+  const have8h = kept.haves[kept.haves.length - 1] || '';
+  ok(!have8h.includes('bookings.') && have8h.includes('rates.' + K.rtH), `…nor named, while the parts that open still are (${have8h})`);
+  kept.open();
+  ok(await waitFor(async () => (await storeNames(pg)) === 'Ada Kept, Bo Kept'), '…and the part comes whole');
+  ok(await waitFor(async () => { const r = await records(pg); const b = (r || []).find((x) => x.id === 'bookings'); return !!b && Date.now() - b.at < 60000; }, 8000), '…and is kept again');
+
+  // 8i. Signing out removes it, and nothing is written after.
+  await pg.evaluate(async () => { __abSaved = {}; isAuthenticated = false; await chbSecForget(); await abHeldSave(); });
+  recs = await records(pg);
+  ok(Array.isArray(recs) && recs.length === 0, `signing out removes the copy, and a save after it writes nothing (${(recs || []).map((x) => x.id).join(', ')})`);
+  await leave(pg);
+  for (const q of open) await leave(q);
+  await ctx.close();
 
   await t.done(fails);
 })().catch(async (e) => { console.error(e); process.exit(1); });

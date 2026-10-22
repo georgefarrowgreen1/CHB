@@ -6473,7 +6473,7 @@ let __cmdkNluOff = false; // one-shot bypass (the note's "search the literal wor
 //    mid-session offline the loaded stores stay in charge (break-tested).
 function chbSnapAnswers(ql) {
     if (!(typeof chbNetIsOff === 'function' && chbNetIsOff())) return null;
-    if (Object.keys(dbBookings || {}).some((k) => (dbBookings[k] || []).length)) return null;
+    if (chbStoresLive()) return null;
     const s = chbSnapRead();
     if (!s || !(s.rows || []).length) return null;
     const today = todayDashed(), tom = ukShiftDays(today, 1);
@@ -6523,7 +6523,7 @@ function chbSnapAnswers(ql) {
 // sort places it). Online or with live data this contributes nothing.
 function chbSnapBriefRows() {
     if (!(typeof chbNetIsOff === 'function' && chbNetIsOff())) return [];
-    if (Object.keys(dbBookings || {}).some((k) => (dbBookings[k] || []).length)) return [];
+    if (chbStoresLive()) return [];
     const s = chbSnapRead();
     if (!s || !(s.rows || []).length) return [];
     const today = todayDashed(), tom = ukShiftDays(today, 1);
@@ -9958,6 +9958,135 @@ function abHeldResolve(ab) {
             delete __abHeld[k]; // an older server, or a part that could not be built
         }
     });
+    abHeldSaveSoon(); // kept on the phone: a part that changed, or one confirmed and dated afresh
+}
+// ── THE OWNER'S DATA KEPT ON THE PHONE (see CLAUDE.md). Every fresh open used to download
+//    every booking ever taken before Today could paint (227KB on a five-year business).
+//    The held parts are kept in IndexedDB ('held'), compressed and sealed with the
+//    non-extractable key the offline day sheet uses, and restored before the first load:
+//    named, so the server can answer "same" for each one it still matches, and painted at
+//    once when the server last confirmed the bookings within the day sheet's 48 hours.
+//    A copy is the person's AND their permissions': anyone else's, or one from before a
+//    change to what this person may see, is never read. chbSecForget clears it with the
+//    key, nothing is written once signed out, and without a key (no WebCrypto) nothing is
+//    kept: never the history in the clear.
+/** @type {Record<string, string>} */
+let __abSaved = {};
+/** @type {Record<string, number>} */
+let __abSavedAt = {};
+let __abSaveT = null;
+let __abRestoreP = null;
+const AB_HELD_RESTAMP_MS = 3600000; // a copy the server confirms is dated afresh at most hourly
+function abHeldWho() {
+    const me = /** @type {any} */ (window).__me;
+    if (!me || !me.id) return '';
+    const sig = JSON.stringify([!!me.full, me.perms || null]);
+    let h = 2166136261;
+    for (let i = 0; i < sig.length; i++) h = Math.imul(h ^ sig.charCodeAt(i), 16777619) >>> 0;
+    return String(me.id) + ':' + h.toString(16);
+}
+async function abSeal(text) {
+    const k = await chbSecKey();
+    if (!k) return null;
+    let bytes = new TextEncoder().encode(text);
+    let z = false;
+    if (typeof CompressionStream === 'function') {
+        try {
+            const cs = new Blob([bytes]).stream().pipeThrough(new CompressionStream('gzip'));
+            bytes = new Uint8Array(await new Response(cs).arrayBuffer());
+            z = true;
+        } catch (e) {
+            bytes = new TextEncoder().encode(text);
+            z = false;
+        }
+    }
+    const iv = crypto.getRandomValues(new Uint8Array(12));
+    const ct = await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, k, bytes);
+    return { iv: iv.buffer, ct, z };
+}
+async function abOpen(seal) {
+    try {
+        const k = await chbSecKey();
+        if (!k || !seal || !seal.iv || !seal.ct) return null;
+        const pt = await crypto.subtle.decrypt({ name: 'AES-GCM', iv: new Uint8Array(seal.iv) }, k, seal.ct);
+        if (!seal.z) return new TextDecoder().decode(pt);
+        if (typeof DecompressionStream !== 'function') return null;
+        const ds = new Blob([pt]).stream().pipeThrough(new DecompressionStream('gzip'));
+        return new TextDecoder().decode(await new Response(ds).arrayBuffer());
+    } catch (e) {
+        return null; // a copy that will not open is ABSENT, never garbage
+    }
+}
+function abHeldTx(mode, fn) {
+    return oqDB().then((db) => new Promise((res) => {
+        try {
+            const tx = db.transaction('held', mode);
+            const rq = fn(tx.objectStore('held'));
+            tx.oncomplete = () => res(rq && 'result' in rq ? rq.result : true);
+            tx.onerror = () => res(null);
+            tx.onabort = () => res(null);
+        } catch (e) {
+            res(null);
+        }
+    })).catch(() => null);
+}
+// Restored once per page, before the first load: fills __abHeld so abFetch names the
+// parts, and returns the ones fresh enough to paint (null unless the bookings are).
+function abHeldRestore() {
+    if (__abRestoreP) return __abRestoreP;
+    const who = abHeldWho();
+    if (!who) return Promise.resolve(null); // the person is not known yet: try again later
+    __abRestoreP = (async () => {
+        const recs = await abHeldTx('readonly', (st) => st.getAll());
+        const now = Date.now();
+        /** @type {Record<string, any>} */
+        const parts = {};
+        for (const r of Array.isArray(recs) ? recs : []) {
+            if (!r || r.who !== who || AB_HELD_PARTS.indexOf(r.part) === -1 || !/^[0-9a-f]{16}$/.test(String(r.h || ''))) continue;
+            if (__abHeld[r.part]) continue; // the page already holds a newer copy
+            const text = await abOpen(r.seal);
+            if (text === null) continue;
+            let v = null;
+            try {
+                v = JSON.parse(text);
+            } catch (e) {}
+            if (!v || typeof v !== 'object') continue;
+            // A date from a clock since gone backwards reads as old, never as fresh.
+            const at = Number(r.at) || 0;
+            const when = at <= now + 300000 ? at : 0;
+            __abHeld[r.part] = { h: r.h, text };
+            __abSaved[r.part] = r.h;
+            __abSavedAt[r.part] = when;
+            if (now - when <= CHB_SNAP_MAX_AGE_H * 3600000) parts[r.part] = v;
+        }
+        return parts.bookings ? parts : null;
+    })().catch(() => null);
+    return __abRestoreP;
+}
+function abHeldSaveSoon() {
+    if (__abSaveT) return;
+    __abSaveT = setTimeout(() => {
+        __abSaveT = null;
+        abHeldSave().catch(() => {});
+    }, 1500);
+}
+async function abHeldSave() {
+    const who = abHeldWho();
+    if (!who || !isAuthenticated) return;
+    for (const k of AB_HELD_PARTS) {
+        const held = __abHeld[k];
+        if (!held) continue;
+        if (__abSaved[k] === held.h && Date.now() - (__abSavedAt[k] || 0) < AB_HELD_RESTAMP_MS) continue;
+        const seal = await abSeal(held.text);
+        if (!seal) return; // no key: nothing is kept in the clear
+        if (!isAuthenticated || abHeldWho() !== who) return; // signed out while it was sealed
+        const at = Date.now();
+        const done = await abHeldTx('readwrite', (st) => st.put({ id: k, part: k, who, h: held.h, at, seal }));
+        if (done) {
+            __abSaved[k] = held.h;
+            __abSavedAt[k] = at;
+        }
+    }
 }
 // Run a stalled feed's sync from its row: the capsule spins, then the fresh
 // health is re-read and the row folds away by itself if the feed is now fine.
@@ -24906,7 +25035,7 @@ let __chbSnapUpTotal = 0;
 // when they hold anything; the saved snapshot when they don't. Consumers key
 // off `source`, so "from the saved sheet" is stated once, not per-surface.
 function chbDayRows() {
-    if (Object.keys(dbBookings || {}).some((k) => (dbBookings[k] || []).length)) {
+    if (chbStoresLive()) {
         return { source: 'live', at: Date.now(), rows: chbSnapRowsFromStores() };
     }
     const s = chbSnapRead();
@@ -26203,7 +26332,7 @@ async function odsRetry() {
     try {
         const r = await loadData();
         const stillDead = !!(r && Array.isArray(r.failed) && r.failed.indexOf('bookings') !== -1)
-            && !Object.keys(dbBookings).some((k) => (dbBookings[k] || []).length);
+            && !chbStoresLive();
         if (stillDead) {
             toast('Still no connection — the saved sheet stays up.');
             return;
@@ -26218,6 +26347,24 @@ async function odsRetry() {
     }
 }
 let __odsPatienceUsed = false; // the boot's patience window — armed once per page
+// Today's calendar and bookings from the stores: drawn by every load, and by the paint
+// from the copy on the phone. Arriving on Today, the bars draw in again and everything
+// settles in order, once.
+function boPaintToday() {
+    const tdArriving = __tdArmed;
+    __tdArmed = false;
+    if (tdArriving && tdMotionOk()) {
+        const ch = document.getElementById('cal-body');
+        if (ch) /** @type {any} */ (ch).__tlDrew = false;
+    }
+    renderCalendar();
+    try {
+        renderBookings(); // the bookings workspace shares the dashboard now
+    } catch (e) {}
+    if (tdArriving) {
+        try { tdArrive(); } catch (e) {}
+    }
+}
 // Calls in ONE TASK share a run (nav() inits, then its caller did again on the
 // next line: two loads per trip to Today). A later refresh always loads afresh.
 let __boInit = null;
@@ -26255,8 +26402,30 @@ async function initBackOfficeRun() {
     // recovered only one of the boot's several inits, so the win largely went too.
     // A real fix needs the refresh callers to say so explicitly rather than a
     // window guessing for them; the measurement is in the PR if anyone returns.
+    // Whether the stores hold anything (the first paint's question), and whether it is
+    // live data, which the copy on the phone is not until the server has answered.
+    const __storesBare = () => !Object.keys(dbBookings || {}).some((k) => (dbBookings[k] || []).length);
+    const __storesEmpty = () => !chbStoresLive();
+    // THE COPY ON THE PHONE PAINTS FIRST (abHeldRestore): restored before the load so the
+    // server can answer "same", and on the page's first load applied and drawn at once,
+    // so Today is on screen before the network answers. Never offline: there the day
+    // sheet is the screen (CLAUDE.md, "The offline day sheet").
+    if (navigator.onLine !== false && !chbNetIsOff()) {
+        try {
+            const held = await abHeldRestore();
+            if (held && __storesBare()) {
+                await loadData(held);
+                try {
+                    todayOpsLine();
+                } catch (e) {}
+                try {
+                    renderNeedsYou();
+                } catch (e) {}
+                boPaintToday();
+            }
+        } catch (e) {}
+    }
     const __ldrP = loadData();
-    const __storesEmpty = () => !Object.keys(dbBookings || {}).some((k) => (dbBookings[k] || []).length);
     let __odsPatienceT = null;
     // ONCE PER PAGE, deliberately: the patience window is the BOOT's. A
     // mid-session re-init (recovery, openBookings) already has the live
@@ -26281,7 +26450,7 @@ async function initBackOfficeRun() {
     // successful load does the opposite half: pre-warm the snapshot and drop any
     // sheet left up from an earlier failure.
     const __bookingsDead = !!(__ldr && Array.isArray(__ldr.failed) && __ldr.failed.indexOf('bookings') !== -1)
-        && !Object.keys(dbBookings).some((k) => (dbBookings[k] || []).length);
+        && !chbStoresLive();
     if (__bookingsDead) {
         if (renderOfflineDaySheet()) return;
     } else if (!(__ldr && Array.isArray(__ldr.failed) && __ldr.failed.indexOf('bookings') !== -1)) {
@@ -26334,20 +26503,7 @@ async function initBackOfficeRun() {
             })
             .catch(() => {});
     } catch (e) {}
-    // Arriving on Today: the bars draw in again, then everything settles in order.
-    const tdArriving = __tdArmed;
-    __tdArmed = false;
-    if (tdArriving && tdMotionOk()) {
-        const ch = document.getElementById('cal-body');
-        if (ch) /** @type {any} */ (ch).__tlDrew = false;
-    }
-    renderCalendar();
-    try {
-        renderBookings(); // the bookings workspace shares the dashboard now
-    } catch (e) {}
-    if (tdArriving) {
-        try { tdArrive(); } catch (e) {}
-    }
+    boPaintToday();
     renderInbox();
     try {
         refreshModerationCounts();
