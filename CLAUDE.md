@@ -4599,9 +4599,10 @@ too (`guest-app.css`), and that card drops its Welcome book link (it is a tile t
   §19; test-autopay (the plan's words, the consent read at the moment of paying, and the off switch, which moved from
   the stay card to the screen its Manage button opens). Eighteen rules were break-tested one at a time in throwaway
   copies of the app, each failing its own named check.
-- **Not done, said plainly**: Apple Pay and Google Pay are stubbed in every suite (Square's SDK cannot load here), so
-  the wallet sheets themselves are unverified on a device; the 3-D Secure challenge is stubbed; and the receipt names
-  the card only when Square's answer carries card details.
+- **Checked by hand, not by a gate**: Apple Pay, Google Pay and the 3-D Secure challenge are stubbed in every suite
+  (Square's SDK cannot load here). The owner made a real test payment on the staging site from an iPhone (22/10/2026)
+  and reported it working, so the real sheets have been seen on a device, but nothing re-checks them after a change.
+  The receipt names the card only when Square's answer carries card details.
 
 ## The guest pay screen tells the WHOLE money story (SUPERSEDED in part by the rebuild above)
 
