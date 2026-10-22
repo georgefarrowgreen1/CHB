@@ -810,7 +810,7 @@ if ($isAdmin && empty($in['token'])) {
                 ],
                 $rows,
             ),
-        ], $in['have'] ?? '');
+        ], $in['have'] ?? '', ['threads', 'thread_id', $in['haveb'] ?? '']);
     } catch (\Throwable $e) {
         json_out(['error' => 'Messages not ready — has migration-chat-threads.sql been run?'], 500);
     }

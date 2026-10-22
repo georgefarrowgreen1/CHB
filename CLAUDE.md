@@ -1419,6 +1419,57 @@ so every battery runs it (about 25s).
   answers 404 on the web, and the deploy strips `test-*.php`, `*-test.js` and `*-budget.json`. `CHB_VOLUME_DB` names
   the database, so two runs can sit side by side (their roll-ups then take turns).
 
+## A long list is sent as its changed buckets (second round, upgrade 3)
+
+The owner's bookings, the email log and the chat list came whole whenever anything in them changed: on the
+five-year business, recording one payment sent 2.3MB (219KB gzipped) of bookings to the phone. Code: db.php
+`held_list` / `held_buckets` / `held_have_buckets` beside `json_out_held`; admin.js `HELD_LISTS`, `heldMerge`,
+`heldClaim` beside `abFetch`.
+- **A LIST IS CUT INTO BUCKETS OF 32 IDS BY ID RANGE** (`HELD_BUCKET`), never by id modulo, so the old stays that
+  never change share buckets that never change and a new booking lands in the newest one. Every full answer says
+  each bucket's hash (`bh`), the bucket size (`bs`) and the list's length (`n`). The email log is a map by booking,
+  bucketed by the booking's id.
+- **The page holds its copy with those hashes and names them** ("<size>:<key>.<hash>,…": admin-bootstrap's
+  `?haveb=` for the bookings part, a `haveb` body field for the email log and the chat list). A changed list comes
+  back as only the rows of the buckets that differ, marked `delta`; a bucket that emptied simply leaves `bh`. A claim
+  made at another size, or not a claim, gets the whole list. The whole answer's hash (`h`, `hashes.bookings`) is
+  unchanged, so an untouched list still answers "same", and the fingerprint still skips building the bookings part.
+- **The page merges into the copy THE ASK NAMED** (`abFetch` keeps it as `sent`), never whatever it holds by the
+  time the answer lands. It refuses rather than guesses: a copy held at another size, a bucket it should hold and
+  does not, rows for a bucket it holds unchanged, a length that is not `n`. A refusal asks again in full (the read
+  helper) or leaves the part to its own endpoint (the owner's payload), as a "same" for a copy not held always did.
+  A "same" for a payload part reads the named copy too.
+- **THE MERGED LIST MUST BE THE LIST THE SERVER WOULD SEND**, so each list's order is its query's ORDER BY, restated
+  in `HELD_LISTS`: the bookings by `check_in` then `id`; the chat list by `last_at` then thread, newest first. Change
+  a query's ORDER BY and its line there together: volume-test compares the merged list with a fresh ask, row for row
+  and in order, on 1,387 bookings with many shared check-in days.
+- **The bucket hashes are kept on the phone beside the whole hash**, outside the seal: like it, they say which copy
+  this is and nothing of what is in it. Only a list's answer has its `bh`/`bs`/`n`/`delta` left out of the copy; any
+  other answer is held as it came.
+- **The Inbox's record and the dismissed duties are held parts too** (`AB_HELD_PARTS`). On five years of data they
+  were 36KB of the 37KB a page already holding everything else downloaded on every trip to Today.
+- Measured on the five-year business, and budgeted in volume-test: one booking changed 54KB / 7KB gzipped (was
+  2.3MB / 219KB); one email sent 31KB / 6KB (was 481KB / 65KB); one chat message 8KB / 2KB (was 147KB / 29KB); a
+  trip to Today with nothing new 0.9KB (was 36KB). The server still builds the whole bookings part once anything
+  in it has changed (52 statements): only the sending got smaller.
+- Gates:
+  - test-integration **§100** (for each list: the bucket hashes are of exactly its rows; still "same"; one change
+    sends one bucket, and the copy merged with it holds a fresh ask's rows; an emptied bucket goes and a new one
+    comes; another size or a non-claim gets the whole list; the Inbox record and the dismissed duties held);
+  - ui-test-oneload **§10** (the claims, the merge, every refusal, both orders and a tie, the "same" against the
+    named copy);
+  - volume-test (the three one-change reads budgeted; the page's own merge against a fresh ask).
+
+  §98's hash check now leaves out `bh`, `bs` and `n`: the hash is of the answer's data. Break-tested ten ways, each
+  failing its own named check: never sending a delta, buckets by modulo, a changed bucket left out, the Inbox record
+  not held (§100); the bookings sorted by id alone, no claim named, no count check, a "same" read from the page's
+  current copy (§10); and in volume-test the id-only sort (the merge check) and no delta (the three budgets).
+- **AND ui-test-oneload §8f HAD BEEN FAILING ON MAIN EVERY NIGHT AFTER 22:00 UK TIME.** It dated a stored copy 49
+  hours old with node's `Date.now()`, while after 22:00 the lib runs the page three hours behind node (the late
+  shift). To the page the copy was 46 hours old, fresh enough to paint, and the "dated afresh" checks measured three
+  hours of skew. Every time the page stamps or reads is on the page's clock: the lib's `now()`. Reproduced on main 4
+  runs in 4 at 22:30, and passing with the shift forced on and forced off.
+
 ## Automatic collection: finished plans, Square's silences, two passes at once (round 5)
 
 Found by the scheduled-jobs review and each reproduced against the real collector code.

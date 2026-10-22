@@ -2780,7 +2780,8 @@ if ($action === 'email_logs') {
                 'body' => isset($meta['body']) ? (string) $meta['body'] : '',
             ];
         }
-        json_out_held(['logs' => $map], $in['have'] ?? '');
+        // Sent as its changed buckets of bookings when the page names the ones it holds.
+        json_out_held(['logs' => $map], $in['have'] ?? '', ['logs', null, $in['haveb'] ?? '']);
     } catch (\Throwable $e) {
         json_out(['logs' => []]);
     }
