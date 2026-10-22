@@ -11119,6 +11119,17 @@ whatever else reached it; nothing compared the two. Code: `.github/scripts/` and
 - **EVERY WORKFLOW**: actions pinned to a full commit with the version as a comment (a tag can be moved by
   its publisher; this job holds the server password), `permissions: contents: read`,
   `persist-credentials: false` on every checkout (smoke-test §15).
+- **CI's Node is 22** (20 lost support in April 2026). The move failed 76 UI suites before any of them
+  printed a line: the harness's readiness probe (`ui-test-lib.js`) never read its 139KB answer, and Node
+  22's fetch kills the process on an internal assertion (`assert(!this.paused)`) when `php -S` closes the
+  socket under an unread body. It shows only with PHP 8.3's server, which is CI's (two runs in three); on
+  this container's 8.4 it never did, so every local run was green. The probe reads the body now. **A
+  Node-side `fetch` in a test reads its body, always.** Reproduce CI's pair with the PHP 8.3 binary first
+  on PATH and Node's exact release from nodejs.org.
+- Two suites that failed every late-night run on main were fixed with it: ui-test-chatfaces compared a
+  stamp the page wrote on its shifted clock with Node's `Date.now()` (the late-shift rule), and
+  ui-test-ownerday's two "identical" enquiries were on two cottages, so its row-height check failed on
+  days whose date range was long enough to wrap the longer name.
 - **THE CHECK** (`server-check.sh` → `server-check.js`, weekly on Monday and from the Actions tab, in the
   deploy's concurrency group so it never reads half an upload): reads `.deploy-commit`, builds THAT commit
   with its own stage script, lists the host and downloads what can be compared (never `config.php`,

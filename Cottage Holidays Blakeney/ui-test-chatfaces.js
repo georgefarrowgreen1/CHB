@@ -121,8 +121,11 @@ const HOUR = 3600e3;
         ok(after.initial === 'G', `someone with no photo is their initial (${after.initial})`);
         ok(after.label === 'Messages with Sophia & George' && after.title === after.label, `the button says who it reaches (${after.label})`);
         ok(asks.length === 1, `asked once (${asks.length})`);
-        const at = await page.evaluate(() => +localStorage.getItem('chb-chat-team-at'));
-        ok(at > 0 && Date.now() - at < 60e3, 'the answer is kept on this device with when it came');
+        // The page stamped it on its own clock, so its age is read there too: after
+        // 22:00 the lib sets the page three hours back, and Node's Date.now() then
+        // called a stamp from a moment ago three hours old (it failed every late run).
+        const age = await page.evaluate(() => { const at = +localStorage.getItem('chb-chat-team-at'); return at > 0 ? Date.now() - at : -1; });
+        ok(age >= 0 && age < 60e3, 'the answer is kept on this device with when it came');
         await page.close();
     }
 
