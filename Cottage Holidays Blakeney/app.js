@@ -7,7 +7,7 @@
 // the window properties when the bundle loads. Deploy checklist: bump ADMIN_V
 // whenever admin.js changes (it is the ?v= cache-buster).
 // ============================================================
-const ADMIN_BUNDLE_V = 797;
+const ADMIN_BUNDLE_V = 799;
 // admin.css is the owner-only stylesheet, split out of app.css so guests never
 // download it. Injected here (not a static <link>) and version-stamped on its
 // own — bump when admin.css changes. Kept OUT of the sw.js CORE precache.
@@ -942,13 +942,14 @@ window.addEventListener('load', layoutSentinelSchedule);
 // by the page on reconnect/open, and by the SW via Background Sync even when
 // the app is closed (where the browser supports it; iOS falls back to on-open).
 // v2 added 'refused' (queued writes the server said NO to; surfaced as a duty
-// on the next open); v3 adds 'keys' (the non-extractable at-rest key below).
+// on the next open); v3 adds 'keys' (the non-extractable at-rest key below); v4
+// adds 'held' (the owner's data kept on the phone, sealed with that key).
 // sw.js opens the same db — bump BOTH or one VersionErrors.
 function oqDB() {
     return new Promise((res, rej) => {
         let r;
         try {
-            r = indexedDB.open('chb-db', 3);
+            r = indexedDB.open('chb-db', 4);
         } catch (e) {
             return rej(e);
         }
@@ -960,6 +961,8 @@ function oqDB() {
                 db.createObjectStore('refused', { keyPath: 'id', autoIncrement: true });
             if (!db.objectStoreNames.contains('keys'))
                 db.createObjectStore('keys', { keyPath: 'id' });
+            if (!db.objectStoreNames.contains('held'))
+                db.createObjectStore('held', { keyPath: 'id' });
         };
         r.onsuccess = () => res(r.result);
         r.onerror = () => rej(r.error);
@@ -1035,14 +1038,16 @@ async function chbSecDecrypt(val) {
     }
 }
 // Logout hygiene's crypto half: the ciphertext is removed with the stores, and
-// the KEY goes too, so a fresh sign-in mints a fresh key.
+// the KEY goes too, so a fresh sign-in mints a fresh key. The owner's data kept on
+// the phone ('held') goes in the same transaction.
 function chbSecForget() {
     __chbSecKeyP = null;
     return oqDB()
         .then((db) => new Promise((res) => {
             try {
-                const tx = db.transaction('keys', 'readwrite');
+                const tx = db.transaction(['keys', 'held'], 'readwrite');
                 tx.objectStore('keys').delete('sec');
+                tx.objectStore('held').clear();
                 tx.oncomplete = res;
                 tx.onerror = () => res(undefined);
             } catch (e) {
@@ -12107,7 +12112,22 @@ function restoreSessions() {
 // Load bookings + enquiries + rates from the backend into memory.
 // Admin-only data (full bookings/enquiries) requires an admin session;
 // if not logged in those fetches simply yield empty lists.
-async function loadData() {
+// THE COPY ON THE PHONE IS NEVER AN ANSWER. Parts applied from it (admin.js
+// abHeldRestore) paint Today while the server answers, and are marked here until a
+// load from the server replaces or confirms them; a load that fails WITHDRAWS them,
+// rather than keeping them as the last good copy (which may be two days old).
+/** @type {Record<string, boolean>} */
+const __fromPhone = {};
+// Is there live data in the stores? Every "can the screen speak from memory?" question
+// asks this, so a copy still waiting on the server counts as none.
+function chbStoresLive() {
+    if (__fromPhone.bookings) return false;
+    return Object.keys(dbBookings || {}).some((k) => (dbBookings[k] || []).length);
+}
+// `held`: the parts the phone keeps, applied with NO network so Today paints before the
+// server answers. No signals ride it, and a part it lacks is skipped rather than
+// fetched on its own; the real load follows and decides.
+async function loadData(held) {
     // ONE admin-bootstrap round-trip covers all four reads below (plus cron
     // status, stashed on window for the dashboard cron-health pill in admin.js)
     // — on shared hosting each request is
@@ -12115,13 +12135,16 @@ async function loadData() {
     // one and five per back-office screen. Each task still falls back to its
     // own endpoint if the combined payload fails or misses its part, and
     // handles its own errors so nothing blocks anything else.
-    let ab = null;
-    try {
-        // abFetch (admin.js) names the parts held; before the bundle loads, the whole payload.
-        const w = /** @type {any} */ (window);
-        ab = w.__ADMIN_LOADED && typeof w.abFetch === 'function' ? await w.abFetch() : await apiGet('admin-bootstrap.php');
-        if (!ab || !ab.ok) ab = null;
-    } catch (e) {}
+    const fromPhone = !!held && typeof held === 'object';
+    let ab = fromPhone ? Object.assign({ ok: true }, held) : null;
+    if (!fromPhone) {
+        try {
+            // abFetch (admin.js) names the parts held; before the bundle loads, the whole payload.
+            const w = /** @type {any} */ (window);
+            ab = w.__ADMIN_LOADED && typeof w.abFetch === 'function' ? await w.abFetch() : await apiGet('admin-bootstrap.php');
+            if (!ab || !ab.ok) ab = null;
+        } catch (e) {}
+    }
     // HEALTH IS NEVER CLAIMED FROM IGNORANCE. These four signals all come from ONE
     // request, and overwriting them unconditionally meant a single dropped
     // admin-bootstrap turned every "look at this" into "all clear": measured
@@ -12130,7 +12153,7 @@ async function loadData() {
     // "✓ All running", and the assistant's foot said "All systems normal". The last
     // good copy is kept (the loadData rule the stores already follow) and __sigAt
     // stamps when it was true, so a reader can tell "healthy" from "not asked".
-    if (ab) {
+    if (ab && !fromPhone) {
         window.__cronStatusPre = ab.cron || null;
         // Per-cottage iCal feed health, from the SAME payload. The search foot's
         // status line is not allowed to fetch, which is why only the cron was wired
@@ -12150,7 +12173,8 @@ async function loadData() {
 
     // Shape-check each part (not just truthiness) so a malformed combined
     // payload cleanly falls back to the individual endpoint.
-    const ratesTask = loadRates(ab && ab.rates && Array.isArray(ab.rates.properties) ? ab.rates : null);
+    const ratesPart = ab && ab.rates && Array.isArray(ab.rates.properties) ? ab.rates : null;
+    const ratesTask = fromPhone && !ratesPart ? Promise.resolve() : loadRates(ratesPart);
 
     // A DROPPED REQUEST MUST NOT DESTROY GOOD DATA. Each task used to empty its
     // store in the catch, so one failed fetch on a patchy signal wiped the
@@ -12160,10 +12184,12 @@ async function loadData() {
     const failed = [];
     const bookingsTask = (async () => {
         try {
-            const { bookings } =
+            const src =
                 ab && ab.bookings && Array.isArray(ab.bookings.bookings)
                     ? ab.bookings
-                    : await apiGet('bookings.php');
+                    : fromPhone ? null : await apiGet('bookings.php');
+            if (!src) return;
+            const { bookings } = src;
             Object.keys(dbBookings).forEach((k) => {
                 dbBookings[k] = [];
             });
@@ -12175,20 +12201,35 @@ async function loadData() {
                 if (!dbBookings[row.prop_key]) dbBookings[row.prop_key] = [];
                 dbBookings[row.prop_key].push(b);
             });
+            __fromPhone.bookings = fromPhone;
         } catch (e) {
-            failed.push('bookings'); // keep whatever we already had
+            failed.push('bookings'); // keep whatever we already had…
+            if (__fromPhone.bookings) {
+                // …unless it is the phone's copy, which is withdrawn
+                Object.keys(dbBookings).forEach((k) => {
+                    dbBookings[k] = [];
+                });
+                __fromPhone.bookings = false;
+            }
         }
     })();
 
     const enquiriesTask = (async () => {
         try {
-            const { enquiries: rows } =
+            const src =
                 ab && ab.enquiries && Array.isArray(ab.enquiries.enquiries)
                     ? ab.enquiries
-                    : await apiGet('enquiries.php');
+                    : fromPhone ? null : await apiGet('enquiries.php');
+            if (!src) return;
+            const { enquiries: rows } = src;
             enquiries = (rows || []).map(mapEnquiryFromApi);
+            __fromPhone.enquiries = fromPhone;
         } catch (e) {
-            failed.push('enquiries'); // keep the last good list
+            failed.push('enquiries'); // keep the last good list (never the phone's copy)
+            if (__fromPhone.enquiries) {
+                enquiries = [];
+                __fromPhone.enquiries = false;
+            }
         }
     })();
 
@@ -12199,7 +12240,8 @@ async function loadData() {
             const r =
                 ab && ab.blocks && Array.isArray(ab.blocks.blocks)
                     ? ab.blocks
-                    : await apiPost('ical-import.php', { action: 'blocks' });
+                    : fromPhone ? null : await apiPost('ical-import.php', { action: 'blocks' });
+            if (!r) return;
             Object.keys(dbBlocks).forEach((k) => {
                 dbBlocks[k] = [];
             });
@@ -12217,8 +12259,15 @@ async function loadData() {
                 });
             });
             dedupeExternalBlocks();
+            __fromPhone.blocks = fromPhone;
         } catch (e) {
-            failed.push('blocks'); // keep the last good OTA blocks
+            failed.push('blocks'); // keep the last good OTA blocks (never the phone's copy)
+            if (__fromPhone.blocks) {
+                Object.keys(dbBlocks).forEach((k) => {
+                    dbBlocks[k] = [];
+                });
+                __fromPhone.blocks = false;
+            }
         }
     })();
 
@@ -22305,7 +22354,7 @@ const CHB_SK_CARD = '<div class="card glass-panel sk-card"><div class="skeleton 
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'loadsame1022';
+    const BUILD = 'held1022b';
     /** @type {any} */ (window).__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;
