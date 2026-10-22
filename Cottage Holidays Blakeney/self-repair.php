@@ -582,6 +582,17 @@ try {
 } catch (\Throwable $e) {
 }
 
+// ---- 4d-iv. Analytics: the day's page views summed ---------------------------
+// Every finished day not summed yet (analytics-data.php analytics_rollup), so the
+// Analytics page reads whole days from the totals rather than every raw row. Routine
+// work rather than a fix: reported beside the fixes, never counted among them.
+$analyticsDays = 0;
+try {
+    require_once __DIR__ . '/analytics-data.php';
+    $analyticsDays = analytics_rollup(null);
+} catch (\Throwable $e) {
+}
+
 // ---- 4e. Email outbox: retry queued one-shot emails --------------------------
 // The confirmation / enquiry-ack / owner-alert / newsletter copies whose
 // transport send failed (mailer.php email_outbox_*). The kick after any
@@ -706,4 +717,5 @@ json_out([
     'ok' => true,
     'fixed' => $fixed,
     'flagged' => $flagged,
+    'analyticsDays' => $analyticsDays,
 ]);

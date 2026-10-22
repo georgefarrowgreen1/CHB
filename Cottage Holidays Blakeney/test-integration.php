@@ -7573,6 +7573,184 @@ $rootDb->exec("DELETE FROM content WHERE item_key = 'it98-setting'");
 $rootDb->prepare('DELETE FROM messages WHERE thread_id = ?')->execute([$tid98]);
 $rootDb->prepare('DELETE FROM chat_threads WHERE id = ?')->execute([$tid98]);
 
+// §99 THE ANALYTICS PAGE READS DAILY TOTALS, AND EVERY FIGURE IS THE SAME. A finished
+// day's page views are summed once (analytics-data.php analytics_rollup), and a window reads
+// those days plus the raw rows of the days it cuts through. Seeded with the awkward cases
+// (two pages in a visitor's last second, case, accent and trailing-space variants of one
+// page or source, empty and missing values, rows on a day's first and last second, rows
+// in the future), then every figure is compared with counting every raw row, for windows
+// that open on a day's edge as well as mid-day, under the strict SQL modes a host may run.
+echo "\n== §99 analytics from daily totals: the same figures, fewer rows read ==\n";
+$probe99 = $work . '/it99-probe.php';
+file_put_contents($probe99, <<<'PHP'
+<?php
+$_SERVER['SCRIPT_NAME'] = '/it99-probe.php';
+$_SERVER['REQUEST_METHOD'] = 'GET';
+$_SERVER['HTTP_HOST'] = '127.0.0.1';
+require __DIR__ . '/db.php';
+require_once __DIR__ . '/analytics-data.php';
+db()->exec("SET SESSION sql_mode = CONCAT_WS(',', NULLIF(@@SESSION.sql_mode, ''), 'ONLY_FULL_GROUP_BY', 'STRICT_ALL_TABLES')");
+$mode = $argv[1] ?? '';
+$now = (string) db()->query('SELECT NOW()')->fetchColumn();
+$day0 = substr($now, 0, 10);
+$reset = function () {
+    db()->exec('UPDATE pv_rollup SET version = 0');
+};
+$compare = function (array $opt) use ($now, $day0) {
+    $nows = [$now, pv_shift($now, -3), $day0 . ' 00:00:00', pv_shift($day0, -10) . ' 00:00:00', pv_shift($day0, -10) . ' 23:59:59', pv_shift($day0, -1) . ' 00:00:01', pv_shift($now, 1)];
+    $n = 0;
+    $bad = [];
+    foreach ($nows as $x) {
+        foreach ([1, 2, 7, 14, 30, 31, 45, 60, 90, 200, 365] as $d) {
+            $a = analytics_summary($d, ['now' => $x] + $opt);
+            $b = analytics_summary($d, ['now' => $x, 'rollup' => false]);
+            $n++;
+            if ($a !== $b) {
+                foreach ($a as $k => $v) {
+                    if ($v !== ($b[$k] ?? null)) {
+                        $bad[] = "$x/$d/$k";
+                    }
+                }
+            }
+        }
+    }
+    return ['n' => $n, 'bad' => array_slice($bad, 0, 6), 'nbad' => count($bad)];
+};
+$state = function () {
+    $r = db()->query('SELECT through_day, version FROM pv_rollup WHERE id = 1')->fetch() ?: [];
+    return ['through' => (string) ($r['through_day'] ?? ''), 'version' => (int) ($r['version'] ?? -1),
+        'expect' => (string) db()->query('SELECT DATE(NOW() - INTERVAL ' . ANALYTICS_SETTLE_HOURS . ' HOUR) - INTERVAL 1 DAY')->fetchColumn()];
+};
+$out = [];
+if ($mode === 'seed') {
+    mt_srand(9901);
+    $base = (int) db()->query('SELECT COALESCE(MAX(id), 0) FROM pageviews')->fetchColumn();
+    $paths = ['/', '/cottages', '/Cottages', '/cottages/jollyboat', '/cottages/Jollyboat', "/caf\u{e9}", '/cafe', '/experiences', '/terms ', '/terms', ''];
+    $refs = [null, null, '', 'google.com', 'Google.com', 'facebook.com', 'instagram.com'];
+    $sources = [null, null, '', 'newsletter', 'newsletter ', 'Facebook', 'facebook'];
+    $devices = [null, 'mobile', 'desktop', 'tablet', ''];
+    $props = [null, '', 'jollyboat', 'pimpernel'];
+    $events = ['book_click', 'enquiry_open', 'enquiry_submit', 'pay_start', 'odd_event'];
+    $rows = [];
+    $add = function (string $at, ?string $ip, string $path, ?string $event = null) use (&$rows, $refs, $sources, $devices, $props) {
+        $rows[] = [$props[mt_rand(0, 3)], $path, $refs[mt_rand(0, 6)], $ip, $event, $sources[mt_rand(0, 6)], $event === null ? $devices[mt_rand(0, 4)] : null, mt_rand(0, 2) ? mt_rand(1, 400000) : null, $at];
+    };
+    $pick = fn(array $a) => $a[mt_rand(0, count($a) - 1)];
+    for ($back = 75; $back >= 0; $back--) {
+        $d = pv_shift($day0, -$back);
+        for ($v = 0; $v < 12; $v++) {
+            $ip = hash('sha256', 'it99-' . mt_rand(1, 60));
+            $t = strtotime($d . ' 00:00:00 UTC') + mt_rand(0, 86399);
+            $views = mt_rand(1, 4);
+            for ($k = 0; $k < $views; $k++) {
+                $at = gmdate('Y-m-d H:i:s', min($t + $k * mt_rand(1, 900), strtotime($d . ' 23:59:59 UTC')));
+                if ($back === 0 && $at > $now) {
+                    break;
+                }
+                $add($at, $ip, $pick($paths));
+                if (mt_rand(0, 9) === 0) {
+                    $add($at, $ip, $pick($paths), $pick($events));
+                }
+            }
+            if (mt_rand(0, 6) === 0 && isset($at)) {
+                $add($at, $ip, $pick($paths)); // a second page in the same last second
+            }
+        }
+        $add($d . ' 00:00:00', hash('sha256', 'it99-edge-' . $back), $pick($paths));
+        $add($d . ' 23:59:59', hash('sha256', 'it99-edge-' . $back), $pick($paths));
+        $add($d . ' 12:00:00', null, $pick($paths));
+    }
+    foreach ([1, 7, 14, 30, 60] as $nd) {
+        foreach ([-1, 0, 1] as $sec) {
+            $add(gmdate('Y-m-d H:i:s', strtotime(pv_shift($now, -$nd) . ' UTC') + $sec), hash('sha256', 'it99-w' . $nd), $pick($paths));
+        }
+    }
+    $add(gmdate('Y-m-d H:i:s', strtotime($now . ' UTC') - 3600), hash('sha256', 'it99-late'), '/terms');
+    $add(gmdate('Y-m-d H:i:s', strtotime($now . ' UTC') + 3600), hash('sha256', 'it99-future'), '/');
+    $add(pv_shift($now, 1), hash('sha256', 'it99-future'), '/cottages');
+    foreach (array_chunk($rows, 200) as $chunk) {
+        db()->prepare('INSERT INTO pageviews (prop_key, path, referrer_host, ip_hash, event, source, device, dwell_ms, created_at) VALUES ' . implode(',', array_fill(0, count($chunk), '(?,?,?,?,?,?,?,?,?)')))
+            ->execute(array_merge(...$chunk));
+    }
+    $out = ['base' => $base, 'rows' => count($rows)];
+} elseif ($mode === 'roll') {
+    $reset();
+    $out = ['days' => analytics_rollup(null), 'again' => analytics_rollup(null)] + $state();
+} elseif ($mode === 'compare') {
+    $out = $compare([]) + $state();
+    $y = analytics_summary(365, ['now' => $now]);
+    $find = fn(array $list, string $key, string $like) => array_values(array_map(fn($r) => $r[$key], array_filter($list, fn($r) => strtolower(rtrim($r[$key])) === $like)));
+    $out['variants'] = ['cottages' => $find($y['topPages'], 'path', '/cottages'), 'cafe' => array_merge($find($y['topPages'], 'path', '/cafe'), $find($y['topPages'], 'path', "/caf\u{e9}")),
+        'terms' => $find($y['topPages'], 'path', '/terms'), 'facebook' => $find($y['sources'], 'source', 'facebook'), 'newsletter' => $find($y['sources'], 'source', 'newsletter')];
+} elseif ($mode === 'partial') {
+    $reset();
+    $out = ['days' => analytics_rollup(20)] + $state() + $compare(['roll' => false]);
+    analytics_summary(30);
+    $out['after'] = $state()['through'];
+} elseif ($mode === 'rows') {
+    $reads = function () {
+        $n = 0;
+        foreach (db()->query("SHOW SESSION STATUS LIKE 'Handler_read%'")->fetchAll() as $r) {
+            $n += (int) $r['Value'];
+        }
+        return $n;
+    };
+    analytics_summary(60);
+    $r0 = $reads();
+    analytics_summary(60);
+    $r1 = $reads();
+    analytics_summary(60, ['rollup' => false]);
+    $r2 = $reads();
+    $out = ['summed' => $r1 - $r0, 'raw' => $r2 - $r1];
+} elseif ($mode === 'missing') {
+    db()->exec('RENAME TABLE pv_rollup TO pv_rollup_it99');
+    try {
+        $a = analytics_summary(30, ['now' => $now]);
+        $b = analytics_summary(30, ['now' => $now, 'rollup' => false]);
+        $out = ['same' => $a === $b, 'views' => $a['totalViews'], 'through' => analytics_rollup_through()];
+    } finally {
+        db()->exec('RENAME TABLE pv_rollup_it99 TO pv_rollup');
+    }
+}
+echo "\n" . json_encode($out);
+PHP);
+$run99 = function (string $mode) use ($work, $probe99) {
+    $o = (string) shell_exec('cd ' . escapeshellarg($work) . ' && php ' . escapeshellarg($probe99) . ' ' . escapeshellarg($mode) . ' 2>&1');
+    $j = json_decode(trim(substr($o, (int) strrpos($o, "\n{"))), true);
+    return is_array($j) ? $j : ['error' => substr($o, -600)];
+};
+$seed99 = $run99('seed');
+it_check('§99 (vacuity) seeded ' . ($seed99['rows'] ?? 0) . ' page views over 76 days, the awkward cases among them', ($seed99['rows'] ?? 0) > 1500, json_encode($seed99));
+$roll99 = $run99('roll');
+it_check('§99 the job sums every finished day (' . ($roll99['days'] ?? 0) . ' days, through ' . ($roll99['through'] ?? '') . ')',
+    ($roll99['days'] ?? 0) >= 70 && ($roll99['through'] ?? '') !== '' && ($roll99['version'] ?? 0) >= 1, json_encode($roll99));
+it_check('§99 …and none that can still change: the last is the day before two hours ago', ($roll99['through'] ?? 'x') === ($roll99['expect'] ?? 'y'), json_encode($roll99));
+it_check('§99 …and run again, it has nothing to do', ($roll99['again'] ?? -1) === 0, json_encode($roll99));
+$cmp99 = $run99('compare');
+it_check('§99 every figure from the daily totals equals counting every raw row (' . ($cmp99['n'] ?? 0) . ' windows, edges and mid-day, strict SQL modes)',
+    ($cmp99['n'] ?? 0) >= 70 && ($cmp99['nbad'] ?? -1) === 0, json_encode($cmp99));
+it_check('§99 a page or a source that differs only in case, accent or a trailing space is one row, under its first spelling byte for byte',
+    ($cmp99['variants'] ?? null) === ['cottages' => ['/Cottages'], 'cafe' => ['/cafe'], 'terms' => ['/terms'], 'facebook' => ['Facebook'], 'newsletter' => ['newsletter']], json_encode($cmp99['variants'] ?? null));
+$rows99 = $run99('rows');
+it_check('§99 …and reads far fewer rows to say it (' . ($rows99['summed'] ?? '?') . ' against ' . ($rows99['raw'] ?? '?') . ' for 60 days)',
+    ($rows99['summed'] ?? 0) > 0 && ($rows99['summed'] ?? 1e9) * 3 < ($rows99['raw'] ?? 0), json_encode($rows99));
+$part99 = $run99('partial');
+it_check('§99 a page opened before the job has run reads the days summed so far and the raw rows after them, and is the same (' . ($part99['n'] ?? 0) . ' windows)',
+    ($part99['days'] ?? 0) === 20 && ($part99['through'] ?? '') < ($part99['expect'] ?? '') && ($part99['n'] ?? 0) >= 70 && ($part99['nbad'] ?? -1) === 0, json_encode($part99));
+it_check('§99 …and sums a few more days itself', ($part99['after'] ?? '') > ($part99['through'] ?? 'z'), json_encode($part99));
+$miss99 = $run99('missing');
+it_check('§99 before the migration (no totals) every figure comes from the raw rows', ($miss99['same'] ?? false) === true && array_key_exists('through', $miss99) && $miss99['through'] === null && ($miss99['views'] ?? 0) > 0, json_encode($miss99));
+$sr99 = http($noJar, 'GET', '/self-repair.php?cron=' . $SECRET);
+it_check('§99 the nightly self-repair runs the job', $sr99['code'] === 200 && array_key_exists('analyticsDays', $sr99['json'] ?? []), substr($sr99['raw'], 0, 200));
+$cmp99b = $run99('compare');
+it_check('§99 …and the figures still agree after it', ($cmp99b['nbad'] ?? -1) === 0 && ($cmp99b['through'] ?? '') === ($cmp99b['expect'] ?? 'y'), json_encode($cmp99b));
+@unlink($probe99);
+$rootDb->exec('DELETE FROM pageviews WHERE id > ' . (int) ($seed99['base'] ?? 0));
+$rootDb->exec('DELETE FROM pv_day');
+$rootDb->exec('DELETE FROM pv_visit');
+$rootDb->exec('DELETE FROM pv_exit');
+$rootDb->exec('UPDATE pv_rollup SET version = 0');
+
 echo "\n== Summary ==\n";
 if ($fail) {
     echo "  $fail CHECK(S) FAILED \xE2\x9D\x8C\n\n";

@@ -1251,6 +1251,46 @@ payload parts do.
   the copy, one key for both chat views) and three server ways (no comparison, a hash that varies by the
   request, the Sent list answered plainly), each failing its own named checks.
 
+## Analytics from daily totals (architectural upgrade 3)
+
+The Analytics page counted every raw page view on each open: measured on a seeded year (147k page views over
+400 days), 7 days took 79ms, 30 days 377ms, 90 days 902ms and a full year 1.6s. Now 36, 52, 80 and 118ms, with
+every figure the same. Code: the DAILY TOTALS block in analytics-data.php, migration-149.
+- **A finished day is summed once** (`analytics_rollup`) into `pv_day` (per day, per figure, per value: views,
+  direct, referrer, cottage, page with its time on page, source, device, event), `pv_visit` (each visitor's views
+  that day and the time of their last one) and `pv_exit` (the pages each visitor opened in the last second of
+  the latest day they were seen; an earlier day's rows go when they come back). `pv_rollup` holds the last day
+  summed and the shape's version (`ANALYTICS_ROLLUP_VERSION`); another version is rebuilt from the raw rows.
+- **A window reads its whole days from the totals and only the raw rows of the days it cuts through**
+  (`pv_window`): the day it opens on, from the hour it opens, and the days after the last one summed (today,
+  and yesterday until it settles). Every figure decomposes exactly: counts are sums; distinct visitors are the
+  summed days' plus the raw rows' visitors those days do not hold; one-page visitors are one view in one part
+  and none in the other; a visitor's last page is in the latest part they appear in (`pv_exits`).
+- **A day is summed only once it cannot change**: a view's time on page is written up to an hour after the
+  view (track.php), so a day waits two hours past its end (`ANALYTICS_SETTLE_HOURS`). Nothing else writes a
+  past day's page views; anything that ever does must bump `ANALYTICS_ROLLUP_VERSION` (or set
+  `pv_rollup.version` to 0) so the totals are rebuilt.
+- **Grouping is named, not inherited**: values are kept byte for byte (VARBINARY) and grouped at read time with
+  `utf8mb4_general_ci`, in the totals and in the raw rows alike, so a page or source differing only in case,
+  accent or a trailing space is one row on both paths, shown under its byte-smallest spelling. Every list is
+  ordered with a tiebreak, so equal counts always come out in one order. ip_hash is lowercase hex by
+  construction, so its bytes and its text compare alike.
+- **Who sums**: the nightly self-repair (step 4d-iv, reported as `analyticsDays`, not counted as a fix), and the
+  summary itself up to 62 days at a time (GET_LOCK, not waited for; a page that finds it busy reads the raw rows
+  of the days not summed yet, which is slower and the same). Each batch and the new last day commit together,
+  and the summary reads in one snapshot, so it never sees half a batch.
+- **Before the migration** (no tables) every figure comes from the raw rows, as before.
+- Gates: test-integration **§99** (12 checks): 2,856 seeded page views with the awkward cases (two pages in a
+  visitor's last second, case/accent/trailing-space variants, empty and missing values, a day's first and last
+  second, rows in the future); every finished day summed and none that can still change; 77 windows (opening on
+  a day's edge and mid-day, 1 to 365 days) equal to counting every raw row, under ONLY_FULL_GROUP_BY and strict
+  mode; how variants group; 11,629 rows read against 55,519 for 60 days; the same with only some days summed;
+  without the tables; self-repair. Seven rules break-tested one at a time (exits kept for earlier days, the
+  opening day counted twice, an unfinished day summed, visitors double-counted, one-page visitors, binary
+  grouping, a visitor seen after the summed days), each failing its own named check.
+- NB the break-tests must run one at a time on a shared server: the lock name is server-wide (the app's other
+  job locks are too), so parallel copies skip each other's summing.
+
 ## Automatic collection: finished plans, Square's silences, two passes at once (round 5)
 
 Found by the scheduled-jobs review and each reproduced against the real collector code.
