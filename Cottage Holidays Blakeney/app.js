@@ -7,11 +7,11 @@
 // the window properties when the bundle loads. Deploy checklist: bump ADMIN_V
 // whenever admin.js changes (it is the ?v= cache-buster).
 // ============================================================
-const ADMIN_BUNDLE_V = 800;
+const ADMIN_BUNDLE_V = 801;
 // admin.css is the owner-only stylesheet, split out of app.css so guests never
 // download it. Injected here (not a static <link>) and version-stamped on its
 // own — bump when admin.css changes. Kept OUT of the sw.js CORE precache.
-const ADMIN_CSS_V = 416;
+const ADMIN_CSS_V = 417;
 function ensureAdminCss() {
     if (document.getElementById('admin-css')) return Promise.resolve();
     return new Promise((resolve) => {
@@ -2570,6 +2570,14 @@ function nav(viewId, anchorId = null) {
     } catch (e) {}
     document.querySelectorAll('.page-view').forEach((v) => v.classList.remove('active'));
     target.classList.add('active');
+    // The screen on show is named on <body>, so a style rule can ask about it
+    // without a `:has()` from the top of the page, which makes every change
+    // anywhere re-check it (ui-test-stylecost). Set in the same breath as the
+    // switch, so no frame shows one without the other. `data-screen`, not
+    // `data-view`: that one means "a button that goes to this view", and a
+    // page-wide [data-view] query would find the body first.
+    document.body.dataset.screen = viewId;
+    document.body.classList.toggle('one-look-view', target.classList.contains('one-look'));
     // Back-office screens end like an app, not a website — the public
     // marketing footer only shows under customer-facing views.
     document.body.classList.toggle('admin-screen', ADMIN_VIEWS.includes(viewId));
@@ -12930,7 +12938,13 @@ function chatFabPaint(arrive) {
         btn.title = label;
     };
     paint(document.getElementById('chat-fab'), faces + '<span class="chat-fab-l">Messages</span>');
-    paint(document.querySelector('#guest-msg-fab .guest-dock-btn'), faces);
+    const gb = document.querySelector('#guest-msg-fab .guest-dock-btn');
+    paint(gb, faces);
+    // The book pill makes room for the wider faces pill (guest-app.css). A class on
+    // the bar itself: the pill comes AFTER the bar in the page, so CSS could only
+    // ask about it with a :has(), which every chat bubble made re-check the bar.
+    const bar = document.getElementById('guest-tabbar');
+    if (bar) bar.classList.toggle('gt-faces', !!(gb && gb.classList.contains('has-faces')));
 }
 window.chatFabPaint = chatFabPaint;
 function chatTeamFresh() {
@@ -22354,7 +22368,7 @@ const CHB_SK_CARD = '<div class="card glass-panel sk-card"><div class="skeleton 
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'held1022c';
+    const BUILD = 'stylecheck1';
     /** @type {any} */ (window).__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;

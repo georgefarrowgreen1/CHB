@@ -801,8 +801,8 @@ pop up with a back button?" The guest phone shell only (`body.guest-app:not(.own
 corner panel with its ×. Code: the MESSAGES IS A SCREEN block in guest-app.css, `chatBackFrom` / `chatBackName` /
 `chatEdgeOn` / `chatEdgeWire` beside `closeChat` in app.js, `setGuestDockOverlay` in guest-app.js, and
 `#chat-back` / `#chat-edge` / `#chat-dim` in index.html.
-- **No floating pill on You** or the pages under it (`:has(#view-guest-account.page-view.active)`, the stand-down
-  family's sixth rule): "Message us" is a row there, and the pill sat over the rows as they scrolled past. That row
+- **No floating pill on You** or the pages under it (`#view-guest-account.page-view.active ~ #guest-msg-fab`, the
+  stand-down family's sixth rule): "Message us" is a row there, and the pill sat over the rows as they scrolled past. That row
   now carries the › (`chev: true`), because it opens a screen like its neighbours.
 - **Pushed in from the right** (`chbPushIn` 400ms `--sheet`, `chbPushOut` 300ms `--in`), with the page it was opened
   from stepping a third to the left and dimming (`body.chat-screen` → `.page-view.active` / `.site-footer`
@@ -1328,6 +1328,52 @@ every suite timed (92 suites, 2,729 suite-seconds at three at a time). The whole
   100%: in headless Chrome that is software rendering, not a stuck process. And `time` around a suite reports
   almost nothing: the browser's processes are not counted, so measure the machine (`/proc/stat`) instead.
 
+
+## A small change restyles a small part of the page (second round, upgrade 1)
+
+**Measured first, with the browser's own count**: the trace's `UpdateLayoutTree` event carries `elementCount`, the
+number of elements a style recalculation touched. It is a COUNT, not a timing, so a loaded machine can neither pass nor
+fail a check built on it. On main, changing ONE line of text anywhere restyled the whole page: 756 elements on the home
+page, 2,742 on Today, and typing "guest 12 smith" into the search window restyled 92,759 elements (4.2s of styling at
+4x CPU). After: 0 for a text change, 10,879 for the same search (0.44s); a Today refresh 54,789 → 8,440 (2.1s → 0.28s);
+the guest date picker's twelve page turns 10,299 → 4,600 (433 → 176ms).
+- **TWO SHAPES OF `:has()` DID IT, AND THEY DID IT TOGETHER.** A `:has()` hung on `<body>` (the one-look window rules,
+  the Messages button's stand-downs, the background drift, two scroll locks) makes the browser mark every element it
+  looks through; then `.chat-thread:has(> .chat-hello) > :first-child`, a `:has()` before a subject that names
+  nothing, made any change to a marked element restyle everything. Either alone costs far less: with the body rules
+  gone the chat rule is free, and the body rules alone cost Today 12 → 88 per change. A `:has()` followed by
+  `> :first-child` or `> *` did it even when it matched nothing on the page; followed by a subject with a class, it
+  is free. So both are refused (check-css-conventions, a hard invariant at zero): no `:has()` on html, body or
+  `:root`, and no `:has()` before a subject that names no class, id, type or attribute.
+- **WHAT REPLACED THEM, same weight so nothing else moves** (17 scenes compared property by property, old against
+  new: identical, apart from the sub-pixel wobble the old tree shows against itself):
+  - the chat welcome names itself: `.chat-thread > .chat-hello:first-child` (it is always the first child);
+  - **the screen on show is named on `<body>`**: nav() sets `data-screen` (the view id) and toggles `one-look-view`
+    in the same breath as the switch. `data-screen`, not `data-view`: `[data-view]` already means "a button that goes
+    to this view", and a page-wide `[data-view]` query would find the body first. Before nav() first runs the body
+    carries none, which is the served page's own state (the home view), so the drift's rule reads
+    `body[data-screen]:not([data-screen="view-main"])`;
+  - the search window hosting a Manage section sets `one-look-sheet` beside its own `cmdk-sheet`;
+  - the Messages button's stand-downs look back through the page with `~` (`#view-pay.page-view.active ~
+    #guest-msg-fab`): the views, the chat and the sign-in sheet all come before the button, which guest-app.js
+    appends last. My stays keeps a `:has()`, anchored on its own view, not on `<body>`;
+  - the book pill's room for the faces is a class the face painter sets (`#guest-tabbar.gt-faces`): the bar comes
+    BEFORE the button, so `~` cannot reach it, and a `#guest-tabbar:has(~ #guest-msg-fab …)` restyled the bar on every
+    chat bubble (30 elements).
+  nav() is the only code that moves `.page-view.active` (grep before adding another); a screen switched any other way
+  would leave `data-screen` behind it.
+- **TAKING A RULE OUT OF A LOADED PAGE PROVES NOTHING.** The marks a `:has()` leaves on elements stay after the rule is
+  deleted through the CSSOM, so an in-page "remove each rule and count again" blamed the wrong rule and, with the
+  marks left, barely moved the count. Every attribution here (and the gate's own) loads the page AGAIN with the
+  stylesheets rewritten before they arrive (`page.route` on `.css`). Comments come out first, or a comment that
+  mentions `:has()` reads as a selector.
+- Gates: **`ui-test-stylecost.js`** (six scenes, every change at most 40 elements: measured 0 to 6; on a failure it
+  reloads the scene with each shape taken out and names the one that matters, e.g. "the 34 :has() selector(s) hung on
+  <body>: 84 → 0 without them"; then that the converted rules still work both ways: the flags on nine screens, the
+  window rules' scope, both scroll locks, the drift, the button's six stand-downs and the faces gap) and
+  check-css-conventions' `:has()` invariant (47 hits on main's stylesheets). Break-tested seven ways; putting the
+  chat rule back ALONE passes the browser gate (it is free without the body rules) and fails the static one, which is
+  why there are two.
 ## Automatic collection: finished plans, Square's silences, two passes at once (round 5)
 
 Found by the scheduled-jobs review and each reproduced against the real collector code.
@@ -2559,7 +2605,8 @@ guard removed, the window scope removed — each fails its own checks).
   defined on `body.owner-mode`. **Scope**: page rules hang off `:is(main, div).one-look` — the class sits on
   `#view-settings`, `#view-activity-log` (index.html shells) and the search sheet's `#cmdk-sheet-host`, and the
   selector is (0,1,1), the same weight as the `body.owner-mode` rules it has to follow on order. Window rules hang
-  off `body.owner-mode:where(:has(main.one-look.active), :has(#cmdk.cmdk-sheet))` — a glass dialog, the photo sheet,
+  off `body.owner-mode:where(.one-look-view, .one-look-sheet)` (flags set by nav() and the search sheet, see "A small
+  change restyles a small part of the page") — a glass dialog, the photo sheet,
   the QR window or the date picker opened FROM Manage is a bottom sheet on a phone; the same window over Today keeps
   its own shape (gated both ways). Nothing outside Manage moves.
 - **THREE KINDS OF BUTTON, decided at one choke point** (`oneLookButtons`/`oneLookWatch`, admin.js): an observer
@@ -4727,8 +4774,8 @@ screens driven at 390 and 1280 with every control inventoried.** Gated by
   (vacuity-guarded at ≥5 tokens seen). The gate asserts the PAINT (background ≠
   the UA grey, border 0, pill, 44) — and NB read `--accent` off `document.body`,
   where light mode retunes it; reading `:root` compares against the dark value.
-- **THE MESSAGES PILL STANDS DOWN ON MY STAYS while a hub is up** (`:has(…
-  .my-stay-hub) #guest-msg-fab`, the privacy-page mechanism): every hub carries
+- **THE MESSAGES PILL STANDS DOWN ON MY STAYS while a hub is up** (`#view-guest-bookings.page-view.active:has(…
+  .my-stay-hub) ~ #guest-msg-fab`, the privacy-page mechanism): every hub carries
   Contact host, which opens the same chat, and at 390px the pill covered 364px² of
   the countdown badge's "days to go". A guest with no hub keeps it.
 - **THE COUNTDOWN IS SAID ONCE.** The pre-arrival head read "Jollyboat — 10 days"
@@ -11326,8 +11373,9 @@ timed, and each gate was break-tested against the old code.
   loads sw.js into a sandbox with a fake cache and counts fetches and writes.
 - **Considered and left**: the hero at a resized width (home.php preloads the
   full-size URL, so a resized one would download twice), memoising `chbDuties`
-  (too many inputs to key without serving a stale duty), and replacing the costly
-  `:has()` rules (a CSS refactor with no measurement behind it).
+  (too many inputs to key without serving a stale duty). Replacing the costly `:has()`
+  rules was left here for want of a measurement, and was done once there was one (see "A small change restyles a
+  small part of the page").
 
 ## Deploy integrity
 - **A PARTIAL UPLOAD OF AN APP WHOSE FILES REFERENCE EACH OTHER IS A BROKEN APP.**
