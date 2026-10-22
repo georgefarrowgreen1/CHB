@@ -7230,6 +7230,65 @@ $g93 = $php93();
 it_check('§93 with the file in place it says whether this PHP reads it (php -S does not)', $g93 === $want93(true) && ($patched93 || strpos($g93[1][2], 'does not read the settings file') !== false), json_encode($g93));
 @unlink($work . '/.user.ini');
 
+echo "\n== §94 the server file check reports to the site ==\n";
+// .github/scripts/server-check.sh posts what it found to server-check.php with the job
+// key; the site logs it, and Status shows the newest report under Security. And the
+// endpoint the check found still running on the host, tide-push.php, is a tombstone.
+$post94 = function (string $path, string $body, string $header = '') use ($BASE) {
+    $h = ['Accept: application/json', 'Content-Type: application/json'];
+    if ($header !== '') {
+        $h[] = 'X-CHB-Cron: ' . $header;
+    }
+    $http_response_header = [];
+    $raw = @file_get_contents($BASE . $path, false, stream_context_create(['http' => ['method' => 'POST', 'header' => implode("\r\n", $h), 'content' => $body, 'timeout' => 30, 'ignore_errors' => true]]));
+    $code = 0;
+    foreach ($http_response_header as $line) {
+        if (preg_match('#^HTTP/\S+ (\d+)#', $line, $m)) {
+            $code = (int) $m[1];
+        }
+    }
+    return ['code' => $code, 'raw' => (string) $raw, 'json' => json_decode((string) $raw, true)];
+};
+$row94 = function () use (&$adm83) {
+    $r = http($adm83, 'POST', '/diagnostics.php', ['action' => 'run']);
+    foreach (($r['json']['checks'] ?? []) as $c) {
+        if (($c['label'] ?? '') === 'Server files') {
+            return $c;
+        }
+    }
+    return null;
+};
+$last94 = fn() => $rootDb->query("SELECT severity, summary, meta, created_at FROM activity_log WHERE action = 'server.check' ORDER BY id DESC LIMIT 1")->fetch();
+$rootDb->exec("DELETE FROM activity_log WHERE action = 'server.check'");
+it_check('§94 Status has no Server files row before the check has ever reported', $row94() === null, '');
+$r = $post94('/server-check.php?cron=header', '{"needs":[]}');
+it_check('§94 without the job key a report is refused', $r['code'] === 401, $r['code'] . ' ' . $r['raw']);
+$r = $get92('/server-check.php?cron=header', $job92);
+$r2 = $post94('/server-check.php?cron=header', 'not json', $job92);
+it_check('§94 …and with it, only a POST of the check\'s JSON is taken', $r['code'] === 405 && $r2['code'] === 400, $r['code'] . ' ' . $r2['code']);
+$r = $post94('/server-check.php?cron=header', (string) json_encode(['commit' => str_repeat('a', 40), 'needs' => [], 'changed' => [], 'missing' => [], 'leftovers' => ['deploy.tmp.lftp: the temporary file of an interrupted upload'], 'counts' => ['sessions' => 3]]), $job92);
+$l94 = $last94();
+it_check('§94 a clean report is logged as info, with its leftover counted', $r['code'] === 200 && ($r['json']['found'] ?? -1) === 0 && $l94 && $l94['severity'] === 'info' && $l94['summary'] === 'Server file check: nothing unexpected (1 leftover to tidy)', $r['raw'] . ' ' . json_encode($l94));
+$d94 = $row94();
+it_check('§94 …and Status says when the server was checked, under Security', is_array($d94) && $d94['status'] === 'ok' && $d94['category'] === 'Security' && $d94['detail'] === 'Checked ' . date('d/m/Y', (int) strtotime((string) $l94['created_at'])) . '.', json_encode($d94));
+$r = $post94('/server-check.php?cron=header', (string) json_encode([
+    'commit' => 'not-a-commit',
+    'needs' => ["uploads/shell.php: something the server would run, in the photo folder\x07", str_repeat('x', 400)],
+    'changed' => ['db.php: its contents differ from what was uploaded'],
+    'missing' => [],
+    'leftovers' => [],
+]), $job92);
+$l94 = $last94();
+$m94 = json_decode((string) ($l94['meta'] ?? ''), true);
+it_check('§94 findings are logged as a warning that counts them', $r['code'] === 200 && ($r['json']['found'] ?? 0) === 3 && $l94['severity'] === 'warn' && $l94['summary'] === 'Server file check: 3 things on the server need a look', $r['raw'] . ' ' . json_encode($l94));
+it_check('§94 …each finding kept to one short, plain line, and a bad commit dropped', is_array($m94) && count($m94['items'] ?? []) === 3 && max(array_map('mb_strlen', $m94['items'])) <= 150 && strpos(implode('', $m94['items']), "\x07") === false && ($m94['commit'] ?? 'x') === '', json_encode($m94));
+$d94 = $row94();
+it_check('§94 …and Status says the server needs a look', is_array($d94) && $d94['status'] === 'warn' && strpos((string) $d94['detail'], '3 things on the server need a look') === 0, json_encode($d94));
+$rootDb->exec("DELETE FROM activity_log WHERE action = 'server.check'");
+$nojar94 = [];
+$t94 = http($nojar94, 'GET', '/tide-push.php?cron=' . rawurlencode($SECRET));
+it_check('§94 the retired tide push answers 410 and nothing else, even to the master key', $t94['code'] === 410 && is_array($t94['json']) && array_keys($t94['json']) === ['error'], $t94['code'] . ' ' . $t94['raw']);
+
 echo "\n== Summary ==\n";
 if ($fail) {
     echo "  $fail CHECK(S) FAILED \xE2\x9D\x8C\n\n";

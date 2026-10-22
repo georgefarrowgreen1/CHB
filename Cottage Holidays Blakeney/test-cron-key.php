@@ -48,26 +48,41 @@ ckc($withConfig("define('APP_SECRET', 'm'); define('CRON_SECRET', 'short');") ==
 ckc($withConfig("define('APP_SECRET', 'the-master-key-is-long-enough'); define('CRON_SECRET', 'the-master-key-is-long-enough');") === substr(hash_hmac('sha256', 'cron|v1', 'the-master-key-is-long-enough'), 0, 40), '…nor when it is the master key itself');
 ckc($withConfig('') === '', 'with no APP_SECRET at all there is no job key (never a key anyone could work out)');
 
-echo "\n== The deploy works out the same key ==\n";
+echo "\n== The workflows work out the same key (.github/scripts/site-job.sh) ==\n";
+// The deploy's post-deploy steps and the server file check all source site-job.sh, which
+// works the key out in bash: run it, and hold it equal to cron_key() case by case.
+$lib = __DIR__ . '/../.github/scripts/site-job.sh';
+$sourced = function (array $env, string $then) use ($lib): string {
+    $e = '';
+    foreach ($env as $k => $v) {
+        $e .= $k . '=' . escapeshellarg($v) . ' ';
+    }
+    $script = '. ' . escapeshellarg($lib) . '; ' . $then;
+    return (string) shell_exec('env -i PATH=' . escapeshellarg((string) getenv('PATH')) . ' ' . $e . 'bash -c ' . escapeshellarg($script) . ' 2>/dev/null');
+};
+$keyOf = fn(array $env) => trim(preg_replace('/^::add-mask::.*$/m', '', $sourced($env, 'printf "%s" "$KEY"')));
+$bash = $keyOf(['APP_SECRET' => APP_SECRET]);
+ckc($bash === $key, 'site-job.sh works out exactly cron_key() from APP_SECRET (' . ($bash === '' ? 'no output — is openssl installed?' : ($bash === $key ? 'same' : 'it differs')) . ')');
+ckc($keyOf(['APP_SECRET' => 'm', 'CRON_SECRET' => $own]) === $own, '…CRON_SECRET when it is set');
+ckc($keyOf(['APP_SECRET' => 'm', 'CRON_SECRET' => 'short']) === substr(hash_hmac('sha256', 'cron|v1', 'm'), 0, 40), '…but not when it is under 20 characters, as the PHP');
+ckc($keyOf(['APP_SECRET' => 'the-master-key-is-long-enough', 'CRON_SECRET' => 'the-master-key-is-long-enough']) === substr(hash_hmac('sha256', 'cron|v1', 'the-master-key-is-long-enough'), 0, 40), '…nor when it is the master key itself');
+ckc($keyOf([]) === '', 'with no APP_SECRET there is no key at all');
+ckc(strpos($sourced(['APP_SECRET' => APP_SECRET], 'true'), '::add-mask::' . $key) !== false, 'it masks the key, because this repository\'s logs are public');
+ckc(strpos((string) file_get_contents($lib), 'X-CHB-Cron: $KEY') !== false, 'it sends the key in the X-CHB-Cron header');
 $deploy = (string) @file_get_contents(__DIR__ . '/../.github/workflows/deploy.yml');
-preg_match_all('/KEY="\$\((printf [^\n]*?openssl dgst[^\n]*?)\)"; fi/', $deploy, $dm);
-ckc(count($dm[1]) >= 2, 'the live and the staging steps both derive the key (' . count($dm[1]) . ' found)');
-$cmd = $dm[1][0] ?? 'false';
-$bash = trim((string) shell_exec('APP_SECRET=' . escapeshellarg(APP_SECRET) . ' bash -c ' . escapeshellarg($cmd) . ' 2>/dev/null'));
-ckc($bash === $key, 'deploy.yml\'s openssl line gives exactly cron_key() (' . ($bash === '' ? 'no output — is openssl installed?' : ($bash === $key ? 'same' : 'it differs')) . ')');
-ckc(count(array_unique($dm[1])) === 1, 'both steps use the same line');
-ckc(strpos($deploy, '::add-mask::$KEY') !== false, 'the deploy masks the key, because this repository\'s logs are public');
-ckc(strpos($deploy, 'X-CHB-Cron: $KEY') !== false, 'the deploy sends the key in the X-CHB-Cron header');
-ckc(preg_match('/cron=\$\{?APP_SECRET\}?|cron=\$\{\{\s*secrets\.(STAGING_)?APP_SECRET/', $deploy) === 0, 'no deploy address carries APP_SECRET');
+$check = (string) @file_get_contents(__DIR__ . '/../.github/scripts/server-check.sh');
+ckc(substr_count($deploy, '. .github/scripts/site-job.sh') === 2 && strpos($check, 'site-job.sh') !== false, 'the live and staging post-deploy steps and the server check all use it');
+$wfAll = '';
+foreach (glob(__DIR__ . '/../.github/workflows/*.yml') ?: [] as $wf) {
+    $wfAll .= (string) file_get_contents($wf);
+}
+ckc(strpos($wfAll, 'openssl dgst') === false && strpos($wfAll, 'X-CHB-Cron') === false, '…and no workflow works the key out, or asks for a job, any other way');
+ckc(preg_match('/cron=\$\{?APP_SECRET\}?|cron=\$\{\{\s*secrets\.(STAGING_)?APP_SECRET/', $wfAll . $check) === 0, 'no address in a workflow carries APP_SECRET');
 
-// The deploy's own job() run in bash against a stand-in curl, which logs each call and
+// site-job.sh's job() run in bash against a stand-in curl, which logs each call and
 // answers the next status code in a scripted sequence ("fail" = no answer at all). The key
 // may move into the address only after a 401 or 403: a timeout or a 5xx is not retried,
 // because the job may still be running (a second migrate beside the first).
-preg_match_all('/^( *)job\(\) \{\n.*?^\1\}$/ms', $deploy, $jm);
-ckc(count($jm[0]) === 2, 'the live and the staging steps both define job() (' . count($jm[0]) . ' found)');
-$norm = array_map(fn($f) => preg_replace('/^ +/m', '', $f), $jm[0]);
-ckc(count(array_unique($norm)) === 1, '…the same job() in both');
 $fake = sys_get_temp_dir() . '/chb-cronkey-' . getmypid();
 @mkdir($fake, 0700, true);
 file_put_contents($fake . '/curl', "#!/bin/bash\n"
@@ -79,19 +94,19 @@ file_put_contents($fake . '/curl', "#!/bin/bash\n"
     . "[ -n \"\$out\" ] && printf 'job answered %s' \"\$code\" > \"\$out\"\n"
     . "printf '%s' \"\$code\"\n");
 chmod($fake . '/curl', 0700);
-$runJob = function (string $codes) use ($fake, $norm, $key): array {
+$runJob = function (string $codes, string $call = "job 60 'migrate.php?cron'") use ($fake, $lib): array {
     @unlink($fake . '/calls');
     @unlink($fake . '/n');
-    $script = ($norm[0] ?? 'job() { return 9; }') . "\njob 60 'migrate.php?cron'; echo \"rc=\$?\"\n";
+    $script = '. ' . escapeshellarg($lib) . "\n" . $call . "; echo \"rc=\$?\"\n";
     $env = 'PATH=' . escapeshellarg($fake . ':' . getenv('PATH')) . ' FAKE=' . escapeshellarg($fake) . ' FAKE_CODES=' . escapeshellarg($codes)
-        . ' RUNNER_TEMP=' . escapeshellarg($fake) . ' KEY=' . escapeshellarg($key) . ' URL=https://example.co.uk';
+        . ' RUNNER_TEMP=' . escapeshellarg($fake) . ' APP_SECRET=' . escapeshellarg(APP_SECRET) . ' SITE_URL=https://example.co.uk';
     $out = (string) shell_exec($env . ' bash -c ' . escapeshellarg($script) . ' 2>&1');
     $calls = array_values(array_filter(explode("\n", (string) @file_get_contents($fake . '/calls'))));
     preg_match('/rc=(\d+)/', $out, $rc);
     return ['calls' => $calls, 'rc' => (int) ($rc[1] ?? -1), 'out' => $out];
 };
 $r = $runJob('200');
-ckc(count($r['calls']) === 1 && strpos($r['calls'][0], 'X-CHB-Cron: ' . $key) !== false && strpos($r['calls'][0], 'migrate.php?cron=header') !== false && strpos($r['calls'][0], 'cron=' . $key) === false && $r['rc'] === 0, 'a job is asked once, the key in the header and a placeholder in the address (' . count($r['calls']) . ' call, rc ' . $r['rc'] . ')');
+ckc(count($r['calls']) === 1 && strpos($r['calls'][0], 'X-CHB-Cron: ' . $key) !== false && strpos($r['calls'][0], 'example.co.uk/migrate.php?cron=header') !== false && strpos($r['calls'][0], 'cron=' . $key) === false && $r['rc'] === 0, 'a job is asked once, the key in the header and a placeholder in the address (' . count($r['calls']) . ' call, rc ' . $r['rc'] . ')');
 ckc(strpos($r['out'], 'job answered 200') !== false, '…and its answer is printed to the log');
 foreach (['401', '403'] as $refused) {
     $r = $runJob($refused . ' 200');
@@ -104,6 +119,8 @@ foreach (['500' => 'a 500', 'fail' => 'no answer (a timeout)'] as $codes => $wha
 }
 $r = $runJob('401 401');
 ckc(count($r['calls']) === 2 && $r['rc'] !== 0, 'refused both ways: two calls and a failure, never a third (' . count($r['calls']) . ' calls)');
+$r = $runJob('200', "job 30 'server-check.php?cron' -X POST --data-binary @/dev/null");
+ckc(count($r['calls']) === 1 && strpos($r['calls'][0], '-X POST --data-binary @/dev/null') !== false && strpos($r['calls'][0], 'server-check.php?cron=header') !== false, 'anything after the path reaches curl (the server check posts what it found)');
 array_map('unlink', glob($fake . '/*') ?: []);
 @rmdir($fake);
 

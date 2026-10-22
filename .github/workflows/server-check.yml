@@ -1,0 +1,60 @@
+name: Check the server's files
+
+# Compares every file on the IONOS host with exactly what the last deploy uploaded,
+# and says what does not belong: a script nobody shipped (an old endpoint the deploy
+# never deleted, or one somebody planted), a shipped file changed on the server, a
+# page in the photo folder. READ-ONLY on the host: it lists and downloads, and the
+# owner decides what goes. The work is .github/scripts/server-check.sh.
+#
+# Runs every Monday, and from the Actions tab ("Run workflow"). Uses the deploy's
+# secrets; tells the site what it found (Manage → Status, "Server files") when
+# APP_SECRET is set. This repository is public, so its logs are too: the report counts
+# session files, photos and backups and never names them.
+
+on:
+  schedule:
+    - cron: '23 5 * * 1'
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+# Never alongside a deploy: half an upload would read as files changed on the server.
+# A check waits for a deploy; it never cancels one.
+concurrency:
+  group: deploy-ionos
+  cancel-in-progress: false
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      # The whole history: the check builds whichever commit the server says it has.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Install the tools
+        run: |
+          sudo rm -f /etc/apt/sources.list.d/*microsoft*.list /etc/apt/sources.list.d/*azure*.list 2>/dev/null || true
+          sudo apt-get update -qq -o Acquire::Retries=3 && sudo apt-get install -y -qq lftp brotli > /dev/null
+          npm install --no-audit --no-fund --prefer-offline typescript@5.6.3 > /dev/null
+
+      - name: Compare the server with the deployed commit
+        env:
+          HOST: ${{ secrets.IONOS_SFTP_HOST }}
+          USERNAME: ${{ secrets.IONOS_SFTP_USER }}
+          LFTP_PASSWORD: ${{ secrets.IONOS_SFTP_PASS }}
+          PORT: ${{ secrets.IONOS_SFTP_PORT }}
+          REMOTE: ${{ secrets.IONOS_REMOTE_PATH }}
+          APP_SECRET: ${{ secrets.APP_SECRET }}
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+          SITE_URL: ${{ secrets.SITE_URL }}
+        run: |
+          if [ -z "$HOST" ] || [ -z "$USERNAME" ] || [ -z "$LFTP_PASSWORD" ]; then
+            echo "::error::The deploy's SFTP secrets are not set, so there is nothing to check against."
+            exit 2
+          fi
+          bash .github/scripts/server-check.sh

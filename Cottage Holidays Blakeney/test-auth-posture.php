@@ -154,6 +154,7 @@ $REGISTRY = [
     'review.php' => ['public', [], 'the public review-request landing page'],
     'sitemap.php' => ['public', [], 'sitemap.xml for crawlers'],
     'nightshift.php' => ['public', [], 'RETIRED: answers 410 and nothing else, replacing the removed Mac assistant endpoint on the host (the deploy never deletes files)'],
+    'tide-push.php' => ['public', [], 'RETIRED: answers 410 and nothing else, replacing the removed tide push on the host (the deploy never deletes files)'],
     'square-config.php' => ['public', [], 'the public Square application id the pay page needs'],
     'status.php' => ['public', [], 'public status page (no internals beyond up/down)'],
     'tide-data.php' => ['public', [], 'tide times for the guest pages (public data)'],
@@ -164,6 +165,7 @@ $REGISTRY = [
     'newsletter-lib.php' => ['lib', [], 'the newsletter sign-up’s confirmation link and plan (pure); required by newsletter.php'],
     'watchers.php' => ['admin', ['require_admin'], "the owner's own standing queries — names cottages and dates"],
     'watchers-run.php' => ['cron', [], 'fires due watchers daily; manual run is POST + require_admin'],
+    'server-check.php' => ['cron', [], 'records what the weekly server file check found (.github/workflows/server-check.yml); the job key only'],
     'autopay-lib.php' => ['lib', [], 'saves the agreed card and collects the balance on the day; required by autopay-run.php and pay.php (no entry of its own)'],
     'autopay-run.php' => ['cron', [], 'collects agreed balances daily, before the chasers; manual run is POST + require_admin'],
     'weather-data.php' => ['public', [], 'Blakeney forecast fetch + cache (no key; keyless upstream)'],
@@ -208,7 +210,7 @@ $REGISTRY = [
     'sms.php' => ['lib', [], 'optional Twilio sender, no-op until configured'],
     'webpush.php' => ['lib', [], 'VAPID web-push sender'],
 
-    // ---- Dev tools: never deployed (verified against deploy.yml below) -----
+    // ---- Dev tools: never deployed (verified against the deploy's staging below) -----
     'health.php' => ['dev', [], 'local health probe'],
     'setup.php' => ['dev', [], 'one-time first-admin creator'],
     'vapid-keygen.php' => ['dev', [], 'one-time VAPID key generator'],
@@ -278,14 +280,23 @@ foreach ($REGISTRY as $file => $entry) {
     ap_check("$file — $kind" . ($markers ? ' (' . count($markers) . ' marker' . (count($markers) > 1 ? 's' : '') . ' verified)' : ': ' . $reason), true);
 }
 
-// 3. 'dev' files must be excluded from BOTH deploy jobs (they never reach the host).
-$deploy = (string) file_get_contents(dirname(__DIR__) . '/.github/workflows/deploy.yml');
+// 3. 'dev' files never reach the host. Both deploy jobs build what they upload with
+// .github/scripts/stage-site.sh, so this runs it (without the build step) and checks
+// what it leaves: the outcome, not the commands that decide it.
+$stageOut = sys_get_temp_dir() . '/chb-stage-posture-' . getmypid();
+$stageLog = [];
+exec('bash ' . escapeshellarg(dirname(__DIR__) . '/.github/scripts/stage-site.sh') . ' ' . escapeshellarg(__DIR__) . ' ' . escapeshellarg($stageOut) . ' --no-build 2>&1', $stageLog, $stageRc);
+$stagedPhp = count(glob($stageOut . '/*.php') ?: []);
+ap_check("the deploy's staging ran ($stagedPhp PHP files)", $stageRc === 0 && $stagedPhp > 50);
 foreach ($REGISTRY as $file => $entry) {
     if (($entry[0] ?? '') !== 'dev') {
         continue;
     }
-    ap_check("dev tool '$file' is excluded from deploy (both jobs)", substr_count($deploy, '"$OUT/' . $file . '"') >= 2);
+    ap_check("dev tool '$file' never ships", $stagedPhp > 50 && !file_exists($stageOut . '/' . $file));
 }
+exec('rm -rf ' . escapeshellarg($stageOut));
+$deploy = (string) file_get_contents(dirname(__DIR__) . '/.github/workflows/deploy.yml');
+ap_check('both deploy jobs stage with that script', substr_count($deploy, 'bash .github/scripts/stage-site.sh "Cottage Holidays Blakeney" deploy') === 2);
 
 echo "\n== Summary ==\n";
 if ($fail) {

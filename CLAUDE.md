@@ -7091,8 +7091,9 @@ of the first — consolidating removed that whole "half-fixed across copies" cla
 (moderated guest UGC: GET public, `suggest`/`submit` guest, admin list/approve/reject),
 `messages.php` (chat), `webpush.php` (`alert_owner`, `notify_guest`), `mailer.php`
 (`smtp_send`, `send_*`), `customers.php` (`audit` — the customer-directory lookup
-trail; see below). Crons run daily via `cron.php` (pre-arrival, payments-due,
-tide-push, push checkin, enquiry-nudge). NEW endpoints route actions via
+trail; see below). Crons run daily via `cron.php`, whose own list is the record
+(pre-arrival, autopay, payments-due, enquiry-nudge, the mailbox poll, the weeklies…;
+the tide push went with the stay notifications in #284). NEW endpoints route actions via
 `route_actions([...])` (db.php — declarative map, guaranteed 400 on unknown;
 customers.php is the exemplar; legacy if-chains migrate when touched). A content
 key WRITTEN by server code must be classified in db.php (`is_internal_content_key`
@@ -11091,7 +11092,59 @@ timed, and each gate was break-tested against the old code.
   production host. A verification that would block every deploy is worse than the bug
   it guards. If this is ever revisited, compare the REMOTE FILE LISTING (`lftp cls`)
   against the staged set, which is a filesystem question with no HTTP semantics to
-  misread.
+  misread. (Done since: see "The server file check" below.)
+
+## The server file check, and one definition of what is shipped
+
+Asked for as "a server file check" and "deploy-pipeline lockdown" (the first two of five suggestions).
+The deploy never deletes a file on the host, so the host holds everything the code has ever shipped plus
+whatever else reached it; nothing compared the two. Code: `.github/scripts/` and
+`.github/workflows/server-check.yml`.
+- **ONE STAGING DEFINITION** (`stage-site.sh <app> <out> [--no-build]`). What is uploaded was written out
+  twice in deploy.yml, and the staging copy had already drifted (no `cmd:fail-exit`, no second mirror
+  pass). The live deploy, the staging deploy, the server check and four gates (smoke-test §7/§12g/§15,
+  test-auth-posture, test-emails-render §0, test-status) all run THIS script, so the gates check what
+  ships rather than a list of `rm -f` lines. Build mode verifies the comment strip and brotli-compresses;
+  `--no-build` is the gates' fast form. It writes `.deploy-commit` (the commit's 40 hex) into the upload,
+  which is how the check knows what the server should hold. Checked byte-identical to the old staging
+  (302 files).
+- **ONE SET OF CONNECTION SETTINGS** (`sftp.sh "<lftp commands>"`): fail-exit, retries, temp-name upload,
+  stdin closed (an interactive lftp hangs a job). **Host-key pinning**: with keys in
+  `.github/sftp-host-keys` (one `type base64` per line, printed by each server-check run) the connection
+  refuses any other key; with the file empty it warns and accepts, as before. smoke-test §15 fails a
+  workflow that calls lftp itself.
+- **THE JOB KEY ONCE** (`site-job.sh`, sourced): `chb_job_key` is PHP `cron_key()` restated (test-cron-key
+  holds the two equal in every case), masked in the log, sent as the header first and in the address only
+  after a 401/403. `job <seconds> <path>` returns 0 only on a 2xx.
+- **EVERY WORKFLOW**: actions pinned to a full commit with the version as a comment (a tag can be moved by
+  its publisher; this job holds the server password), `permissions: contents: read`,
+  `persist-credentials: false` on every checkout (smoke-test §15).
+- **THE CHECK** (`server-check.sh` → `server-check.js`, weekly on Monday and from the Actions tab, in the
+  deploy's concurrency group so it never reads half an upload): reads `.deploy-commit`, builds THAT commit
+  with its own stage script, lists the host and downloads what can be compared (never `config.php`,
+  sessions, photos or other binaries; those compare by size). It reports:
+  - **Needs a look**: a script, rules file (`.htaccess`, `.user.ini`) or page nobody shipped, anywhere
+    (a page or script in `uploads/` always), a file in `sessions/` or `backups/` of the wrong shape, a
+    changed shipped file, a missing one, a symlink;
+  - **Leftovers**: other remote-only files, labelled from git history ("removed from the code, last there
+    DD/MM/YYYY" or "never part of the site");
+  - **counts only** for sessions, photos, cached sizes and backups. The repository is public, so its logs
+    are: the report never names one of those.
+
+  `lib/WebAuthn` (uploaded by hand, not in the repo) is verified file by file against the git blob hashes
+  of every lbuchs/WebAuthn release; a file matching none needs a look, and with the releases unreachable it
+  is counted as not checked, never as a finding. Exit 0 clean, 1 findings, 2 could not run.
+- **The site hears it**: `server-check.php` (job key only, POST JSON) logs `server.check` (warn with
+  findings, each line ≤150 characters, control characters removed; info otherwise), and Manage → Status
+  has a "Server files" row (`status_server_check_row`): Checked DD/MM/YYYY, N things need a look, or a
+  warning when the last report is over 15 days old (a stopped check says nothing otherwise).
+- **`tide-push.php` is a tombstone** (410): removed in #284 and still on the host, answering with the
+  master key. A file the deploy cannot delete is replaced with one that refuses.
+- Gates: `test-server-check.js` (34 fixture checks, CI-wired: the listing, a clean host, each finding, the
+  privacy assertions, no library map), integration §94 (the report endpoint's refusals, both outcomes in
+  the log and on Status, the tombstone), test-status (the row), smoke-test §7 (what ships, from the
+  staged output) and §15. Dry-run end to end against a local SFTP server: clean, then with planted
+  files, each reported.
 
 ## The round-8 overnight pass
 

@@ -117,8 +117,13 @@ foreach ($fm[1] as $p) {
     $deniesAll = $deniesAll && preg_match('/' . str_replace('/', '\/', $p) . '/', '.user.ini') === 1 && preg_match('/' . str_replace('/', '\/', $p) . '/', 'php.ini') === 1 && preg_match('/' . str_replace('/', '\/', $p) . '/', 'config.php') === 1 && preg_match('/' . str_replace('/', '\/', $p) . '/', 'index.html') === 0;
 }
 sts('a browser cannot read it: both deny rules refuse .user.ini and php.ini (' . count($fm[1]) . ' rules)', $deniesAll);
-$dy = (string) file_get_contents(__DIR__ . '/../.github/workflows/deploy.yml');
-sts('the deploy ships it: both steps copy the top folder\'s dotfiles, and nothing strips it', substr_count($dy, 'cp -r "$SRC"/. "$OUT"/') === 2 && strpos($dy, 'user.ini') === false);
+// The deploy uploads what .github/scripts/stage-site.sh leaves, so run it (without the
+// build step) and look: the file must be there, byte for byte.
+$stageOut = sys_get_temp_dir() . '/chb-stage-status-' . getmypid();
+$stageLog = [];
+exec('bash ' . escapeshellarg(__DIR__ . '/../.github/scripts/stage-site.sh') . ' ' . escapeshellarg(__DIR__) . ' ' . escapeshellarg($stageOut) . ' --no-build 2>&1', $stageLog, $stageRc);
+sts('the deploy ships it, unchanged, in the top folder', $stageRc === 0 && is_file($stageOut . '/.user.ini') && file_get_contents($stageOut . '/.user.ini') === file_get_contents(__DIR__ . '/.user.ini'));
+exec('rm -rf ' . escapeshellarg($stageOut));
 // Using the feature means a form field named PHP_SESSION_UPLOAD_PROGRESS (its default
 // name) and reading the upload_progress_* session keys it writes.
 $uses = [];
@@ -133,6 +138,26 @@ foreach (array_merge(glob(__DIR__ . '/*.php'), glob(__DIR__ . '/*.js'), glob(__D
     }
 }
 sts('nothing on the site uses session upload progress, so switching it off changes nothing (' . $scanned . ' files; ' . implode(', ', $uses) . ')', $scanned > 100 && $uses === []);
+
+echo "== Server files (the weekly server file check) ==\n";
+$now = strtotime('2026-10-22 09:00:00');
+sts('no row before the check has ever run (nothing to say yet)', status_server_check_row(null, $now) === null);
+$sc = status_server_check_row(['severity' => 'info', 'meta' => '{"found":0}', 'created_at' => '2026-10-19 05:30:00'], $now);
+sts('a clean run is ok, dated, and short enough to be its own note', $sc === ['Server files', 'ok', 'Checked 19/10/2026.'] && $note($sc[2]));
+$sc = status_server_check_row(['severity' => 'warn', 'meta' => '{"found":3,"items":["uploads/x.php: something"]}', 'created_at' => '2026-10-19 05:30:00'], $now);
+sts('a run with findings is a warning that counts them, in one sentence', $sc[1] === 'warn' && strpos($sc[2], '3 things on the server need a look') === 0 && $first($sc[2]) . '.' === $sc[2]);
+$sc = status_server_check_row(['severity' => 'warn', 'meta' => '{"found":1}', 'created_at' => '2026-10-19 05:30:00'], $now);
+sts('…one is "1 thing … needs"', strpos($sc[2], '1 thing on the server needs a look') === 0);
+$sc = status_server_check_row(['severity' => 'warn', 'meta' => 'not json', 'created_at' => '2026-10-19 05:30:00'], $now);
+sts('unreadable details still say something needs a look, never that all is well', $sc[1] === 'warn' && strpos($sc[2], '1 thing') === 0);
+$sc = status_server_check_row(['severity' => 'info', 'meta' => '{"found":0}', 'created_at' => '2026-10-06 05:30:00'], $now);
+sts('a check that last reported over 15 days ago is a warning: it may have stopped', $sc[1] === 'warn' && strpos($sc[2], 'last reported on 06/10/2026') !== false && $first($sc[2]) . '.' === $sc[2]);
+$sc = status_server_check_row(['severity' => 'info', 'meta' => '{"found":0}', 'created_at' => '2026-10-07 10:00:00'], $now);
+sts('…but 15 days is not over', $sc[1] === 'ok');
+$k = status_warn_kind('server.check', 'Server file check: 2 things on the server need a look');
+sts('its warning in the activity log needs the owner', $k['known'] && $k['needs'] === true);
+$dg2 = preg_replace('#^\s*//[^\n]*#m', '', (string) file_get_contents(__DIR__ . '/diagnostics.php'));
+sts('Status reads the newest report and lists the row under Security', strpos($dg2, "WHERE action = 'server.check' ORDER BY id DESC LIMIT 1") !== false && strpos($dg2, 'status_server_check_row(') !== false && preg_match("/add\\(\\\$checks, 'Security', \\\$sc\\[0\\]/", $dg2) === 1);
 
 echo "\n== Summary ==\n";
 echo $stsFails ? "  $stsFails of $stsN FAILED ❌\n" : "  ALL $stsN CHECKS PASSED ✅\n";
