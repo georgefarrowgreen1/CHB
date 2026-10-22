@@ -11361,6 +11361,27 @@ whatever else reached it; nothing compared the two. Code: `.github/scripts/` and
   by htaccess and CLI-only) and `vapid-keygen.php` (the pre-#1435 copy, which takes the master key in its
   address) are on the live host, plus 14 harmless leftovers. The deploy never deletes, so they go by hand.
 
+**THE TIDY-UP** (`.github/workflows/server-tidy.yml`, architectural upgrade 5): started only by hand from the
+Actions tab, it runs the same check and then deletes leftovers, with "Delete them" unticked by default (it
+then only lists what would go).
+- **What it may delete is the check's own judgement** (`tidyPick` in server-check.js, pure): a file the
+  check calls left over that THIS REPOSITORY put on the host and later removed (git history has it), or an
+  interrupted upload's `*.lftp` temp file. Nothing else:
+  - not a file the repository never shipped: a search engine's verification page, the host's own
+    `error_log`, the owner's own file. Each is listed as staying, with the reason;
+  - not anything that needs a look (a script nobody shipped, `mailtest.php` among them): the owner decides;
+  - never in `uploads/`, `sessions/`, `backups/`, `lib/` or `.well-known/`, never a config, a rules file or
+    `.deploy-commit`, whatever the check says, in the live site or the staging copy;
+  - never a name lftp would have to quote, or one starting with `-`.
+- **server-check.sh with `TIDY=dry|apply`** writes the list to the job summary, re-checks every name before
+  it reaches lftp, deletes, then lists the host again: anything deleted that is still there fails the run.
+  The weekly check never sets `TIDY` (smoke-test §15, with the workflow's trigger and its default).
+- Gates: test-server-check.js (the judgement on fixtures, a forged list that names protected places, and
+  the command line's list with the staging copy's prefix). Run end to end against a local SFTP server
+  holding a staged build and six planted files: the dry run deleted nothing; with delete on, the old file
+  and the temp file went, and the verification page, `error_log`, the uploads file, the planted script and
+  every site file stayed.
+
 ## The round-8 overnight pass
 
 Asked for as "go over the site's codebase and fully inspect, then overhaul and optimise everything" (owner asleep,

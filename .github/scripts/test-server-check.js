@@ -5,7 +5,11 @@
 'use strict';
 
 const zlib = require('zlib');
-const { parseListing, classify, report, splitNested, blobHash, sameContent, GUARD_RULES } = require('./server-check.js');
+const { parseListing, classify, report, splitNested, blobHash, sameContent, tidyPick, GUARD_RULES } = require('./server-check.js');
+const fs = require('fs');
+const os = require('os');
+const path = require('path');
+const { execFileSync } = require('child_process');
 
 let fails = 0;
 let n = 0;
@@ -212,6 +216,82 @@ console.log('== without the library\'s releases ==');
     const r = classify({ expected, remote, server, history, webauthn: null });
     ok('the library is counted as not checked, never as a finding', r.counts.libraryUnverified === 2 && r.needs.length === 0);
     ok('…and the report says it could not be checked', /not checked/.test(report(r, {})));
+}
+
+console.log('== the tidy-up ==');
+{
+    const { remote, server } = cleanHost();
+    const plant = (p, s) => {
+        remote.push({ path: p, type: 'file', size: s.length });
+        server.set(p, B(s));
+    };
+    plant('old-page.html', '<p>');
+    plant('deploy.tmp.lftp', 'x');
+    plant('google1234abcd.html', 'google-site-verification: google1234abcd.html');
+    plant('error_log', 'PHP Warning');
+    plant('uploads/notes.pdf', '%PDF');
+    plant('lib/WebAuthn/notes.txt', 'x');
+    plant('old-endpoint.php', '<?php');
+    plant('old file.css', 'x');
+    const hist = (p) => ({ 'old-endpoint.php': '2026-06-22', 'old-page.html': '2025-01-03', 'old file.css': '2024-05-01', 'uploads/notes.pdf': '2024-01-01' })[p] || null;
+    const r = classify({ expected, remote, server, history: hist, webauthn });
+    const t = tidyPick(r.leftovers);
+    const kept = (p) => t.keep.find((k) => k.path === p);
+    ok('what this repository put there and later removed goes, with an interrupted upload\'s temp file', t.delete.slice().sort().join() === 'deploy.tmp.lftp,old-page.html');
+    ok('a file the repository never shipped stays (a verification page, the host\'s error_log)', /not something this repository/.test((kept('google1234abcd.html') || {}).why) && kept('error_log'));
+    ok('nothing in the photo folder or the passkey library goes, whatever its history', /never touches/.test((kept('uploads/notes.pdf') || {}).why) && /never touches/.test((kept('lib/WebAuthn/notes.txt') || {}).why));
+    ok('a name lftp would have to quote stays', /will not send/.test((kept('old file.css') || {}).why));
+    ok('a script that needs a look is in neither list: the owner decides', !t.delete.includes('old-endpoint.php') && !kept('old-endpoint.php'));
+    const forged = tidyPick([
+        { path: 'uploads/x.txt', from: 'repo' }, { path: 'sessions/sess_x', from: 'temp' }, { path: 'backups/a.txt', from: 'repo' },
+        { path: 'config.php', from: 'repo' }, { path: 'staging/config.php', from: 'repo' }, { path: 'a/.htaccess', from: 'repo' },
+        { path: '.user.ini', from: 'repo' }, { path: 'x.php', from: 'repo' }, { path: '.deploy-commit', from: 'repo' },
+        { path: '.well-known/x', from: 'repo' }, { path: 'a/../index.html', from: 'repo' }, { path: '-rf', from: 'repo' },
+        { path: 'a//b.css', from: 'repo' }, { path: 'x"; rm -r .; "', from: 'repo' },
+    ]);
+    ok('…and the protected places hold even against a list that says otherwise (' + forged.delete.join(',') + ')', forged.delete.length === 0 && forged.keep.length === 14);
+}
+
+console.log('== the tidy-up list, as the command line writes it ==');
+{
+    // The real main(): a host with a staging copy in staging/, each with a leftover of
+    // each kind. The list names the staging copy's under its full path on the host.
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'chb-tidy-'));
+    const build = path.join(dir, 'build');
+    const host = path.join(dir, 'server');
+    const lines = [];
+    const put = (root, p, s) => {
+        fs.mkdirSync(path.dirname(path.join(root, p)), { recursive: true });
+        fs.writeFileSync(path.join(root, p), s);
+    };
+    const list = (p, s) => lines.push(`-rw-r--r--  u/g  ${Buffer.byteLength(s)} 2026-10-22 12:00:00 ./${p}`);
+    for (let i = 0; i < 60; i++) {
+        const p = `page-${i}.css`;
+        put(build, p, 'a{}');
+        for (const pre of ['', 'staging/']) {
+            put(host, pre + p, 'a{}');
+            list(pre + p, 'a{}');
+        }
+    }
+    for (const pre of ['', 'staging/']) {
+        for (const [p, s] of [['deploy.tmp.lftp', 'x'], ['never.txt', 'x'], ['uploads/notes.txt', 'x']]) {
+            put(host, pre + p, s);
+            list(pre + p, s);
+        }
+    }
+    fs.writeFileSync(path.join(dir, 'listing.txt'), lines.join('\n'));
+    let st = 0;
+    try {
+        execFileSync(process.execPath, [path.join(__dirname, 'server-check.js'), '--expected', build, '--listing', path.join(dir, 'listing.txt'),
+            '--server', host, '--tidy', path.join(dir, 'tidy.json'), '--nested', 'staging=' + build], { stdio: 'pipe' });
+    } catch (e) {
+        st = e.status;
+    }
+    const out = fs.existsSync(path.join(dir, 'tidy.json')) ? JSON.parse(fs.readFileSync(path.join(dir, 'tidy.json'), 'utf8')) : { delete: [], keep: [] };
+    ok(`the check ran (exit ${st}) and wrote the list`, st === 0 && Array.isArray(out.delete));
+    ok('temp files go from both copies, under their full paths (' + out.delete.join(', ') + ')', out.delete.slice().sort().join() === 'deploy.tmp.lftp,staging/deploy.tmp.lftp');
+    ok('…and what stays is named the same way', out.keep.some((k) => k.path === 'staging/never.txt') && out.keep.some((k) => k.path === 'staging/uploads/notes.txt') && out.keep.some((k) => k.path === 'never.txt'));
+    fs.rmSync(dir, { recursive: true, force: true });
 }
 
 console.log(fails ? `\n  ${fails} of ${n} FAILED ❌` : `\n  ALL ${n} CHECKS PASSED ✅`);
