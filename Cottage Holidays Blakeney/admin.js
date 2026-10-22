@@ -9500,7 +9500,7 @@ function cmdkSheetOpen(section, title) {
         `<div class="cmdk-sheet-host one-look" id="cmdk-sheet-host"></div>`;
     const host = document.getElementById('cmdk-sheet-host');
     if (host) { sec.style.display = ''; host.appendChild(sec); oneLookWatch(host); }
-    if (cmdk) cmdk.classList.add('cmdk-sheet');
+    if (cmdk) { cmdk.classList.add('cmdk-sheet'); document.body.classList.add('one-look-sheet'); }
 }
 // Put the borrowed section node back where it belongs — used on Back AND on any
 // palette dismissal — leaving Manage intact.
@@ -9509,6 +9509,7 @@ function cmdkSheetRestore() {
     __cmdkSheet = null;
     const cmdk = document.getElementById('cmdk');
     if (cmdk) cmdk.classList.remove('cmdk-sheet');
+    document.body.classList.remove('one-look-sheet');
     if (!s || !s.node || !s.parent) return;
     s.node.style.display = s.display || 'none';
     if (s.next && s.next.parentNode === s.parent) s.parent.insertBefore(s.node, s.next);

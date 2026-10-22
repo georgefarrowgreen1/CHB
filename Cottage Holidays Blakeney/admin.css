@@ -8803,7 +8803,10 @@ div.ga-row.oa-swrow { cursor: default; }
    looks, ten cards, seven captions, four window shapes).
    SCOPE: P = the Manage view, the activity log and the search sheet that hosts
    a Manage section (`.one-look`, (0,1,1) like the owner-mode rules it follows);
-   W = a window opened while one of those is up. Nothing outside Manage moves.
+   W = a window opened while one of those is up (`body.one-look-view`, set by
+   nav(), and `body.one-look-sheet`, set by the search sheet; a `:has()` from
+   <body> asked the same and made every change on the page re-check it).
+   Nothing outside Manage moves.
    Every value reads a token: change the token, not the rule.
    ========================================================================== */
 
@@ -9042,7 +9045,7 @@ body.owner-mode.light-mode { --u-field: rgba(255, 255, 255, 0.5); }
 
 /* ---------- 10. FIELD: one, always under its label ---------- */
 :is(main, div).one-look :is(.settings-sec, .accounts-sec, .msg-inbox-controls, .mbx-toolbar) :is(.input-glass, .acw-pill, .rvi-paste, .field-sm, .pay-in),
-:is(main, div).one-look .al-search input, body.owner-mode:where(:has(main.one-look.active), :has(#cmdk.cmdk-sheet)) .glass-dialog-box .input-glass {
+:is(main, div).one-look .al-search input, body.owner-mode:where(.one-look-view, .one-look-sheet) .glass-dialog-box .input-glass {
   min-height: var(--u-h-field); height: auto; padding: 12px 16px; margin: 0;
   background: var(--u-field) !important; border: 1px solid var(--u-edge);
   border-radius: var(--u-r-cell); color: var(--text-light); box-shadow: none;
@@ -9050,7 +9053,7 @@ body.owner-mode.light-mode { --u-field: rgba(255, 255, 255, 0.5); }
 }
 /* Autofilled, the field keeps its fill: app.css's clip hides the browser's paint and the fill with it. */
 :is(main, div).one-look :is(.settings-sec, .accounts-sec, .msg-inbox-controls, .mbx-toolbar) :is(.input-glass, .acw-pill, .rvi-paste, .field-sm, .pay-in):-webkit-autofill,
-body.owner-mode:where(:has(main.one-look.active), :has(#cmdk.cmdk-sheet)) .glass-dialog-box .input-glass:-webkit-autofill { box-shadow: inset 0 0 0 100vmax var(--u-field); }
+body.owner-mode:where(.one-look-view, .one-look-sheet) .glass-dialog-box .input-glass:-webkit-autofill { box-shadow: inset 0 0 0 100vmax var(--u-field); }
 :is(main, div).one-look .settings-sec textarea:is(.input-glass, .rvi-paste) { min-height: 96px; }
 :is(main, div).one-look .settings-sec .pay-in { height: var(--u-h-field); }
 :is(main, div).one-look :is(.settings-sec .input-glass[type="search"], .gst-search .input-glass) { padding-left: 40px; }
@@ -9072,7 +9075,7 @@ body.owner-mode:where(:has(main.one-look.active), :has(#cmdk.cmdk-sheet)) .glass
 :is(main, div).one-look .acr-row input[type="time"].acw-pill { flex: 0 0 auto; width: auto; min-width: 136px; min-height: var(--u-h-field); padding: 8px 12px; font-size: var(--fs-body); }
 /* The label: one style, above the field. */
 :is(main, div).one-look :is(.acw-frow > label, .modal-label, .pay-flbl, .u-flabel, .sg-namecap label),
-body.owner-mode:where(:has(main.one-look.active), :has(#cmdk.cmdk-sheet)) .glass-dialog-fields label {
+body.owner-mode:where(.one-look-view, .one-look-sheet) .glass-dialog-fields label {
   display: block; margin: 0 0 8px; font-family: var(--font-sans); font-size: var(--fs-sub); font-weight: 600; color: var(--text-muted);
   text-transform: none; letter-spacing: 0;
 }
@@ -9084,45 +9087,45 @@ body.owner-mode:where(:has(main.one-look.active), :has(#cmdk.cmdk-sheet)) .glass
 :is(main, div).one-look .acr-ota input { min-width: 0; width: 64px; background: none; border: 0; }
 
 /* ---------- 11. WINDOW: one shape ---------- */
-body.owner-mode:where(:has(main.one-look.active), :has(#cmdk.cmdk-sheet)) :is(.glass-dialog-box, .ga-sheetbox, .rvq-box, .datepicker-card) {
+body.owner-mode:where(.one-look-view, .one-look-sheet) :is(.glass-dialog-box, .ga-sheetbox, .rvq-box, .datepicker-card) {
   border-radius: var(--u-r-card); padding: 24px; box-shadow: 0 20px 60px rgba(0, 0, 0, 0.35);
   background: var(--sheet-surface); border: 1px solid var(--u-edge);
   backdrop-filter: none; -webkit-backdrop-filter: none; text-align: left;
 }
-body.owner-mode:where(:has(main.one-look.active), :has(#cmdk.cmdk-sheet)) :is(.glass-dialog-title, .ga-sheet-t, .glass-dialog-box h3, .dp-title, .rvq-head h2), body.owner-mode:where(:has(main.one-look.active), :has(#cmdk.cmdk-sheet)) #dp-title {
+body.owner-mode:where(.one-look-view, .one-look-sheet) :is(.glass-dialog-title, .ga-sheet-t, .glass-dialog-box h3, .dp-title, .rvq-head h2), body.owner-mode:where(.one-look-view, .one-look-sheet) #dp-title {
   font-family: var(--font-sans); font-size: var(--fs-headline); font-weight: 600; text-align: left; margin: 0 0 8px;
 }
-body.owner-mode:where(:has(main.one-look.active), :has(#cmdk.cmdk-sheet)) :is(.glass-dialog-msg, .ga-sheet-s) { font-size: var(--fs-body); color: var(--text-muted); text-align: left; }
-body.owner-mode:where(:has(main.one-look.active), :has(#cmdk.cmdk-sheet)) :is(.glass-dialog-btns, #date-picker .dp-foot, .rvq-acts) { display: flex; gap: 8px; margin-top: 24px; }
-body.owner-mode:where(:has(main.one-look.active), :has(#cmdk.cmdk-sheet)) .rvq-acts { margin-top: 8px; }
-body.owner-mode:where(:has(main.one-look.active), :has(#cmdk.cmdk-sheet)) .rvq-acts > button { flex: 1 1 0; cursor: pointer; }
-body.owner-mode:where(:has(main.one-look.active), :has(#cmdk.cmdk-sheet)) :is(.glass-dialog-btns > button, .dp-foot > button, .ga-sheet-cancel, .rvq-acts > button) {
+body.owner-mode:where(.one-look-view, .one-look-sheet) :is(.glass-dialog-msg, .ga-sheet-s) { font-size: var(--fs-body); color: var(--text-muted); text-align: left; }
+body.owner-mode:where(.one-look-view, .one-look-sheet) :is(.glass-dialog-btns, #date-picker .dp-foot, .rvq-acts) { display: flex; gap: 8px; margin-top: 24px; }
+body.owner-mode:where(.one-look-view, .one-look-sheet) .rvq-acts { margin-top: 8px; }
+body.owner-mode:where(.one-look-view, .one-look-sheet) .rvq-acts > button { flex: 1 1 0; cursor: pointer; }
+body.owner-mode:where(.one-look-view, .one-look-sheet) :is(.glass-dialog-btns > button, .dp-foot > button, .ga-sheet-cancel, .rvq-acts > button) {
   min-height: var(--u-h-control); height: var(--u-h-control); padding: 0 20px; border-radius: var(--r-pill);
   font-family: var(--font-sans); font-size: var(--fs-body); font-weight: 600; box-shadow: none; filter: none;
 }
-body.owner-mode:where(:has(main.one-look.active), :has(#cmdk.cmdk-sheet)) :is(#glass-dialog-cancel, .ga-sheet-cancel, #dp-clear, .rvq-acts > .u-btn2) { background: transparent; color: var(--text-light); border: 1px solid var(--u-pill-edge); }
-body.owner-mode:where(:has(main.one-look.active), :has(#cmdk.cmdk-sheet)) :is(#glass-dialog-ok:not(.is-danger), #dp-done, .rvq-acts > .u-btn1) { background: var(--accent); color: var(--accent-ink); border: 1px solid transparent; }
-body.owner-mode:where(:has(main.one-look.active), :has(#cmdk.cmdk-sheet)) #glass-dialog-ok.is-danger { background: transparent; color: var(--danger-text); border: 1px solid var(--u-pill-edge); }
-body.owner-mode:where(:has(main.one-look.active), :has(#cmdk.cmdk-sheet)) .dp-foot > button { flex: 1 1 0; }
+body.owner-mode:where(.one-look-view, .one-look-sheet) :is(#glass-dialog-cancel, .ga-sheet-cancel, #dp-clear, .rvq-acts > .u-btn2) { background: transparent; color: var(--text-light); border: 1px solid var(--u-pill-edge); }
+body.owner-mode:where(.one-look-view, .one-look-sheet) :is(#glass-dialog-ok:not(.is-danger), #dp-done, .rvq-acts > .u-btn1) { background: var(--accent); color: var(--accent-ink); border: 1px solid transparent; }
+body.owner-mode:where(.one-look-view, .one-look-sheet) #glass-dialog-ok.is-danger { background: transparent; color: var(--danger-text); border: 1px solid var(--u-pill-edge); }
+body.owner-mode:where(.one-look-view, .one-look-sheet) .dp-foot > button { flex: 1 1 0; }
 @keyframes uSheetUp { from { transform: translateY(100%); } to { transform: none; } }
 @keyframes uScrimIn { from { opacity: 0; } to { opacity: 1; } }
 /* On a phone every window rises from the bottom edge, as the photo sheet already did. */
 @media (max-width: 640px) {
-  body.owner-mode:where(:has(main.one-look.active), :has(#cmdk.cmdk-sheet)) :is(#glass-dialog, #ga-photo-sheet, #oa-dev-sheet, #oa-pw-sheet, #rv-qr-modal, #date-picker) { align-items: flex-end !important; padding: 0 !important; animation: uScrimIn 200ms var(--out); }
-  body.owner-mode:where(:has(main.one-look.active), :has(#cmdk.cmdk-sheet)) :is(.glass-dialog-box, .ga-sheetbox, .rvq-box, .datepicker-card) {
+  body.owner-mode:where(.one-look-view, .one-look-sheet) :is(#glass-dialog, #ga-photo-sheet, #oa-dev-sheet, #oa-pw-sheet, #rv-qr-modal, #date-picker) { align-items: flex-end !important; padding: 0 !important; animation: uScrimIn 200ms var(--out); }
+  body.owner-mode:where(.one-look-view, .one-look-sheet) :is(.glass-dialog-box, .ga-sheetbox, .rvq-box, .datepicker-card) {
     max-width: none !important; width: 100% !important; margin: 0 !important;
     border-radius: var(--u-r-card) var(--u-r-card) 0 0; border-bottom: 0;
     padding: 28px 20px calc(20px + var(--safe-b)); position: relative;
     animation: uSheetUp 420ms var(--sheet) both !important;
   }
-  body.owner-mode:where(:has(main.one-look.active), :has(#cmdk.cmdk-sheet)) :is(.glass-dialog-box, .ga-sheetbox, .rvq-box, .datepicker-card)::before {
+  body.owner-mode:where(.one-look-view, .one-look-sheet) :is(.glass-dialog-box, .ga-sheetbox, .rvq-box, .datepicker-card)::before {
     content: ""; position: absolute; top: 8px; left: 50%; width: 36px; height: 5px; transform: translateX(-50%);
     border-radius: var(--r-pill); background: color-mix(in srgb, var(--text-light) 24%, transparent);
   }
   /* Two answers share the row; two LONG answers stack, the action on top (the app's own rule) — never clip. */
-  body.owner-mode:where(:has(main.one-look.active), :has(#cmdk.cmdk-sheet)) .glass-dialog-btns { flex-wrap: wrap-reverse; }
-  body.owner-mode:where(:has(main.one-look.active), :has(#cmdk.cmdk-sheet)) .glass-dialog-btns > button { flex: 1 1 auto; min-width: max-content; }
-  body.owner-mode:where(:has(main.one-look.active), :has(#cmdk.cmdk-sheet)) .ga-sheet-cancel { width: 100%; }
+  body.owner-mode:where(.one-look-view, .one-look-sheet) .glass-dialog-btns { flex-wrap: wrap-reverse; }
+  body.owner-mode:where(.one-look-view, .one-look-sheet) .glass-dialog-btns > button { flex: 1 1 auto; min-width: max-content; }
+  body.owner-mode:where(.one-look-view, .one-look-sheet) .ga-sheet-cancel { width: 100%; }
 }
 
 /* ---------- 12. REACH AND FOCUS ---------- */
@@ -9134,13 +9137,13 @@ body.owner-mode:where(:has(main.one-look.active), :has(#cmdk.cmdk-sheet)) .dp-fo
 /* Keyboard focus: one ring, everywhere. */
 :is(main, div).one-look :is(.u-btn1, .u-btn2, .u-btn3, .u-addrow, .back-link, .rvi-chip, .sp-on, .sg-usesug, .ga-row, .settings-row, .bhub-fold-row, .sg-sum, .al-row, .sp-syshead,
   :is(.pay-seg, .ana-seg, .al-tabs, .cal-seg, .u-seg) > button):focus-visible,
-body.owner-mode:where(:has(main.one-look.active), :has(#cmdk.cmdk-sheet)) :is(.glass-dialog-btns > button, .dp-foot > button, .ga-sheet-cancel, .rvq-acts > button):focus-visible {
+body.owner-mode:where(.one-look-view, .one-look-sheet) :is(.glass-dialog-btns > button, .dp-foot > button, .ga-sheet-cancel, .rvq-acts > button):focus-visible {
   outline: 2px solid var(--u-ring); outline-offset: 2px;
 }
 :is(main, div).one-look :is(.ga-row, .settings-row, .bhub-fold-row, .sg-sum, .al-row, .sp-syshead, .u-addrow):focus-visible { outline-offset: -2px; border-radius: inherit; }
 @media (prefers-reduced-motion: reduce) {
-  body.owner-mode:where(:has(main.one-look.active), :has(#cmdk.cmdk-sheet)) :is(.glass-dialog-box, .ga-sheetbox, .rvq-box, .datepicker-card) { animation: none !important; }
-  body.owner-mode:where(:has(main.one-look.active), :has(#cmdk.cmdk-sheet)) :is(#glass-dialog, #ga-photo-sheet, #oa-dev-sheet, #oa-pw-sheet, #rv-qr-modal, #date-picker) { animation: none !important; }
+  body.owner-mode:where(.one-look-view, .one-look-sheet) :is(.glass-dialog-box, .ga-sheetbox, .rvq-box, .datepicker-card) { animation: none !important; }
+  body.owner-mode:where(.one-look-view, .one-look-sheet) :is(#glass-dialog, #ga-photo-sheet, #oa-dev-sheet, #oa-pw-sheet, #rv-qr-modal, #date-picker) { animation: none !important; }
   :is(main, div).one-look .settings-row-chev { transition: none; }
 }
 
@@ -9287,7 +9290,7 @@ body.owner-mode:where(:has(main.one-look.active), :has(#cmdk.cmdk-sheet)) :is(.g
 /* The caption shares its row with the count: no section air inside the row. */
 :is(main, div).one-look .bk-caprow .bo-sec-title { margin: 0; }
 /* The booking window's one action is the accent pill. */
-body.owner-mode:where(:has(main.one-look.active)) #modal-save-btn { background: var(--accent); border-color: transparent; color: var(--accent-ink); font-weight: 600; }
+body.owner-mode:where(.one-look-view) #modal-save-btn { background: var(--accent); border-color: transparent; color: var(--accent-ink); font-weight: 600; }
 
 /* ---------- 19. SMALL PARTS THE AUDIT FOUND ---------- */
 /* Fields that an id rule held at 44px take the one field's height. */
@@ -9352,28 +9355,28 @@ body.owner-mode:where(:has(main.one-look.active)) #modal-save-btn { background: 
    (54-58px). It takes the window's ground, title, field, caption and switcher, and on a phone
    rises from the bottom edge like every other window. (The email composer is its own sheet:
    "Email a guest" at the foot of this file.) */
-body.owner-mode:where(:has(main.one-look.active), :has(#cmdk.cmdk-sheet)) #edit-modal .modal-box {
+body.owner-mode:where(.one-look-view, .one-look-sheet) #edit-modal .modal-box {
   background: var(--sheet-surface); border: 1px solid var(--u-edge); border-radius: var(--u-r-card);
   box-shadow: 0 20px 60px rgba(0, 0, 0, 0.35); backdrop-filter: none; -webkit-backdrop-filter: none;
 }
-body.owner-mode:where(:has(main.one-look.active), :has(#cmdk.cmdk-sheet)) #modal-title { font-family: var(--font-sans); font-size: var(--fs-headline); font-weight: 600; line-height: 1.3; margin: 0; }
+body.owner-mode:where(.one-look-view, .one-look-sheet) #modal-title { font-family: var(--font-sans); font-size: var(--fs-headline); font-weight: 600; line-height: 1.3; margin: 0; }
 /* A window's close is the hub's icon button: one 44px outlined circle (they were 36, a filled 38 and 44). */
-body.owner-mode:where(:has(main.one-look.active), :has(#cmdk.cmdk-sheet)) :is(#edit-modal .modal-x, #ks-sheet .ks-sheet-x) {
+body.owner-mode:where(.one-look-view, .one-look-sheet) :is(#edit-modal .modal-x, #ks-sheet .ks-sheet-x) {
   width: 44px; height: 44px; min-height: 44px; padding: 0; display: grid; place-items: center; flex: none;
   border: 1px solid var(--u-pill-edge); border-radius: var(--r-pill); corner-shape: round; background: none; color: var(--text-light);
 }
 /* The key-safe sheet's title is the window's too, and its lone "Got it" the one answer. */
-body.owner-mode:where(:has(main.one-look.active), :has(#cmdk.cmdk-sheet)) #ks-sheet .ks-sheet-head h2 { font-family: var(--font-sans); font-size: var(--fs-headline); font-weight: 600; }
+body.owner-mode:where(.one-look-view, .one-look-sheet) #ks-sheet .ks-sheet-head h2 { font-family: var(--font-sans); font-size: var(--fs-headline); font-weight: 600; }
 @media (max-width: 640px) {
-  body.owner-mode:where(:has(main.one-look.active), :has(#cmdk.cmdk-sheet)) #edit-modal { align-items: flex-end; padding: max(20px, var(--safe-t)) 0 0; }
-  body.owner-mode:where(:has(main.one-look.active), :has(#cmdk.cmdk-sheet)) #edit-modal .modal-box {
+  body.owner-mode:where(.one-look-view, .one-look-sheet) #edit-modal { align-items: flex-end; padding: max(20px, var(--safe-t)) 0 0; }
+  body.owner-mode:where(.one-look-view, .one-look-sheet) #edit-modal .modal-box {
     max-width: none !important; width: 100%; margin: 0; max-height: calc(100dvh - var(--safe-t) - 20px);
     border-radius: var(--u-r-card) var(--u-r-card) 0 0; border-bottom: 0;
   }
-  body.owner-mode:where(:has(main.one-look.active), :has(#cmdk.cmdk-sheet)) #edit-modal.open .modal-box { animation: chbSheetUp 420ms var(--sheet); }
-  body.owner-mode:where(:has(main.one-look.active), :has(#cmdk.cmdk-sheet)) #edit-modal.closing:not(.open) .modal-box { animation: chbSheetDown 280ms var(--in) forwards; }
-  body.owner-mode:where(:has(main.one-look.active), :has(#cmdk.cmdk-sheet)) #edit-modal .modal-head { padding-top: 20px; }
-  body.owner-mode:where(:has(main.one-look.active), :has(#cmdk.cmdk-sheet)) #edit-modal .modal-box::before {
+  body.owner-mode:where(.one-look-view, .one-look-sheet) #edit-modal.open .modal-box { animation: chbSheetUp 420ms var(--sheet); }
+  body.owner-mode:where(.one-look-view, .one-look-sheet) #edit-modal.closing:not(.open) .modal-box { animation: chbSheetDown 280ms var(--in) forwards; }
+  body.owner-mode:where(.one-look-view, .one-look-sheet) #edit-modal .modal-head { padding-top: 20px; }
+  body.owner-mode:where(.one-look-view, .one-look-sheet) #edit-modal .modal-box::before {
     content: ""; position: absolute; top: 8px; left: 50%; width: 36px; height: 5px; transform: translateX(-50%); z-index: 4;
     border-radius: var(--r-pill); background: color-mix(in srgb, var(--text-light) 24%, transparent);
   }
@@ -9555,7 +9558,7 @@ body.owner-mode.light-mode #ib {
 /* ── the conversation: a phone slides it over the list, under the header ── */
 #ib .ib-conv { position: fixed; top: var(--ib-top, 64px); left: 0; right: 0; bottom: 0; z-index: 1400; background: var(--dark-grey); display: flex; flex-direction: column; translate: 100% 0; visibility: hidden; transition: translate 0.38s var(--out), visibility 0s linear 0.38s; }
 #ib.is-conv .ib-conv { translate: 0 0; visibility: visible; transition: translate 0.38s var(--out); }
-body.ib-conv-open:has(#view-inbox.active) { overflow: hidden; }
+body.ib-conv-open[data-screen="view-inbox"] { overflow: hidden; }
 #ib .ib-convempty { display: none; }
 #ib .ib-head { flex: none; position: relative; z-index: 6; display: grid; grid-template-columns: minmax(0, 1fr) auto; grid-template-areas: "back acts" "title title"; align-items: center; column-gap: 8px; padding: 4px 12px 12px 16px; border-bottom: 1px solid var(--ib-edge); background: var(--dark-grey); }
 #ib .ib-back { grid-area: back; justify-self: start; border: 0; background: none; color: var(--accent-text); font-weight: 500; font-size: var(--fs-body); display: inline-flex; align-items: center; gap: 2px; min-height: 44px; padding: 0 12px 0 0; margin-left: -4px; }
@@ -9921,7 +9924,7 @@ body.owner-mode.light-mode :is(#pm, .pm-sheet, .pm-head-r) { --pm-shadow: 0 18px
 /* ── detail pages: they slide over on a phone, as a conversation does ── */
 #pm .pm-detail { position: fixed; top: var(--pm-top, 64px); left: 0; right: 0; bottom: 0; z-index: 1400; background: var(--dark-grey); display: flex; flex-direction: column; overflow: hidden; translate: 100% 0; visibility: hidden; transition: translate 0.38s var(--out), visibility 0s linear 0.38s; }
 #pm.is-detail .pm-detail { translate: 0 0; visibility: visible; transition: translate 0.38s var(--out); }
-body.pm-detail-open:has(#view-accounts.active) { overflow: hidden; }
+body.pm-detail-open[data-screen="view-accounts"] { overflow: hidden; }
 #pm .pm-dhead { flex: none; display: grid; grid-template-columns: minmax(0, 1fr); align-items: center; padding: 4px 16px 12px; border-bottom: 1px solid var(--pm-edge); background: var(--dark-grey); }
 #pm .pm-back { justify-self: start; border: 0; background: none; color: var(--accent-text); font-weight: 500; font-size: var(--fs-body); display: inline-flex; align-items: center; gap: 2px; min-height: 44px; padding: 0 12px 0 0; margin-left: -4px; }
 #pm .pm-back svg { width: 18px; height: 18px; }

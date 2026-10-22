@@ -599,13 +599,12 @@ select,
    NB measured on this container's SOFTWARE rasteriser; the shape of the win is
    real (three blurred 704px layers re-rasterising per frame), the fps figures
    are not a claim about real hardware. */
-body.owner-mode .blob {
-  animation-play-state: paused;
-}
-/* Its own rule, NOT a second selector on the one above: a selector list is
-   dropped WHOLE if any part of it fails to parse, so an engine without :has()
-   would lose the back office's pause along with this one. */
-body:not(:has(#view-main.page-view.active)) .blob {
+/* The screen on show is named on <body> (`data-screen`, set by nav()); before
+   nav() first runs the body carries none, which is the served page's own state,
+   the home view, so the drift runs. A `:has()` from <body> asked the same question
+   and made every change on the page re-check it. */
+body.owner-mode .blob,
+body[data-screen]:not([data-screen="view-main"]) .blob {
   animation-play-state: paused;
 }
 @keyframes fluidFloat {
@@ -5901,7 +5900,12 @@ body.light-mode .tag-pimpernel {
 .chat-thread:has(> .chat-hello) {
   justify-content: center;
 }
-.chat-thread:has(> .chat-hello) > :first-child {
+/* The welcome is always the thread's first child when it is there, so it names
+   itself. It read `.chat-thread:has(> .chat-hello) > :first-child`, and that one
+   rule made every text change ANYWHERE on a page restyle the whole page (measured:
+   718 elements on the home page, 2,709 on Today, 0 without it), which is what made
+   the date picker and the search window slow on a phone. ui-test-stylecost. */
+.chat-thread > .chat-hello:first-child {
   margin-top: 0;
 }
 .chat-msg {

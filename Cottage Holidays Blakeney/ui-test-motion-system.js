@@ -665,7 +665,11 @@ const EXPS = [
     const back = await arrivals(() => window.nav('view-backoffice'));
     check(back.length === 1 && back[0].n === 'chbPageIn' && back[0].dur <= 400, 'hub → Today: one arrival too, and the cards do not rise again', JSON.stringify(back));
     await op.waitForTimeout(900);
-    const toArea = await arrivals(() => window.openArea());
+    // NOT awaited: openArea resolves only once the settings content has loaded, and
+    // the arrival belongs to the navigation, which happens before that. Awaited, a
+    // loaded machine sampled after the 400ms rise had ended and read [] (once in a
+    // full battery; reproduced on demand by holding content.php back 700ms).
+    const toArea = await arrivals(() => { window.openArea(); });
     check(toArea.length === 1 && toArea[0].dur <= 400, 'Today → Manage: one arrival', JSON.stringify(toArea));
     await op.waitForTimeout(900);
     // THE DAY SHEET APPEARS AT ONCE. This is the reason a nav transition was

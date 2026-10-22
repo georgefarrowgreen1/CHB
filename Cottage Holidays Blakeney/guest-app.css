@@ -587,7 +587,7 @@ body.guest-app:not(.owner-mode) #guest-msg-fab .chat-ava.is-fab {
     padding: 0;
     max-width: none;
   }
-  body.guest-app:not(.owner-mode):has(#guest-msg-fab .has-faces) #guest-tabbar {
+  body.guest-app:not(.owner-mode) #guest-tabbar.gt-faces {
     right: 108px;
   }
 }
@@ -599,7 +599,7 @@ body.guest-app:not(.owner-mode) #guest-msg-fab .chat-ava.is-fab {
 /* Wider: centred until the 122px faces pill would come within 8px (252px = pill
    + 12px margin + 8px gap + half the 220px book pill). */
 @media (min-width: 481px) {
-  body.guest-app:not(.owner-mode):has(#guest-msg-fab .has-faces) #guest-tabbar {
+  body.guest-app:not(.owner-mode) #guest-tabbar.gt-faces {
     left: min(50%, calc(100% - 252px));
   }
 }
@@ -850,14 +850,17 @@ body.guest-app:not(.owner-mode) .chat-fab {
    z-index 1400 — above the chat's 1390 — so it landed on top of the composer's
    attach button and the left edge of the message box. toggleChat() already hides
    the desktop .chat-fab; this is the guest-shell twin it never covered. Done in
-   CSS with :has() rather than in toggleChat, so it holds however the thread was
-   opened (tap, deep link, or openMessageThread). */
-body.guest-app:not(.owner-mode):has(#chat-widget.open) #guest-msg-fab {
+   CSS rather than in toggleChat, so it holds however the thread was opened.
+   THESE RULES LOOK BACK THROUGH THE PAGE WITH `~`, NOT A `:has()` FROM <body>:
+   the views, the chat and the sign-in sheet all come before the pill (guest-app.js
+   appends it last), and a `:has()` on <body> made every change anywhere on the
+   page re-check them. Same weight as before, so nothing else moves. */
+body.guest-app:not(.owner-mode) #chat-widget.open ~ #guest-msg-fab {
   display: none;
 }
 /* And on My Stays while a stay's tiles are up (the in-residence hub, or the next
    stay's card): their Contact host IS the chat, and the pill sat over the tiles. */
-body.guest-app:not(.owner-mode):has(#view-guest-bookings.page-view.active :is(.my-stay-hub, .gb2-next)) #guest-msg-fab {
+body.guest-app:not(.owner-mode) #view-guest-bookings.page-view.active:has(:is(.my-stay-hub, .gb2-next)) ~ #guest-msg-fab {
   display: none;
 }
 /* AND ON THE PAY SCREEN — it covers MONEY. Measured at 390 in every state: the
@@ -868,7 +871,7 @@ body.guest-app:not(.owner-mode):has(#view-guest-bookings.page-view.active :is(.m
    guest dock has no Messages tab, so this removes the chat route on this view —
    the same trade the privacy rule above already makes, and the pay screen's own
    error copy and the footer both name a way to reach a person. */
-body.guest-app:not(.owner-mode):has(#view-pay.page-view.active) #guest-msg-fab {
+body.guest-app:not(.owner-mode) #view-pay.page-view.active ~ #guest-msg-fab {
   display: none;
 }
 /* And on Experiences, where the pill sits on the FIRST card's full-width
@@ -877,19 +880,19 @@ body.guest-app:not(.owner-mode):has(#view-pay.page-view.active) #guest-msg-fab {
    left edge at 324 — narrowing the button does NOT clear it). Six of 61 scroll
    positions put a control under the corner. Same trade as above; the cards' own
    Call button dials the experience, not the host. */
-body.guest-app:not(.owner-mode):has(#view-experiences.page-view.active) #guest-msg-fab {
+body.guest-app:not(.owner-mode) #view-experiences.page-view.active ~ #guest-msg-fab {
   display: none;
 }
 /* And on You and the pages under it (Your details, Sign-in & security, Privacy):
    "Message us" is a row on the page, and the pill sat over the rows as they
    scrolled past (reported with a screenshot: over the Privacy row's arrow). */
-body.guest-app:not(.owner-mode):has(#view-guest-account.page-view.active) #guest-msg-fab {
+body.guest-app:not(.owner-mode) #view-guest-account.page-view.active ~ #guest-msg-fab {
   display: none;
 }
 /* And over the account sheets: at 390 the pill (z 1400) floats above the sign-in
    sheet (z 1390) and covers the word "for" in its last line — the ONE line that
    names the password-less route. */
-body.guest-app:not(.owner-mode):has(#guest-auth-modal.open) #guest-msg-fab {
+body.guest-app:not(.owner-mode) #guest-auth-modal.open ~ #guest-msg-fab {
   display: none;
 }
 /* HIT REGION to 44 for the 38px (34 condensed) dock buttons; ::after is the hover label. */

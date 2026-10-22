@@ -396,6 +396,78 @@ console.log('\n== Button classes have rules (hard invariant, not a ratchet) ==')
     else console.log(`  ✓ every btn-* class the markup uses has a rule (${used.size} classes)`);
 }
 
+// ---- A `:has()` THAT MAKES EVERY CHANGE RESTYLE THE PAGE. Measured from the
+// browser's own count of restyled elements (ui-test-stylecost reads it): with
+// `.chat-thread:has(> .chat-hello) > :first-child` loaded, changing one line of
+// text ANYWHERE restyled 756 elements on the home page and 2,742 on Today; with it
+// gone, 8 and 96. The shape is the cause, not the rule's own target: a `:has()`
+// followed by a subject with no class, id, type or attribute (`> :first-child`,
+// `> *`) did it even when it matched nothing on the page. A `:has()` hung on <body>
+// (or html, or :root) costs less but scales with the page, because everything is
+// under it (Today: 96 → 12 with them gone). Two hard rules, both at zero:
+//   1. a `:has()` that is not in the subject must be followed by a subject that
+//      names something (a class, id, type or attribute);
+//   2. no `:has()` on html, body or :root — name the state on <body> instead
+//      (data-screen, a class) or look back through the page with `~`.
+console.log('\n== :has() that re-checks the whole page (hard invariant, not a ratchet) ==');
+{
+    // Split at depth 0 (outside (), [] and quotes) on any of the given characters.
+    const splitTop = (str, isSep) => {
+        const out = [];
+        let depth = 0, cur = '', q = '';
+        for (let i = 0; i < str.length; i++) {
+            const c = str[i];
+            if (q) { cur += c; if (c === q && str[i - 1] !== '\\') q = ''; continue; }
+            if (c === '"' || c === "'") { q = c; cur += c; continue; }
+            if (c === '(' || c === '[') depth++;
+            if (c === ')' || c === ']') depth--;
+            if (depth === 0 && isSep(c, str, i)) { out.push(cur); cur = ''; continue; }
+            cur += c;
+        }
+        out.push(cur);
+        return out;
+    };
+    const compounds = (sel) => splitTop(sel.trim(), (c) => /[\s>+~]/.test(c)).map((x) => x.trim()).filter(Boolean);
+    // What a compound names outside :not() and pseudo-elements: a class, an id, an
+    // attribute, a type — or a feature inside :is()/:where() (each argument names one).
+    const names = (cmp) => {
+        const top = cmp.replace(/::[\w-]+(\([^)]*\))?/g, '');
+        if (/^[a-zA-Z]/.test(top)) return true;
+        let depth = 0, plain = '';
+        for (const c of top) { if (c === '(') depth++; if (depth === 0) plain += c; if (c === ')') depth--; }
+        if (/[.#[]/.test(plain)) return true;
+        const inner = top.match(/:(?:is|where)\(((?:[^()]|\([^()]*\))*)\)/g) || [];
+        return inner.some((m) => /[.#[]|(^|[(,\s])[a-zA-Z]/.test(m.slice(m.indexOf('(') + 1, -1)));
+    };
+    const hits = [];
+    let seen = 0;
+    for (const f of FILES) {
+        const css = stripComments(fs.readFileSync(path.join(DIR, f), 'utf8'));
+        for (const m of css.matchAll(/([^{};]+)\{/g)) {
+            const prelude = m[1].trim();
+            if (prelude.startsWith('@') || !prelude.includes(':has(')) continue;
+            for (const sel of splitTop(prelude, (c) => c === ',')) {
+                if (!sel.includes(':has(')) continue;
+                seen++;
+                const cs = compounds(sel);
+                const last = cs.length - 1;
+                cs.forEach((cmp, i) => {
+                    if (!cmp.includes(':has(')) return;
+                    if (/^(html|body)(?![\w-])/.test(cmp) || cmp.includes(':root')) hits.push(`${f}: ${sel.trim()} — a :has() on <${cmp.match(/^(html|body)/) ? cmp.match(/^(html|body)/)[1] : ':root'}>`);
+                    else if (i < last && !names(cs[last])) hits.push(`${f}: ${sel.trim()} — a :has() before a subject that names nothing (${cs[last]})`);
+                });
+            }
+        }
+    }
+    if (seen < 10) { failed++; console.log(`  ✗ only ${seen} :has() selectors found — the scan is not reading the stylesheets`); }
+    else if (hits.length) {
+        failed++;
+        console.log(`  ✗ ${hits.length} selector(s) that make every change on the page restyle it:`);
+        hits.slice(0, 12).forEach((h) => console.log('      ' + h));
+        console.log('      Give the subject a class, or name the state on <body> (data-screen, a class) — ui-test-stylecost measures it.');
+    } else console.log(`  ✓ none of the ${seen} :has() selectors hangs on <body> or ends in a subject that names nothing`);
+}
+
 console.log('\n== CSS conventions (ratchet) ==');
 for (const f of FILES) {
     for (const { key, label, fix } of DIMS) {
