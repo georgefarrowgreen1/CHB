@@ -7,7 +7,7 @@
 // the window properties when the bundle loads. Deploy checklist: bump ADMIN_V
 // whenever admin.js changes (it is the ?v= cache-buster).
 // ============================================================
-const ADMIN_BUNDLE_V = 796;
+const ADMIN_BUNDLE_V = 797;
 // admin.css is the owner-only stylesheet, split out of app.css so guests never
 // download it. Injected here (not a static <link>) and version-stamped on its
 // own — bump when admin.css changes. Kept OUT of the sw.js CORE precache.
@@ -12117,7 +12117,9 @@ async function loadData() {
     // handles its own errors so nothing blocks anything else.
     let ab = null;
     try {
-        ab = await apiGet('admin-bootstrap.php');
+        // abFetch (admin.js) names the parts held; before the bundle loads, the whole payload.
+        const w = /** @type {any} */ (window);
+        ab = w.__ADMIN_LOADED && typeof w.abFetch === 'function' ? await w.abFetch() : await apiGet('admin-bootstrap.php');
         if (!ab || !ab.ok) ab = null;
     } catch (e) {}
     // HEALTH IS NEVER CLAIMED FROM IGNORANCE. These four signals all come from ONE
@@ -13387,8 +13389,10 @@ async function loadChat() {
         // opens and every few minutes by the poll (CHAT_TEAM_EVERY_MS).
         const payload = loggedIn ? { action: 'thread', team: 1 } : { action: 'thread', token, team: 1 };
         __chatTeamAt = Date.now();
+        __chatHave = '';
         const r = await apiPost('messages.php', payload);
         if (Array.isArray(r.team)) chatTeamApply(r.team, r.away);
+        __chatHave = typeof r.h === 'string' ? r.h : '';
         const msgs = r.messages || [];
         __chatSig = chatMsgSig(msgs);
         __chatSeen = chatSeenSig(msgs);
@@ -13410,6 +13414,8 @@ async function loadChat() {
 //  re-render when the thread actually changed (preserving any instant
 //  FAQ/availability bubbles otherwise), and pause while the tab is hidden. ----
 let __chatPollTimer = null;
+// The `h` of the thread last heard in full, sent by the poll as `have` (see CLAUDE.md).
+let __chatHave = '';
 // The header's "Away until 7am" is the server's answer at the time it was asked, so a
 // chat left open past the hour kept saying it: the poll asks again every few minutes.
 const CHAT_TEAM_EVERY_MS = 3 * 60e3;
@@ -13440,6 +13446,7 @@ async function chatPoll() {
     const sigAtFire = __chatSig;
     try {
         const payload = loggedIn ? { action: 'thread' } : { action: 'thread', token };
+        if (__chatHave) payload.have = __chatHave;
         const askTeam = Date.now() - __chatTeamAt >= CHAT_TEAM_EVERY_MS;
         if (askTeam) {
             payload.team = 1;
@@ -13448,6 +13455,12 @@ async function chatPoll() {
         const r = await apiPost('messages.php', payload);
         if (askTeam && Array.isArray(r.team)) chatTeamApply(r.team, r.away);
         if (__chatSig !== sigAtFire) return;
+        if (r.same === true) {
+            // Nothing new in the thread since the last answer; only who is typing moves.
+            chatSetTyping('chat-thread', !!r.peer_typing, r.typing_by || 0);
+            return;
+        }
+        __chatHave = typeof r.h === 'string' ? r.h : '';
         const msgs = r.messages || [];
         const sig = chatMsgSig(msgs);
         const seen = chatSeenSig(msgs);
@@ -22292,7 +22305,7 @@ const CHB_SK_CARD = '<div class="card glass-panel sk-card"><div class="skeleton 
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'owedfig1022';
+    const BUILD = 'loadsame1022';
     /** @type {any} */ (window).__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;

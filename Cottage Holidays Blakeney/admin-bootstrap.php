@@ -178,4 +178,9 @@ if (!admin_can('owner')) {
 if (!admin_can('co.sync')) {
     $out['feeds'] = [];
 }
+// The four parts that grow with the years go only when they changed: the page names
+// what it holds (?have=bookings.<hash>,…), and a trip to Today with nothing new no
+// longer downloads every booking there has ever been. Hashed AFTER the permission
+// trims above, so a hash describes exactly what this person is sent.
+$out = payload_parts_diff($out, ['bookings', 'enquiries', 'blocks', 'rates'], (string) ($_GET['have'] ?? ''));
 json_out($out);

@@ -9916,6 +9916,49 @@ function manageVerdicts() {
 function chbReducedMotion() {
     try { return matchMedia('(prefers-reduced-motion: reduce)').matches; } catch (e) { return false; }
 }
+// An unchanged part is not sent again (admin-bootstrap.php ?have=; see CLAUDE.md). Each
+// is held as the TEXT it arrived as, never the parsed object: the loaders hand pieces of
+// it to the stores (propertySeasons IS the rates part's object), so an object drifts.
+const AB_HELD_PARTS = ['bookings', 'enquiries', 'blocks', 'rates'];
+/** @type {Record<string, {h: string, text: string}>} */
+let __abHeld = {};
+function abHeldAsk() {
+    return AB_HELD_PARTS.filter((k) => __abHeld[k]).map((k) => k + '.' + __abHeld[k].h).join(',');
+}
+// The owner's payload, naming the parts this page holds: loadData (through window, once
+// this bundle is in) and Manage's Run sync.
+async function abFetch() {
+    const have = abHeldAsk();
+    const ab = await apiGet('admin-bootstrap.php' + (have ? '?have=' + encodeURIComponent(have) : ''));
+    if (!ab || !ab.ok) return null;
+    abHeldResolve(ab);
+    return ab;
+}
+function abHeldResolve(ab) {
+    const hashes = ab && ab.hashes && typeof ab.hashes === 'object' ? ab.hashes : {};
+    AB_HELD_PARTS.forEach((k) => {
+        const h = typeof hashes[k] === 'string' ? hashes[k] : '';
+        const part = ab[k];
+        if (part && part.same === true) {
+            // Read afresh; a hash this page never held leaves the part to its own endpoint.
+            const held = __abHeld[k];
+            let v = null;
+            try {
+                v = held && held.h === h ? JSON.parse(held.text) : null;
+            } catch (e) {}
+            ab[k] = v;
+            if (!v) delete __abHeld[k];
+        } else if (part && h) {
+            try {
+                __abHeld[k] = { h, text: JSON.stringify(part) };
+            } catch (e) {
+                delete __abHeld[k];
+            }
+        } else {
+            delete __abHeld[k]; // an older server, or a part that could not be built
+        }
+    });
+}
 // Run a stalled feed's sync from its row: the capsule spins, then the fresh
 // health is re-read and the row folds away by itself if the feed is now fine.
 async function mgRunSync(el) {
@@ -9925,8 +9968,8 @@ async function mgRunSync(el) {
     btn.innerHTML = '<span class="mg-spin" aria-hidden="true"></span>Syncing';
     try {
         const worked = await runSync(btn.dataset.pk || '');
-        const ab = await apiGet('admin-bootstrap.php');
-        if (ab && ab.ok) {
+        const ab = await abFetch();
+        if (ab) {
             /** @type {any} */ (window).__feedStatusPre = Array.isArray(ab.feeds) ? ab.feeds : null;
             /** @type {any} */ (window).__cronStatusPre = ab.cron || null;
             /** @type {any} */ (window).__sigAt = Date.now();

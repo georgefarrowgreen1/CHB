@@ -1121,6 +1121,45 @@ CSV and PDF restated the profit from the client's own expense list.
 
   Six client rules and five server ones were break-tested, each failing its own named check.
 
+## An unchanged answer is not sent again (suggestion 4)
+
+Asked for as "lighter page loads". **Measured first, on the live site and in the harness:**
+- **The visitor's boot payload** is 33.9KB raw / 11.0KB gzipped, and 304s after the first visit. The
+  owner-entered `reviews` content key is 18KB of it (5.7KB gzipped). The homepage rotation shows every
+  review, so taking them off the boot would move those bytes later, not remove them. Left as it is.
+- **The owner's payload** carried every booking ever taken on every trip to Today and every save (69
+  columns, about 1.6KB of JSON a stay).
+- **The open guest chat** asked for the whole thread every 4 seconds.
+
+So:
+- **`payload_hash` / `payload_have` / `payload_parts_diff`** (db.php). A caller names what it holds
+  (`have=bookings.<16 hex>,…`). A part that hashes the same comes back as `{"same": true}`, and every reply
+  carries `hashes`. Nothing is kept on the server and nothing reaches the HTTP cache (admin-bootstrap stays
+  no-store). A malformed or stale claim costs a full answer, never a wrong one.
+- **admin-bootstrap.php** applies it to bookings, enquiries, blocks and rates, after the permission trims,
+  so a hash describes exactly what this person is sent. In the integration harness an unchanged trip went
+  from the full answer to under a third of it (§96 prints both sizes). On a seeded five-year business
+  (1,387 bookings) it went from 2.36MB / 227KB gzipped to 37KB / 3KB; the server still builds every part
+  to hash it (77ms → 65ms), and the held copy lives in memory, so a fresh app open pays the full answer.
+- **The client keeps each part as the TEXT it arrived as** (`__abHeld`, `abFetch`, `abHeldResolve`) and
+  re-reads it on "same". It cannot keep the parsed object: the loaders hand pieces of what they are given
+  to the stores (`propertySeasons` IS the rates part's seasons object), so a held object drifts from what
+  the server sent. A "same" for a hash the page never held leaves the part out, and its loader asks its
+  own endpoint. Manage's "Run sync" asks through `abFetch` too.
+- **The helpers live in admin.js**, because only the owner uses them: in app.js they cost every guest 733
+  gzipped bytes as shipped. `loadData` (app.js) reaches `abFetch` through `window` once `__ADMIN_LOADED`
+  (the `chbFrameSync` pattern); before the bundle has loaded it asks for the whole payload, as it always
+  did, and nothing is held yet anyway.
+- **The guest chat poll** sends `have` (`__chatHave`, the `h` of its last full answer), and
+  `chat_thread_reply` answers `{same: true, h}` with the typing state. The hash covers the read marks, so
+  "Seen" changing is an answer, not a "same". **The poll's "same" branch is load-bearing**: without it a
+  "same" reads as an empty thread and resets the signature. The next full answer with unchanged messages
+  (the hourly photo link rolls the hash) then redraws the conversation and replays the arrival animation.
+- Gates: test-integration **§96** (12 checks) and ui-test-oneload **§6–§7**. Break-tested three server
+  ways and six client ways, each failing its own named check. NB the client break-test that keeps the
+  parsed object needed a mutated store to see it: the bookings mapper builds new objects, the rates
+  loader does not.
+
 ## Automatic collection: finished plans, Square's silences, two passes at once (round 5)
 
 Found by the scheduled-jobs review and each reproduced against the real collector code.
@@ -11310,10 +11349,10 @@ permission given). Seven read-only audit lenses ran beside a full local gauntlet
     each — §77 counts them).
   - **An uploaded image is served from the cache first** (sw.js): upload names never change content, and the
     revalidating branch rewrote 100–160KB per image into the phone's storage on every view (smoke-test §6c-iv).
-  - **Not done, said plainly**: the owner's booking history still re-sends whole on every refresh (a per-part hash
-    would fix it); the email logs reload in full after each send and stop at 3,000 rows; every approved review rides
-    the visitor's boot payload; Today's render still forces layout (calendar rebuild, the now-line's measurements);
-    a chat poll returns the whole thread; and Manage still loads every thread for the Inbox's stores.
+  - **Not done, said plainly**: the email logs reload in full after each send and stop at 3,000 rows; Today's render
+    still forces layout (calendar rebuild, the now-line's measurements); and Manage still loads every thread for the
+    Inbox's stores. (The booking history re-sent on every refresh and the chat poll's whole thread are done, see "An
+    unchanged answer is not sent again"; the reviews on the boot were measured and left, same section.)
 - **ONE STAGE FOR EVERY PAYMENT ASK: THE SERVER'S** (the money audit's findings 1–5). The pay link carries no stage
   (pay.php derives one on open), and every back-office ask chose its own: the hub counted the refundable deposit into
   the first payment, a reminder always said `'balance'`, Payments' "Ask to pay" went by whether anything was paid, and
