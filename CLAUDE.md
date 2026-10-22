@@ -11203,11 +11203,34 @@ whatever else reached it; nothing compared the two. Code: `.github/scripts/` and
   warning when the last report is over 15 days old (a stopped check says nothing otherwise).
 - **`tide-push.php` is a tombstone** (410): removed in #284 and still on the host, answering with the
   master key. A file the deploy cannot delete is replaced with one that refuses.
-- Gates: `test-server-check.js` (34 fixture checks, CI-wired: the listing, a clean host, each finding, the
-  privacy assertions, no library map), integration §94 (the report endpoint's refusals, both outcomes in
-  the log and on Status, the tombstone), test-status (the row), smoke-test §7 (what ships, from the
-  staged output) and §15. Dry-run end to end against a local SFTP server: clean, then with planted
-  files, each reported.
+- Gates: `test-server-check.js` (44 fixture checks, CI-wired: the listing, a clean host, each finding, the
+  privacy assertions, no library map, the staging copy), integration §94 (the report endpoint's refusals,
+  both outcomes in the log and on Status, the tombstone), test-status (the row), smoke-test §7 (what
+  ships, from the staged output) and §15. Dry-run end to end against a local SFTP server: clean, then with
+  planted files, each reported.
+
+**WHAT THE FIRST RUN FOUND (22/10/2026), and what changed because of it.**
+- **The staging site lives in `staging/`, a folder of the live web space**, and this repository's
+  `htaccess.txt` is its `.htaccess` too. Its gate and its noindex header are both keyed on the staging
+  HOST name, so `cottageholidaysblakeney.co.uk/staging/` served the whole staging app with neither: no
+  password, indexable (measured: 200, 120KB, no `X-Robots-Tag`). htaccess now answers 404 for
+  `/staging/` on any host but the staging one, placed before the gate and the home-page rewrite (smoke-test
+  §15 holds the order). On the staging host the folder is the web root, so its own paths never start
+  with `/staging/`.
+- **The check compares that folder as a copy of the site** (`--nested staging=<build>`, from the
+  `STAGING_REMOTE_PATH` secret when it lies inside the live path; `splitNested` in server-check.js),
+  built from the commit in `staging/.deploy-commit`, with its own report section. The first run listed
+  its 150 files as strays.
+- **The download skips a config and session files at ANY depth** (`(^|/)config\.php$`). It anchored at
+  the root, so the first run fetched staging's `config.php` and session files onto the runner. Nothing
+  printed them; they have no business there.
+- **The host keys are pinned** (`.github/sftp-host-keys`): the three keys the run printed, each matching
+  the SHA256 fingerprints IONOS publishes for its webspace servers. smoke-test §15 holds the file to those
+  published values, so a mistyped key fails there and not in a deploy. A deploy stopping on a host-key
+  error means the key changed: check IONOS's published list before replacing a line.
+- **For the owner, not the code**: `mailtest.php` (never part of the site), `test-pop3-server.php` (denied
+  by htaccess and CLI-only) and `vapid-keygen.php` (the pre-#1435 copy, which takes the master key in its
+  address) are on the live host, plus 14 harmless leftovers. The deploy never deletes, so they go by hand.
 
 ## The round-8 overnight pass
 

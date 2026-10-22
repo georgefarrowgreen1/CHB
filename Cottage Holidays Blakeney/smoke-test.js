@@ -2672,6 +2672,29 @@ console.log('\n§15 The pipeline runs pinned code with the least access');
     check('…which the host refuses to serve', /\.\(bak\|old\|orig\|save\|swp\|swo\|tmp\|lftp\)\$/.test(fs.readFileSync(path.join(__dirname, 'htaccess.txt'), 'utf8')));
     check('…checks the host key against the pinned keys when there are any', /StrictHostKeyChecking=yes/.test(sftp) && /sftp-host-keys/.test(sftp));
     check('…and keeps the password off every command line', /--env-password/.test(sftp) && !/-u "\$USERNAME,/.test(sftp));
+
+    // The pinned keys are the ones IONOS publishes for its webspace servers (SHA256, as
+    // printed by ssh and on ionos.com/help), so a key mistyped or swapped in the file
+    // fails here rather than stopping a deploy. No host name: it is a secret.
+    const IONOS_KEYS = {
+        'ecdsa-sha2-nistp256': 'J4oM+B2g7zZWAI3DolXR1e4vdIMrGO301kEN14/slsQ',
+        'ssh-ed25519': '1gx2w8Rtv3wCgi7Jh8myf/KVd72cRQbow03UP8P095Q',
+        'ssh-rsa': 'psLDE8kfhoS9GWrc/GTrdlPvyKPcWcGZv2JxOCvwF3w',
+    };
+    const keyLines = fs.readFileSync(path.join(__dirname, '..', '.github', 'sftp-host-keys'), 'utf8')
+        .split('\n').filter((l) => l.trim() && !/^\s*#/.test(l));
+    const fingerprint = (b64) => require('crypto').createHash('sha256').update(Buffer.from(b64, 'base64')).digest('base64').replace(/=+$/, '');
+    const pinned = keyLines.map((l) => l.trim().split(/\s+/));
+    check(`the host's SSH keys are pinned, one "type key" per line with no host name (${pinned.length})`, pinned.length === 3 && pinned.every((f) => f.length === 2));
+    check('…and each is the key IONOS publishes', pinned.length === 3 && pinned.every(([t, k]) => IONOS_KEYS[t] && fingerprint(k) === IONOS_KEYS[t]));
+
+    // The staging site lives in a folder of the live web space and shares this file: on
+    // the live host that folder must answer nothing, ahead of every rule that could
+    // serve a page from it (the gate and noindex are tied to the staging host name).
+    const ht = fs.readFileSync(path.join(__dirname, 'htaccess.txt'), 'utf8');
+    const closeAt = ht.search(/RewriteCond %\{HTTP_HOST\} !\(\^\|\\\.\)staging\\\. \[NC\]\nRewriteCond %\{REQUEST_URI\} \^\/staging\(\/\|\$\) \[NC\]\nRewriteRule \^ - \[R=404,L\]/);
+    check('the staging folder is not found through the live host', closeAt > 0);
+    check('…before the staging gate and the home page could answer', closeAt > 0 && closeAt < ht.indexOf('staging-gate.php [L]') && closeAt < ht.indexOf('home.php [L]'));
 }
 
 Promise.all(pendingChecks).then(() => {

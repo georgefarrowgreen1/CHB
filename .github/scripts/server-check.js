@@ -13,6 +13,9 @@
 // --webauthn  "<blob> <path>" for every file of every published lbuchs/WebAuthn
 //             version: the passkey library is installed by hand, so it is checked
 //             against the library's own releases instead of this repository
+// --nested    <folder>=<build>: a folder inside the web root that is another copy of
+//             the site (the staging site lives in staging/). It is compared with its
+//             own build, the same way, instead of being reported file by file.
 //
 // The repository is public, so its logs are too: nothing here prints a session file,
 // a photo or a backup by name. Those are counted. A file is named only when it needs
@@ -187,10 +190,25 @@ function classify({ expected, remote, server, history = () => null, webauthn = n
     return { needs: needs.sort(byPath), changed: changed.sort(byPath), missing, leftovers: leftovers.sort(byPath), counts };
 }
 
+// A copy of the site in a folder of the web root: its entries, with the folder taken
+// off their paths, apart from everything else.
+function splitNested(remote, server, dir) {
+    const pre = dir.replace(/\/+$/, '') + '/';
+    const inside = (p) => p === pre.slice(0, -1) || p.startsWith(pre);
+    const outer = { remote: remote.filter((r) => !inside(r.path)), server: new Map() };
+    const inner = { remote: [], server: new Map() };
+    for (const r of remote) if (r.path.startsWith(pre)) inner.remote.push({ ...r, path: r.path.slice(pre.length) });
+    for (const [p, buf] of server) {
+        if (p.startsWith(pre)) inner.server.set(p.slice(pre.length), buf);
+        else if (!inside(p)) outer.server.set(p, buf);
+    }
+    return { outer, inner };
+}
+
 function report(r, meta = {}) {
     const n = r.needs.length + r.changed.length + r.missing.length;
     const lines = [];
-    lines.push('## Server file check');
+    lines.push('## ' + (meta.title || 'Server file check'));
     lines.push('');
     if (meta.commit) lines.push(`Compared with commit \`${meta.commit.slice(0, 12)}\`${meta.commitNote ? ' (' + meta.commitNote + ')' : ''}.`);
     lines.push(n === 0
@@ -243,43 +261,73 @@ function gitHistory(repo) {
     };
 }
 
+function readBuild(dir) {
+    const out = new Map();
+    for (const [p, full] of walk(dir)) {
+        const buf = fs.readFileSync(full);
+        out.set(p, { size: buf.length, buf });
+    }
+    return out;
+}
+
 function main(argv) {
     const arg = (k) => {
         const i = argv.indexOf('--' + k);
         return i >= 0 ? argv[i + 1] : '';
     };
-    const expected = new Map();
-    for (const [p, full] of walk(arg('expected'))) {
-        const buf = fs.readFileSync(full);
-        expected.set(p, { size: buf.length, buf });
-    }
-    const server = new Map();
+    const nested = argv.flatMap((a, i) => (a === '--nested' && /^[^=]+=.+$/.test(argv[i + 1] || '') ? [argv[i + 1]] : []))
+        .map((s) => ({ dir: s.slice(0, s.indexOf('=')).replace(/^\/+|\/+$/g, ''), build: s.slice(s.indexOf('=') + 1) }));
+    const expected = readBuild(arg('expected'));
+    let server = new Map();
     for (const [p, full] of walk(arg('server'))) server.set(p, fs.readFileSync(full));
-    const remote = parseListing(fs.readFileSync(arg('listing'), 'utf8'));
-    if (expected.size < 50 || remote.length < 50) {
-        // A listing or a build that came back empty would report every file as
-        // missing, or nothing at all. Neither is a finding about the server.
-        console.error(`The comparison has too little to go on (${expected.size} built, ${remote.length} listed).`);
+    let remote = parseListing(fs.readFileSync(arg('listing'), 'utf8'));
+    // A listing or a build that came back empty would report every file as missing, or
+    // nothing at all. Neither is a finding about the server.
+    const tooLittle = (what, built, listed) => {
+        console.error(`The comparison${what} has too little to go on (${built} built, ${listed} listed).`);
         process.exit(2);
+    };
+    const history = gitHistory(arg('repo'));
+    const webauthn = readWebauthn(arg('webauthn'));
+    const parts = [];
+    for (const nx of nested) {
+        const split = splitNested(remote, server, nx.dir);
+        remote = split.outer.remote;
+        server = split.outer.server;
+        const exp = readBuild(nx.build);
+        if (exp.size < 50 || split.inner.remote.length < 50) tooLittle(` of ${nx.dir}/`, exp.size, split.inner.remote.length);
+        parts.push({
+            prefix: nx.dir + '/',
+            r: classify({ expected: exp, remote: split.inner.remote, server: split.inner.server, history, webauthn }),
+            meta: { title: `The staging copy in ${nx.dir}/`, commit: process.env.CHECK_NESTED_COMMIT || '', commitNote: process.env.CHECK_NESTED_COMMIT_NOTE || '' },
+        });
     }
-    const r = classify({ expected, remote, server, history: gitHistory(arg('repo')), webauthn: readWebauthn(arg('webauthn')) });
-    const meta = { commit: process.env.CHECK_COMMIT || '', commitNote: process.env.CHECK_COMMIT_NOTE || '', hostKeys: process.env.CHECK_HOST_KEYS || '' };
-    const text = report(r, meta);
+    if (expected.size < 50 || remote.length < 50) tooLittle('', expected.size, remote.length);
+    const live = {
+        prefix: '',
+        r: classify({ expected, remote, server, history, webauthn }),
+        meta: { commit: process.env.CHECK_COMMIT || '', commitNote: process.env.CHECK_COMMIT_NOTE || '', hostKeys: process.env.CHECK_HOST_KEYS || '' },
+    };
+    parts.unshift(live);
+    const text = parts.map((pt) => report(pt.r, pt.meta)).join('\n');
     process.stdout.write(text);
     if (arg('summary')) fs.appendFileSync(arg('summary'), text);
+    // One list per kind for the site, each item under its full path on the host.
+    const all = (k) => parts.flatMap((pt) => pt.r[k].map((it) => ({ path: pt.prefix + it.path, why: it.why })));
     if (arg('json')) {
         const slim = (items) => items.slice(0, 40).map((it) => it.path + ': ' + it.why);
         fs.writeFileSync(arg('json'), JSON.stringify({
-            commit: meta.commit,
-            needs: slim(r.needs), changed: slim(r.changed), missing: slim(r.missing), leftovers: slim(r.leftovers),
-            counts: r.counts,
+            commit: live.meta.commit,
+            needs: slim(all('needs')), changed: slim(all('changed')), missing: slim(all('missing')), leftovers: slim(all('leftovers')),
+            counts: live.r.counts,
         }));
     }
-    for (const it of r.leftovers) console.log(`::notice::Left over on the server: ${it.path} (${it.why})`);
-    for (const it of [...r.needs, ...r.changed, ...r.missing]) console.log(`::error::${it.path}: ${it.why}`);
-    return r.needs.length + r.changed.length + r.missing.length ? 1 : 0;
+    for (const it of all('leftovers')) console.log(`::notice::Left over on the server: ${it.path} (${it.why})`);
+    const found = [...all('needs'), ...all('changed'), ...all('missing')];
+    for (const it of found) console.log(`::error::${it.path}: ${it.why}`);
+    return found.length ? 1 : 0;
 }
 
-module.exports = { parseListing, classify, report, blobHash, sameContent, GUARD_RULES };
+module.exports = { parseListing, classify, report, splitNested, blobHash, sameContent, GUARD_RULES };
 
 if (require.main === module) process.exit(main(process.argv.slice(2)));

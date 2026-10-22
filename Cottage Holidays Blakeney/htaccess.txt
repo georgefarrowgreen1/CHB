@@ -19,6 +19,15 @@ RewriteRule ^ https://%{HTTP_HOST}%{REQUEST_URI} [L,R=301]
 RewriteCond %{HTTP_HOST} ^www\.(cottageholidaysblakeney\.co\.uk)$ [NC]
 RewriteRule ^ https://%1%{REQUEST_URI} [L,R=301]
 
+# ---- The staging copy answers only on its own host ----
+# The staging site is deployed into a folder of this web space (staging/), and this file
+# is its .htaccess too. Reached through the live host, that folder served the whole
+# staging app with no password and no noindex header, both being tied to the staging
+# host name (found by the server file check). It is no page of the live site: not found.
+RewriteCond %{HTTP_HOST} !(^|\.)staging\. [NC]
+RewriteCond %{REQUEST_URI} ^/staging(/|$) [NC]
+RewriteRule ^ - [R=404,L]
+
 # ---- Lock the staging site to the owner (staging host ONLY) ----
 # On staging.<domain> the site's entry pages are routed through staging-gate.php,
 # which demands an HTTP Basic-Auth password (set in staging's config.php) and

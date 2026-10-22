@@ -1,0 +1,9 @@
+# The web host's SSH keys, checked by .github/scripts/sftp.sh on every connection ("type base64",
+# one per line, no host name: the host name is a secret). Read from the first server file check
+# (22/10/2026) and confirmed against the SHA256 fingerprints IONOS publishes for its webspace
+# servers (ionos.com/help, "Connecting to Your Webspace via Secure Shell (SSH) using PuTTY").
+# A deploy that stops on a host-key error means the host's key changed: check IONOS's published
+# fingerprints before replacing a line here, never just accept the new key.
+ecdsa-sha2-nistp256 AAAAE2VjZHNhLXNoYTItbmlzdHAyNTYAAAAIbmlzdHAyNTYAAABBBFjDE2sDVlaHhXudMMsLEuJvY+nBuTbwLGpQkLaJ5oxIR9vXinw/2dSzqnDAlrmJ1ZgWKQnvPh7Mz770Hp/sobU=
+ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAINbBMvvDjN4IP04VAZlDH42A+HL25ifeIK9CorAvaMA/
+ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQC/tKA7T9UUfVZ4gSGezw3t98UQcWwtHqPildhNL7F4SKhhXJorT01hwqsTVPXz9Emr1IzS9iOvvynqh7N3xSs01qoucho8WeantCVI5H7Vwt00qS8z8BRiYk1WpyzJfUCNUUHSJhF5SJd03uWrP19AhGsqqj7/24IzGhqxN/FqHgHdBRkQB//XlHhw5e03DPkr5jQRlHjSb9lkWily0/meBTkd7lFRC2n0sT/KE4XbjpvQlc2IUIIeWHJfcsJgpaGcDFboN9oV//voE4A0pdAFwE4OByVDZa/ifgXRlT0k5vVS+EaxTtH8idiu6ZV/P7dLMDo7b76KTSxlSixn7hPh
