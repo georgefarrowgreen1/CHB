@@ -764,7 +764,7 @@ if ($isAdmin && empty($in['token'])) {
                 FROM chat_threads t JOIN messages m ON m.thread_id = t.id
                 WHERE t.archived = ?
                 GROUP BY t.id, t.guest_id, t.name, t.email, t.source, t.location, t.archived
-                ORDER BY last_at DESC");
+                ORDER BY last_at DESC, t.id DESC");
             $q->execute([$showArchived]);
             $rows = $q->fetchAll();
         } catch (\Throwable $e2) {
@@ -783,11 +783,12 @@ if ($isAdmin && empty($in['token'])) {
                     (SELECT sender_role FROM messages mr WHERE mr.thread_id = t.id ORDER BY mr.id DESC LIMIT 1) last_role
                 FROM chat_threads t JOIN messages m ON m.thread_id = t.id
                 GROUP BY t.id, t.guest_id, t.name, t.email, t.source, t.location
-                ORDER BY last_at DESC",
+                ORDER BY last_at DESC, t.id DESC",
                 )
                 ->fetchAll();
         }
-        json_out([
+        // In a fixed order (ties by thread), so an unchanged list hashes the same.
+        json_out_held([
             'ok' => true,
             'threads' => array_map(
                 fn($r) => [
@@ -809,7 +810,7 @@ if ($isAdmin && empty($in['token'])) {
                 ],
                 $rows,
             ),
-        ]);
+        ], $in['have'] ?? '');
     } catch (\Throwable $e) {
         json_out(['error' => 'Messages not ready — has migration-chat-threads.sql been run?'], 500);
     }

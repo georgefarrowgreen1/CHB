@@ -453,7 +453,7 @@ if ($action === 'sent') {
             }
         }
     }
-    json_out(['ok' => true, 'messages' => $rows]);
+    json_out_held(['ok' => true, 'messages' => $rows], $in['have'] ?? '');
 }
 
 // THE NEW EMAIL (the Inbox's "New email" sheet) is built by mailbox_new_body(), its

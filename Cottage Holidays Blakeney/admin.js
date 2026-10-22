@@ -121,7 +121,7 @@ async function openSettings(section) {
     // arrival textarea saves on CHANGE, so one typed word overwrote the lot. The
     // failure is SAID now too: a blank box the owner believes is one they fill in.
     try {
-        const r = await apiPost('content.php', { action: 'get_all' });
+        const r = await apiPostHeld('content', 'content.php', { action: 'get_all' });
         adminPrivateContent = r.content || {};
         __adminPrivateLoaded = true;
     } catch (e) {
@@ -9934,6 +9934,43 @@ async function abFetch() {
     abHeldResolve(ab);
     return ab;
 }
+// The same for a read that is one answer (db.php json_out_held): the email log, the Sent
+// list, the chat list and the settings. A "same" is re-read from the TEXT it arrived as;
+// a "same" for a copy this page no longer holds (another read replaced it) asks again in
+// full, and an answer with no hash (an older server) holds nothing. Memory only.
+/** @type {Record<string, {h: string, text: string}>} */
+let __heldReads = {};
+/**
+ * @param {string} key one per distinct answer (the chat list's archived view is its own)
+ * @param {string} endpoint
+ * @param {any} payload
+ * @returns {Promise<any>}
+ */
+async function apiPostHeld(key, endpoint, payload) {
+    const held = __heldReads[key];
+    let r = await apiPost(endpoint, held ? Object.assign({}, payload, { have: held.h }) : payload);
+    if (r && r.same === true) {
+        const now = __heldReads[key];
+        if (now && now.h === r.h) {
+            try {
+                return JSON.parse(now.text);
+            } catch (e) {}
+        }
+        delete __heldReads[key];
+        r = await apiPost(endpoint, payload);
+        if (r && r.same === true) throw new Error('Unexpected server response.');
+    }
+    const h = r && typeof r.h === 'string' && /^[0-9a-f]{16}$/.test(r.h) ? r.h : '';
+    try {
+        if (!h) throw 0;
+        const copy = Object.assign({}, r);
+        delete copy.srv;
+        __heldReads[key] = { h, text: JSON.stringify(copy) };
+    } catch (e) {
+        delete __heldReads[key];
+    }
+    return r;
+}
 function abHeldResolve(ab) {
     const hashes = ab && ab.hashes && typeof ab.hashes === 'object' ? ab.hashes : {};
     AB_HELD_PARTS.forEach((k) => {
@@ -10492,7 +10529,7 @@ let __bookingsSearch = '';
 let bookingEmailLogs = {};
 async function loadBookingEmailLogs() {
     try {
-        const r = await apiPost('bookings.php', { action: 'email_logs' });
+        const r = await apiPostHeld('email_logs', 'bookings.php', { action: 'email_logs' });
         bookingEmailLogs = r && r.logs ? r.logs : {};
         ibSoon();
     } catch (e) {
@@ -26728,10 +26765,8 @@ async function loadAdminMessages() {
         if (list) list.dataset.loaded = '1'; // fetch done — skeleton retires for good
     };
     try {
-        const r = await apiPost('messages.php', {
-            action: 'threads',
-            archived: __msgShowArchived ? 1 : 0,
-        });
+        const archived = __msgShowArchived ? 1 : 0;
+        const r = await apiPostHeld('threads:' + archived, 'messages.php', { action: 'threads', archived });
         threads = r.threads || [];
     } catch (e) {
         stampLoaded();
@@ -34361,7 +34396,7 @@ function ibLoadAll(force) {
     jobs.push(apiPost('enquiries.php', { action: 'declined' }).then((r) => {
         __declinedEnq = ((r && r.enquiries) || []).map(mapEnquiryFromApi);
     }).catch(() => {}));
-    jobs.push(apiPost('messages.php', { action: 'threads', archived: 1 }).then((r) => {
+    jobs.push(apiPostHeld('threads:1', 'messages.php', { action: 'threads', archived: 1 }).then((r) => {
         __ibArchived = (r && r.threads) || [];
     }).catch(() => {}));
     jobs.push(Promise.resolve(loadBookingEmailLogs()).catch(() => {}));
@@ -34612,7 +34647,7 @@ function ibSend() {
                     try { const r = await apiPost('messages.php', { action: 'thread', thread_id: p.threads[0].thread_id }); __ibThreadMsgs[p.threads[0].thread_id] = (r && r.messages) || []; } catch (e) {}
                     try { loadAdminMessages(); } catch (e) {}
                 } else {
-                    try { const r = await apiPost('mailbox.php', { action: 'sent' }); __mbxSent = (r && r.messages) || __mbxSent; } catch (e) {}
+                    try { const r = await apiPostHeld('sent', 'mailbox.php', { action: 'sent' }); __mbxSent = (r && r.messages) || __mbxSent; } catch (e) {}
                     try { loadBookingEmailLogs(); } catch (e) {}
                 }
                 ibSoon();
@@ -36417,7 +36452,7 @@ async function cmpDeliver(snap) {
             if ((document.querySelector('.page-view.active') || {}).id === 'view-backoffice') renderBookings();
         } else if (t.kind === 'new') {
             // The Sent list again, so they appear in the Inbox with what was just sent.
-            const s = await apiPost('mailbox.php', { action: 'sent' });
+            const s = await apiPostHeld('sent', 'mailbox.php', { action: 'sent' });
             if (s && Array.isArray(s.messages)) {
                 __mbxSent = s.messages;
                 ibSoon();
@@ -38547,7 +38582,7 @@ async function loadMailbox() {
     try {
         const [inbox, sent] = await Promise.all([
             apiPost('mailbox.php', { action: 'list' }),
-            apiPost('mailbox.php', { action: 'sent' }).catch(() => ({ messages: [] })),
+            apiPostHeld('sent', 'mailbox.php', { action: 'sent' }).catch(() => ({ messages: [] })),
         ]);
         __mbxMessages = inbox.messages || [];
         __mbxMerged = Array.isArray(inbox.merged) ? inbox.merged : [];

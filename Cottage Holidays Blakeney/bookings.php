@@ -2750,7 +2750,7 @@ if ($action === 'email_logs') {
                    FROM activity_log
                   WHERE entity = 'booking'
                     AND (category = 'comms' OR action = 'payment.request')
-               ORDER BY created_at DESC
+               ORDER BY created_at DESC, id DESC
                   LIMIT 3000",
             )
             ->fetchAll();
@@ -2780,7 +2780,7 @@ if ($action === 'email_logs') {
                 'body' => isset($meta['body']) ? (string) $meta['body'] : '',
             ];
         }
-        json_out(['logs' => $map]);
+        json_out_held(['logs' => $map], $in['have'] ?? '');
     } catch (\Throwable $e) {
         json_out(['logs' => []]);
     }

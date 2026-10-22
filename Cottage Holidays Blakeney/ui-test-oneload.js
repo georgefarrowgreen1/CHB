@@ -24,6 +24,11 @@
 //      never a copy that will not open or is over two days old (still named),
 //      never kept as current when the load fails, never offline, never written
 //      after signing out, and signing out removes it
+//   9. the email log, the Sent list, the chat list and the settings are not sent
+//      again either: each read names the copy it holds, a "same" is re-read from its
+//      text, the chat list's archived view is its own copy, a "same" for a copy the
+//      page no longer holds asks again in full, an older server's answer holds
+//      nothing, and a failed read keeps the last good copy
 const { bootBrowser, appReadyGoto, bootVerdict, d } = require('./ui-test-lib');
 let fails = 0;
 const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails++; };
@@ -41,6 +46,21 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
     rates: { properties: [], seasons: { jollyboat: [{ label: 'Peak', start: '2026-07-01', end: '2026-08-31', couple_rate: 200 }] } }, rtH: 'cccccccccccccccc',
   };
   let syncAnswer = { ok: true, result: {} };
+  // §9: a server that hashes the four one-answer reads and honours `have` (json_out_held).
+  const reads = {
+    on: false, lie: '', fail: '', bare: '', haves: { email_logs: [], sent: [], threads: [], get_all: [] },
+    data: {
+      email_logs: { logs: { 601: [{ action: 'comms.message', summary: 'Emailed Alice', at: '2026-10-20 10:00:00', subject: 'Your stay', body: 'See you soon' }] } },
+      sent: { ok: true, messages: [{ id: 1, to_email: 'gwen@x.com', to_name: 'Gwen', cc_email: '', subject: 'Hello Gwen', body: 'Hi', sent_at: '2026-10-20 10:00:00' }] },
+      threads: { ok: true, threads: [{ thread_id: 9, name: 'Tess Thread', email: 'tess@x.com', source: '', location: '', is_guest: false, verified: false, archived: 0, last_at: '2026-10-21 09:00:00', unread: 1, last_body: 'Is there parking?', last_role: 'guest' }] },
+      get_all: { content: { 'bacs-details': 'Sort 00-11-22', 'notify-emails': [] } },
+    },
+    h: { email_logs: '1111111111111111', sent: '2222222222222222', threads: '3333333333333333', threadsA: '5555555555555555', get_all: '4444444444444444' },
+  };
+  const readOf = (url, b) => (/\/bookings\.php/.test(url) && b.action === 'email_logs' ? 'email_logs'
+    : /\/mailbox\.php/.test(url) && b.action === 'sent' ? 'sent'
+    : /\/messages\.php/.test(url) && b.action === 'threads' ? 'threads'
+    : /\/content\.php/.test(url) && b.action === 'get_all' ? 'get_all' : '');
   const modDelay = 400;
   await p.route(/\.php/, async (route) => {
     const req = route.request();
@@ -58,6 +78,17 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
       out.bookings = held.bookings === parts.bkH || parts.lie ? { same: true } : { bookings: parts.bk };
       out.rates = held.rates === parts.rtH ? { same: true } : parts.rates;
       return json(out);
+    }
+    const rk = reads.on ? readOf(url, body) : '';
+    if (rk) {
+      const arch = rk === 'threads' && Number(body.archived) === 1;
+      reads.haves[rk].push((arch ? 'A:' : '') + (body.have || ''));
+      if (reads.fail === rk) return route.fulfill({ status: 500, contentType: 'application/json', body: JSON.stringify({ error: 'Down for a moment' }) });
+      const h = reads.h[arch ? 'threadsA' : rk];
+      if (reads.bare === rk) return json(reads.data[rk]);
+      if (body.have && reads.lie === rk) return json({ same: true, h: 'eeeeeeeeeeeeeeee' });
+      if (body.have && body.have === h) return json({ same: true, h });
+      return json({ ...reads.data[rk], h });
     }
     if (url.includes('ical-import.php') && body.action === 'sync') return json(syncAnswer);
     if (/(reviews|photos|experiences)\.php/.test(url) && body.action === 'list_admin') {
@@ -436,6 +467,91 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
   await leave(pg);
   for (const q of open) await leave(q);
   await ctx.close();
+
+  console.log('9. the email log, the Sent list, the chat list and the settings are not sent again');
+  await quiet();
+  reads.on = true;
+  const last = (k) => reads.haves[k][reads.haves[k].length - 1];
+  const logSubject = () => p.evaluate(() => (((bookingEmailLogs['601'] || [])[0]) || {}).subject || '');
+  // The email log.
+  await p.evaluate(() => loadBookingEmailLogs());
+  ok(last('email_logs') === '', `the first read of the email log names nothing, holding nothing yet ("${last('email_logs')}")`);
+  ok((await logSubject()) === 'Your stay', `…and fills the log (${await logSubject()})`);
+  await p.evaluate(() => { bookingEmailLogs['601'][0].subject = 'Mutated'; });
+  let n9 = reads.haves.email_logs.length;
+  await p.evaluate(() => loadBookingEmailLogs());
+  ok(last('email_logs') === reads.h.email_logs && reads.haves.email_logs.length === n9 + 1, `the next read names the copy it holds, in one request (${last('email_logs')})`);
+  ok((await logSubject()) === 'Your stay', `…and on "same" the log is re-read from its text, so a change made since does not leak back (${await logSubject()})`);
+  reads.data.email_logs = { logs: { 601: [{ action: 'comms.message', summary: 'Emailed Alice', at: '2026-10-21 10:00:00', subject: 'Second note', body: '' }] } };
+  reads.h.email_logs = '6666666666666666';
+  await p.evaluate(() => loadBookingEmailLogs());
+  ok((await logSubject()) === 'Second note', `a changed log comes whole and is used (${await logSubject()})`);
+  await p.evaluate(() => loadBookingEmailLogs());
+  ok(last('email_logs') === '6666666666666666', `…and the next read names its new hash (${last('email_logs')})`);
+  reads.fail = 'email_logs';
+  await p.evaluate(() => loadBookingEmailLogs());
+  ok((await logSubject()) === 'Second note', `a failed read keeps the last good log (${await logSubject()})`);
+  reads.fail = '';
+  await p.evaluate(() => loadBookingEmailLogs());
+  ok(last('email_logs') === '6666666666666666', `…and still names it afterwards (${last('email_logs')})`);
+  // A "same" for a copy the page no longer holds: asked again in full.
+  reads.lie = 'email_logs';
+  n9 = reads.haves.email_logs.length;
+  await p.evaluate(() => loadBookingEmailLogs());
+  const asked9 = reads.haves.email_logs.slice(n9);
+  ok(asked9.length === 2 && asked9[0] === '6666666666666666' && asked9[1] === '', `a "same" for a copy it does not hold asks again in full (${JSON.stringify(asked9)})`);
+  ok((await logSubject()) === 'Second note', `…and the log is what the full answer said (${await logSubject()})`);
+  reads.lie = '';
+  // An older server: no hash, nothing held, nothing named.
+  reads.bare = 'email_logs';
+  await p.evaluate(() => loadBookingEmailLogs());
+  await p.evaluate(() => loadBookingEmailLogs());
+  ok(last('email_logs') === '', `an older server's answer (no hash) is asked for in full every time (${last('email_logs')})`);
+  reads.bare = '';
+
+  // The chat list, and its archived view as a copy of its own.
+  await p.evaluate(() => { __msgShowArchived = false; return loadAdminMessages(); });
+  ok(last('threads') === '', `the chat list's first read names nothing ("${last('threads')}")`);
+  await p.evaluate(() => { __msgThreads[0].last_body = 'Mutated'; });
+  await p.evaluate(() => loadAdminMessages());
+  ok(last('threads') === reads.h.threads, `…the next names its copy (${last('threads')})`);
+  ok(await p.evaluate(() => (__msgThreads[0] || {}).last_body) === 'Is there parking?', `…and a "same" lists the threads as they were sent (${await p.evaluate(() => (__msgThreads[0] || {}).last_body)})`);
+  await p.evaluate(() => { __msgShowArchived = true; return loadAdminMessages(); });
+  ok(last('threads') === 'A:', `the archived view does not name the active list's copy ("${last('threads')}")`);
+  await p.evaluate(() => loadAdminMessages());
+  ok(last('threads') === 'A:' + reads.h.threadsA, `…and names its own the next time (${last('threads')})`);
+  await p.evaluate(() => { __msgShowArchived = false; });
+
+  // The Sent list.
+  const sentSubject = () => p.evaluate(() => ((__mbxSent || [])[0] || {}).subject || '');
+  await p.evaluate(() => loadMailbox());
+  ok(last('sent') === '', `the Sent list's first read names nothing ("${last('sent')}")`);
+  ok((await sentSubject()) === 'Hello Gwen', `…and fills it (${await sentSubject()})`);
+  await p.evaluate(() => { __mbxSent[0].subject = 'Mutated'; });
+  await p.evaluate(() => loadMailbox());
+  ok(last('sent') === reads.h.sent && (await sentSubject()) === 'Hello Gwen', `…the next names its copy and a "same" reads it afresh (${last('sent')} · ${await sentSubject()})`);
+
+  // The settings.
+  const bacs = () => p.evaluate(() => adminPrivateContent['bacs-details']);
+  await p.evaluate(() => window.openSettings());
+  await quiet();
+  ok(last('get_all') === '', `the settings' first read names nothing ("${last('get_all')}")`);
+  ok((await bacs()) === 'Sort 00-11-22', `…and fills them (${await bacs()})`);
+  await p.evaluate(() => { adminPrivateContent['bacs-details'] = 'Mutated'; });
+  await p.evaluate(() => window.openSettings());
+  await quiet();
+  ok(last('get_all') === reads.h.get_all, `…the next names its copy (${last('get_all')})`);
+  ok((await bacs()) === 'Sort 00-11-22', `…and a "same" puts back what the server holds, not what the page changed since (${await bacs()})`);
+  reads.on = false;
+
+  // Every read of the four goes through the held copy (the chat count's fallback for an
+  // older server is the one plain read, and it reads no store).
+  const src = require('fs').readFileSync(require('path').join(__dirname, 'admin.js'), 'utf8');
+  const plain = [/apiPost\('bookings\.php', \{ action: 'email_logs'/g, /apiPost\('mailbox\.php', \{ action: 'sent'/g, /apiPost\('content\.php', \{ action: 'get_all'/g]
+    .map((re) => (src.match(re) || []).length);
+  const plainThreads = (src.match(/apiPost\('messages\.php', \{\s*action: 'threads'/g) || []).length;
+  ok(plain.every((n) => n === 0) && plainThreads === 1, `no plain read of the four is left in admin.js (${plain.join(', ')}; threads ${plainThreads})`);
+  ok((src.match(/apiPostHeld\(/g) || []).length >= 8, `(vacuity) the held reads are there (${(src.match(/apiPostHeld\(/g) || []).length})`);
 
   await t.done(fails);
 })().catch(async (e) => { console.error(e); process.exit(1); });
