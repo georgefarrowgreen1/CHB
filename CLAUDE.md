@@ -9595,12 +9595,12 @@ deleting — both now FIXED, and they are worth keeping here as the pattern to e
   let it float with the runner image. **`perf-budget.js`** gates the gzipped size
   of every shipped asset against `size-budget.json` — raising a budget is allowed
   but must be deliberate, in the same PR, with the trade named; lower budgets when
-  you shrink an asset to lock the win in. NB in these stylesheets the budget is
-  mostly PROSE: strip the comments and admin.css gzips to 12.9KB of its 30KB, so a
-  documentation-heavy change reads as performance rot unless you check. When a pass
-  goes over, trim the comments to the measured facts first and only then raise —
-  and hold **app.css flat regardless**, because every anonymous visitor pays for it,
-  where admin.css is owner-only and immutable-cached. **`check-css-conventions.js`** is the same
+  you shrink an asset to lock the win in. **The six files the deploy strips are
+  measured AS SHIPPED** (comments out, through `strip-comments.js` itself), so a
+  comment costs no budget and a byte of code always does. The older notes in this
+  file that say "the gate measures the UNSTRIPPED file" describe the gate before
+  that change. Hold **app.css flat regardless**, because every anonymous visitor
+  pays for it, where admin.css is owner-only and immutable-cached. **`check-css-conventions.js`** is the same
   ratchet shape for the two CSS rules above (canonical breakpoints, no raw hex where
   a token covers it) against `css-budget.json`: counts may only FALL — fix the value
   instead of raising the number, and re-baseline a cleanup with `--update`. It
@@ -11174,6 +11174,33 @@ timed, and each gate was break-tested against the old code.
   it guards. If this is ever revisited, compare the REMOTE FILE LISTING (`lftp cls`)
   against the staged set, which is a filesystem question with no HTTP semantics to
   misread. (Done since: see "The server file check" below.)
+
+## The comment strip had stopped stripping (found 22/10/2026)
+
+- **For weeks the deploy shipped app.js with 209KB of its comments.** The stripper guessed from each line where
+  template literals began and ended. An apostrophe inside one (`We'll email you…`, app.js line 7,629) read as an
+  opening quote, and from there it took code for template text and kept every comment after it. `--verify` proved
+  only that the program was unchanged, and perf-budget measured the source, so nothing noticed.
+- **A script's comments are now the ranges TypeScript's own parser reports** in the trivia before each token, so never
+  inside a string, a regex or a template. A stylesheet's come from a small scanner that steps over strings, escapes
+  and an unquoted `url(…)`. Without TypeScript a script is not stripped at all (`stripSource` throws): the line
+  scanner was the bug, so it is gone, and the deploy installs TypeScript first.
+- **Lines are kept, so stack traces stay exact.** In a script a comment with code after it on its line becomes spaces,
+  so the columns stay exact too. In a stylesheet it is removed outright: `.a/**/.b` is the selector `.a.b`, and spaces
+  would make it `.a .b`, a different one. A line break inside a comment is kept, which keeps `return /*⏎*/ x` two
+  statements.
+- **The deploy fails if any comment is left, counted WITHOUT the finder.** In a script, any text between two of the
+  parser's tokens is a comment left behind; in a stylesheet, a plain pattern. A count that used the finder went blind
+  with it: break-testing a finder that missed trailing comments, the shared count read "4,391 before, 0 after" while
+  437 were left in app.js. The independent count says so.
+- **perf-budget.js measures the six stripped files AS SHIPPED**, through strip-comments.js itself, so a comment costs
+  no budget and a stripper that goes blind shows up as growth. Budgets re-baselined to the shipped sizes + 2.5%.
+- Measured against the old stripper: app.js 301 → 200KB gz (brotli, what the host serves: 234 → 154KB), admin.js
+  530 → 464KB gz (403 → 351KB br), the stylesheets 1–3KB each. In all −171KB gz, −135KB br.
+- The lean files reach a returning visitor with the next release that changes each file's `?v=` (the service worker
+  serves a pinned file from its cache); under one pin it is the same program either way.
+- Gates: smoke-test §12g (the cases above, the apostrophe regression among them; per file, the same program, the same
+  line count, no comment left and a real saving). Six mutations break-tested, each failing its own named check.
 
 ## The server file check, and one definition of what is shipped
 

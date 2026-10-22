@@ -1788,25 +1788,36 @@ console.log('\n== 10. Design-system & recent-fix contracts ==');
     }
 
     // §12g THE DEPLOY-TIME COMMENT STRIP IS SAFE, AND PROVABLY SO.
-    //  143KB gz of a 461KB guest payload is source comments. They are blanked at
-    //  deploy time — never deleted — so every stack-trace line reported to
-    //  client-error.php stays exact. What must hold: the program is unchanged,
-    //  the line count is unchanged, and the cases where a naive line-scanner
-    //  would corrupt code are handled. Those cases are the whole risk, so they
-    //  are enumerated here rather than trusted to the AST check in the deploy.
+    //  Most of every shipped asset is source comment. They come out at deploy time,
+    //  line breaks kept, so every stack-trace line reported to client-error.php stays
+    //  exact. What must hold: the program is unchanged, the line count is unchanged,
+    //  NO comment is left, and the cases where a naive scanner would corrupt code are
+    //  handled. Those cases are the whole risk, so they are enumerated here rather
+    //  than trusted to the AST check in the deploy.
     {
         console.log('\n== 12g. The deploy-time comment strip ==');
-        const { stripSource, verifyJs, TARGETS } = require(path.join(__dirname, 'strip-comments.js'));
+        const { stripSource, commentsLeft, verifyJs, verifyCss, TARGETS } = require(path.join(__dirname, 'strip-comments.js'));
         const cases = [
             ['a whole-line // comment goes', '// gone\nconst a = 1;', '\nconst a = 1;'],
-            ['a TRAILING comment stays — the line has code', 'const a = 1; // kept\n', 'const a = 1; // kept\n'],
-            ['an inline /** @type */ cast stays', 'const a = /** @type {any} */ (b);', 'const a = /** @type {any} */ (b);'],
+            ['an indented whole-line comment leaves an empty line', '    // gone\nconst a = 1;', '\nconst a = 1;'],
+            ['a TRAILING comment goes, with the spaces before it', 'const a = 1; // gone\n', 'const a = 1;\n'],
+            ['an inline /** @type */ cast becomes spaces, so the column after it holds',
+                'const a = /** @type {any} */ (b);', 'const a = ' + ' '.repeat(18) + ' (b);'],
             ['a one-line block comment goes', '/* gone */\nconst a = 1;', '\nconst a = 1;'],
             ['a MULTI-LINE block goes, every line blanked',
                 '/* one\n   two */\nconst a = 1;', '\n\nconst a = 1;'],
-            // THE ONES THAT BITE. A // inside a string or a template is CODE.
+            ['…and with code after it, that code keeps its line and column',
+                'x = 1; /* a\n b */ y = 2;', 'x = 1;\n      y = 2;'],
+            // A line break inside a comment is a line break to JavaScript: `return` then
+            // ends the statement. Keeping the break keeps the program.
+            ['a line break inside a comment survives (return /*\n*/ x stays two statements)',
+                'return /*\n*/ x', 'return\n   x'],
+            ['two comments then code: the code keeps its column', 'a; /* x */ /* y */ b;', 'a;' + ' '.repeat(17) + 'b;'],
+            // THE ONES THAT BITE. A // inside a string, a regex or a template is CODE.
             ['a // inside a string is untouched', "const u = '//example.com';", "const u = '//example.com';"],
-            ['a line that merely CONTAINS // is untouched', 'const u = "x"; // t\n', 'const u = "x"; // t\n'],
+            ['a // inside a regex is untouched', 'const r = /\\/\\/x/; // gone', 'const r = /\\/\\/x/;'],
+            ['a comment inside ${} in a template goes, the template text stays',
+                'const t = `a ${/* x */ 1} // b`;', 'const t = `a ${' + ' '.repeat(7) + ' 1} // b`;'],
         ];
         cases.forEach(([label, src, want]) => {
             check(label, stripSource(src, 'js') === want,
@@ -1816,6 +1827,26 @@ console.log('\n== 10. Design-system & recent-fix contracts ==');
         const tpl = 'const t = `\n// not a comment\n`;\nconst a = 1;';
         check('a //-looking line inside a template literal survives',
             stripSource(tpl, 'js').includes('// not a comment'), JSON.stringify(stripSource(tpl, 'js')));
+        // THE REGRESSION. An apostrophe inside a template literal ("We'll", app.js line
+        // 7,629) read as an opening quote to the old line scanner, which then kept every
+        // comment after it: 209KB of app.js. The parser is not fooled.
+        const apos = "const n = `We'll email you.` + \"We'll\";\n// a comment after it\nconst a = 1;";
+        check('a comment after an apostrophe inside a template literal still goes',
+            !stripSource(apos, 'js').includes('a comment after it'), JSON.stringify(stripSource(apos, 'js')));
+        // A stylesheet: comments go; a "/*" inside a string, an escape or a url() is not one.
+        // Between two pieces of code a comment goes outright: `.a/**/.b` is the selector
+        // .a.b, and spaces in its place would make it `.a .b`, a different one.
+        const cssCases = [
+            ['a trailing stylesheet comment goes, with the spaces before it', '  --x: 1; /* note */\n', '  --x: 1;\n'],
+            ['a whole-line stylesheet comment leaves an empty line', '/* whole */\na{}', '\na{}'],
+            ['a comment between two pieces of code goes outright', '.x/**/.y { color: red /* c */; }', '.x.y { color: red ; }'],
+            ['a "/*" inside a string is not a comment', 'a { content: "/* not */"; }', 'a { content: "/* not */"; }'],
+            ['…nor inside an unquoted url()', 'a { background: url(x/*y) }', 'a { background: url(x/*y) }'],
+            ['…nor after an escape', '.\\/* {}', '.\\/* {}'],
+        ];
+        cssCases.forEach(([label, src, want]) => {
+            check(label, stripSource(src, 'css') === want, JSON.stringify(stripSource(src, 'css')) + ' want ' + JSON.stringify(want));
+        });
         // THE INVARIANT that keeps stack traces honest, on the real files — every
         // file the deploy strips, read from the stripper's own list so a target
         // added there is checked here the same day.
@@ -1829,10 +1860,12 @@ console.log('\n== 10. Design-system & recent-fix contracts ==');
             check(`${f}: the line count is unchanged`,
                 src.split('\n').length === out.split('\n').length,
                 `${src.split('\n').length} -> ${out.split('\n').length}`);
-            if (kind === 'js') {
-                check(`${f}: the program is token-for-token identical`, verifyJs(src, out, f) === null,
-                    String(verifyJs(src, out, f)));
-            }
+            const same = kind === 'js' ? verifyJs(src, out, f) : verifyCss(src, out, f);
+            check(`${f}: the ${kind === 'js' ? 'program is token-for-token identical' : 'declarations and selectors are unchanged'}`, same === null, String(same));
+            // The half the first version never checked: the comments are gone.
+            const before = commentsLeft(src, kind);
+            const after = commentsLeft(out, kind);
+            check(`${f}: no comment is left (${before} before, ${after} after)`, before > 20 && after === 0);
             // …and it actually SAVES something, or the deploy step is theatre.
             const zlib = require('zlib');
             const saved = zlib.gzipSync(Buffer.from(src)).length - zlib.gzipSync(Buffer.from(out)).length;

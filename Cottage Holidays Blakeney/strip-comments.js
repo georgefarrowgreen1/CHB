@@ -1,95 +1,160 @@
 #!/usr/bin/env node
 // ============================================================================
-//  strip-comments.js — DEPLOY-TIME ONLY. Blanks full-line comments in the
-//  shipped scripts and stylesheets (TARGETS below), and verifies the result is
-//  the same program before letting it ship.
+//  strip-comments.js — DEPLOY-TIME ONLY. Takes the comments out of the shipped
+//  scripts and stylesheets (TARGETS below) and verifies the result is the same
+//  program before letting it ship.
 //
-//  WHY. Measured with node-zlib at the level perf-budget.js uses: app.js
-//  261.1 -> 159.6KB (-103,901 B, 39%), app.css 71.5 -> 36.7KB (-35,556 B, 49%),
-//  guest-app.css 8.2 -> 2.6KB (-5,743 B, 68%), guest-app.js 6.6 -> 3.3KB
-//  (-3,416 B, 50%). Total -145.1KB gz on a 461.4KB guest payload — 31.4% — plus
-//  ~245KB of raw JS a phone no longer has to parse. This codebase's comments are
-//  load-bearing documentation; they simply have no business on a guest's phone.
-//  admin.js and admin.css joined later (measured 674.6 -> 515.0KB and
-//  136.6 -> 67.6KB gz, -228.5KB together): the owner downloads them again after
-//  every release that changes them, usually on a phone.
+//  WHY. This codebase's comments are load-bearing documentation with no business
+//  on a guest's phone. Measured 22/10/2026 (node-zlib at perf-budget.js's level):
+//  app.js 338 -> 200KB gz, admin.js 681 -> 464KB, app.css 104 -> 49KB, and the
+//  two guest-app files to under a third. The host serves brotli, smaller again.
 //
-//  IT BLANKS LINES, IT DOES NOT DELETE THEM. Every stack-trace line number
-//  reported to client-error.php stays exact, which is what keeps the error log
-//  usable against a stripped artifact. Costs ~1,889 brotli bytes against the
-//  deleting variant (114,132 vs 116,021 saved) — a fair price for keeping the
-//  one diagnostic channel this app has.
+//  LINES ARE KEPT, NOT DELETED. Every stack-trace line number reported to
+//  client-error.php stays exact, which is what keeps the error log usable against
+//  a stripped artifact. In a script a comment with code after it on its line
+//  becomes spaces, so the columns stay exact too; a stylesheet has no stack trace,
+//  and there a comment between two pieces of code is removed outright, because
+//  `.a/**/.b` is one selector and `.a .b` is another.
 //
-//  FULL-LINE ONLY. A trailing `// …` after code and an inline `/** @type */`
-//  cast are left alone. That is what makes this provably safe rather than
-//  probably safe: nothing has to reason about strings, regex literals, template
-//  interpolation or division-vs-regex ambiguity, because a line that STARTS with
-//  a comment opener and ends its own comment cannot be inside any of them —
-//  except inside a multi-line template literal or block comment, which the
-//  scanner tracks explicitly below.
+//  COMMENTS ARE FOUND BY A PARSER, NOT BY LOOKING AT LINES. The first version
+//  guessed from each line where template literals began and ended, and an
+//  apostrophe inside one ("We'll email you…", app.js line 7,629) read as an
+//  opening quote: from there it believed code was template text and kept ~2,900
+//  comment lines, 209KB, in the file every guest downloads. Its verification
+//  proved only that the program was unchanged, so nothing noticed for weeks. Now a
+//  script's comments are the ranges TypeScript's own parser reports in the trivia
+//  before each token (so never inside a string, a regex or a template), a
+//  stylesheet's come from a small scanner that steps over strings, escapes and
+//  url(…), and the deploy fails if any comment is left.
 //
-//  AND THE ARTIFACT IS VERIFIED, not trusted. --verify parses both versions with
-//  the repo's own TypeScript and compares the token streams; any difference in
-//  identifiers, literals or structure fails the deploy. That check is what
-//  proved this safe in the first place.
+//  AND THE ARTIFACT IS VERIFIED, not trusted. --verify parses both versions of a
+//  script with the repo's own TypeScript and compares the token streams; any
+//  difference in identifiers, literals or structure fails the deploy. A
+//  stylesheet must keep every declaration and selector. Then both must hold no
+//  comment at all.
 // ============================================================================
 
 const fs = require('fs');
 const path = require('path');
 
-// A line is strippable when, ignoring leading whitespace, it is entirely a
-// comment. `state` carries whether we are inside a block comment or a template
-// literal across lines — the only two constructs where a `//` at line-start is
-// not a comment at all.
-function stripSource(src, kind) {
-    const lines = src.split('\n');
-    const out = new Array(lines.length);
-    let inBlock = false;   // inside /* … */
-    let inTpl = false;     // inside a `…` template literal (JS only)
-    for (let i = 0; i < lines.length; i++) {
-        const line = lines[i];
-        const t = line.trim();
-        if (inBlock) {
-            const end = line.indexOf('*/');
-            out[i] = end === -1 ? '' : line;      // a line that CLOSES a block may carry code after it
-            if (end !== -1) {
-                inBlock = false;
-                // Only blank it when nothing follows the closer.
-                if (line.slice(end + 2).trim() === '') out[i] = '';
-            }
-            continue;
-        }
-        if (inTpl) {
-            out[i] = line;
-            if (countUnescapedBackticks(line) % 2 === 1) inTpl = false;
-            continue;
-        }
-        // A whole-line // comment (JS only — CSS has no line comments).
-        if (kind === 'js' && t.startsWith('//')) { out[i] = ''; continue; }
-        // A whole-line /* … */ on one line.
-        if (t.startsWith('/*') && t.endsWith('*/') && t.length >= 4) { out[i] = ''; continue; }
-        // A block comment that OPENS this line and nothing precedes it.
-        if (t.startsWith('/*') && !t.includes('*/')) { out[i] = ''; inBlock = true; continue; }
-        // Otherwise the line has code. Track whether it leaves a template open.
-        out[i] = line;
-        if (kind === 'js' && countUnescapedBackticks(stripStringsRoughly(line)) % 2 === 1) inTpl = true;
-    }
-    return out.join('\n');
+function loadTs() {
+    try { return require('typescript'); } catch (e) { return null; }
+}
+function needTs() {
+    const ts = loadTs();
+    if (!ts) throw new Error('strip-comments: typescript must resolve from the app folder to strip a script (npm install --no-save typescript)');
+    return ts;
 }
 
-// Backticks that are not escaped. Rough is fine: it only decides whether to
-// keep the NEXT line verbatim, and keeping a line verbatim is always safe.
-function countUnescapedBackticks(s) {
-    let n = 0;
-    for (let i = 0; i < s.length; i++) {
-        if (s[i] === '`' && (i === 0 || s[i - 1] !== '\\')) n++;
+// Every comment in a script, as [start, end) ranges, from the trivia before each
+// token: the parser has already decided what is a string, a regex or template
+// text, so nothing in those can be mistaken for a comment.
+function jsCommentRanges(ts, src) {
+    const sf = ts.createSourceFile('strip.js', src, ts.ScriptTarget.Latest, true, ts.ScriptKind.JS);
+    const found = new Map();
+    const take = (r) => { if (!found.has(r.pos)) found.set(r.pos, r.end); };
+    const visit = (n) => {
+        if (n.kind >= ts.SyntaxKind.FirstJSDocNode && n.kind <= ts.SyntaxKind.LastJSDocNode) return;
+        const kids = n.getChildren(sf);
+        if (kids.length === 0) {
+            const at = n.getFullStart();
+            (ts.getTrailingCommentRanges(src, at) || []).forEach(take);
+            (ts.getLeadingCommentRanges(src, at) || []).forEach(take);
+            return;
+        }
+        kids.forEach(visit);
+    };
+    visit(sf);
+    return [...found.entries()].sort((a, b) => a[0] - b[0]);
+}
+
+// Every comment in a stylesheet. Only a string, an escape or an unquoted url(…)
+// can hold a "/*" that is not a comment, and each is stepped over whole.
+function cssCommentRanges(src) {
+    const out = [];
+    let i = 0;
+    while (i < src.length) {
+        const c = src[i];
+        if (c === '\\') {
+            i += 2;
+        } else if (c === '"' || c === "'") {
+            i++;
+            while (i < src.length && src[i] !== c && src[i] !== '\n') i += src[i] === '\\' ? 2 : 1;
+            i++;
+        } else if (c === '/' && src[i + 1] === '*') {
+            const end = src.indexOf('*/', i + 2);
+            const e = end === -1 ? src.length : end + 2;
+            out.push([i, e]);
+            i = e;
+        } else if ((c === 'u' || c === 'U') && /^url\(\s*[^\s"')]/i.test(src.slice(i, i + 40))) {
+            const end = src.indexOf(')', i);
+            i = end === -1 ? src.length : end + 1;
+        } else {
+            i++;
+        }
     }
+    return out;
+}
+
+function commentRanges(src, kind) {
+    return kind === 'css' ? cssCommentRanges(src) : jsCommentRanges(needTs(), src);
+}
+
+// How many comments a file still holds, counted WITHOUT the finder above: a count
+// that used the finder would go blind with it. In a script, everything between two
+// tokens is whitespace or comment, so any text there is a comment left behind; in a
+// stylesheet, a plain pattern (no "/*" sits inside a string in these files).
+function commentsLeft(src, kind) {
+    if (kind === 'css') return (src.match(/\/\*[\s\S]*?\*\//g) || []).length;
+    const ts = needTs();
+    const sf = ts.createSourceFile('left.js', src, ts.ScriptTarget.Latest, true, ts.ScriptKind.JS);
+    let n = 0;
+    const visit = (node) => {
+        const kids = node.getChildren(sf);
+        if (kids.length === 0) {
+            if (/\S/.test(src.slice(node.getFullStart(), node.getStart(sf)))) n++;
+            return;
+        }
+        kids.forEach(visit);
+    };
+    visit(sf);
     return n;
 }
 
-// Remove quoted runs so a backtick inside '…' or "…" does not open a template.
-function stripStringsRoughly(s) {
-    return s.replace(/'(?:\\.|[^'\\])*'/g, "''").replace(/"(?:\\.|[^"\\])*"/g, '""');
+// Takes the ranges out. A comment with only spaces after it on its line goes with
+// the spaces before it, which leaves a comment-only line empty. One with code after
+// it becomes spaces in a script and goes in a stylesheet. A comment over several
+// lines keeps its line breaks, which also keeps what JavaScript reads as the end of
+// a statement.
+function stripRanges(src, ranges, keepColumns) {
+    const parts = [];
+    const trimTail = () => {
+        while (parts.length) {
+            const p = parts[parts.length - 1];
+            let e = p.length;
+            while (e > 0 && (p[e - 1] === ' ' || p[e - 1] === '\t')) e--;
+            if (e > 0) { parts[parts.length - 1] = p.slice(0, e); return; }
+            parts.pop();
+        }
+    };
+    let last = 0;
+    for (const [a, b] of ranges) {
+        parts.push(src.slice(last, a));
+        const body = src.slice(a, b);
+        const lineEnd = src.indexOf('\n', b);
+        const codeAfter = src.slice(b, lineEnd === -1 ? src.length : lineEnd).trim() !== '';
+        const lines = body.split('\n');
+        if (lines.length > 1 || !codeAfter) trimTail();
+        if (lines.length > 1) parts.push('\n'.repeat(lines.length - 1));
+        if (codeAfter && keepColumns) parts.push(' '.repeat(lines[lines.length - 1].length));
+        last = b;
+    }
+    parts.push(src.slice(last));
+    return parts.join('');
+}
+
+function stripSource(src, kind) {
+    return stripRanges(src, commentRanges(src, kind), kind !== 'css');
 }
 
 // ---- verification: same program, or the deploy stops --------------------
@@ -168,6 +233,10 @@ function main() {
         if (verify) {
             const err = kind === 'js' ? verifyJs(before, after, name) : verifyCss(before, after, name);
             if (err) { console.log(`  ✗ ${err}`); failed++; continue; }
+            // The other half: the comments are actually gone. Proving only that the
+            // program is unchanged let a stripper that had stopped stripping ship.
+            const left = commentsLeft(after, kind);
+            if (left) { console.log(`  ✗ ${name}: ${left} comment(s) left after stripping`); failed++; continue; }
         }
         const zlib = require('zlib');
         const gb = zlib.gzipSync(Buffer.from(before)).length;
@@ -183,4 +252,4 @@ function main() {
 }
 
 if (require.main === module) main();
-module.exports = { stripSource, verifyJs, verifyCss, TARGETS };
+module.exports = { stripSource, commentsLeft, verifyJs, verifyCss, TARGETS };
