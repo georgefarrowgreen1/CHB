@@ -493,6 +493,18 @@ foreach ($phpRows as [$phpLabel, $phpStatus, $phpDetail]) {
     add($checks, 'Security', $phpLabel, $phpStatus, $phpDetail);
 }
 
+// THE SERVER FILE CHECK's last report (the weekly GitHub job compares every file on the
+// host with what the deploy uploaded). No row until it has run once.
+try {
+    $scRow = db()->query("SELECT summary, severity, meta, created_at FROM activity_log WHERE action = 'server.check' ORDER BY id DESC LIMIT 1")->fetch();
+} catch (\Throwable $e) {
+    $scRow = false;
+}
+$sc = status_server_check_row(is_array($scRow) ? $scRow : null, time());
+if ($sc) {
+    add($checks, 'Security', $sc[0], $sc[1], $sc[2], $sc[1] === 'ok' ? '' : 'The check\'s run on GitHub (Actions, "Check the server\'s files") names each file.');
+}
+
 // A NARROWER OUTSIDE-CODE RULE ON TRIAL (first used for the security leftovers' Step 5,
 // now enforced): what it would have stopped in the last week, so it can be switched on
 // with the facts in front of you. Shown only while a trial runs (csp-trial.php, from

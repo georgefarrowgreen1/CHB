@@ -37,6 +37,7 @@ function status_warn_kind($action, $summary = '')
         'night.reject' => ['The Mac assistant sent something that was refused', 'No action — nothing was stored', false],
         'config.change' => ['A setting changed', 'No action if it was you', false],
         'guest_save_failed' => ['A guest’s details didn’t save', 'Worth a look — ask them to try again', true],
+        'server.check' => ['Files on the server need a look', 'Needs you — the server file check names them', true],
     ];
     if (isset($K[$action])) {
         return ['title' => $K[$action][0], 'verdict' => $K[$action][1], 'needs' => $K[$action][2], 'known' => true];
@@ -156,4 +157,28 @@ function status_php_rows(int $major, int $minor, int $release, array $wa): array
         $rows[] = ['PHP workaround', 'warn', 'The temporary fix for one of the two flaws is not on yet, which can take up to ' . $mins . ' minute' . ($mins === 1 ? '' : 's') . ' after an update.'];
     }
     return $rows;
+}
+
+// THE SERVER FILE CHECK (.github/workflows/server-check.yml) reports each run to
+// server-check.php, which logs it as 'server.check'. $row is the newest such row
+// (summary, severity, meta, created_at) or null; returns the Status row, or null before
+// the check has ever run (nothing to say yet). A run more than 15 days old is a
+// warning: the check runs weekly, and one that has stopped says nothing at all.
+function status_server_check_row(?array $row, int $now): ?array
+{
+    if (!$row) {
+        return null;
+    }
+    $at = strtotime((string) ($row['created_at'] ?? '')) ?: 0;
+    $day = $at ? date('d/m/Y', $at) : 'an unknown date';
+    if ($now - $at > 15 * 86400) {
+        return ['Server files', 'warn', 'The weekly server file check last reported on ' . $day . ', so it may have stopped running.'];
+    }
+    $meta = json_decode((string) ($row['meta'] ?? ''), true);
+    $found = is_array($meta) ? (int) ($meta['found'] ?? 0) : 0;
+    if (($row['severity'] ?? '') === 'warn' || $found > 0) {
+        $found = max(1, $found);
+        return ['Server files', 'warn', $found . ' thing' . ($found === 1 ? '' : 's') . ' on the server need' . ($found === 1 ? 's' : '') . ' a look, found on ' . $day . ' by the server file check, which names them.'];
+    }
+    return ['Server files', 'ok', 'Checked ' . $day . '.'];
 }

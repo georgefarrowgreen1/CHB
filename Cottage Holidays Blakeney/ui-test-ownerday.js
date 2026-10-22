@@ -91,11 +91,14 @@ const mkE = (id, prop, name, inD, outD, hours, seen) => ({
         if (url.includes('enquiries.php')) {
             if (act === 'declined') return json({ ok: true, enquiries: declined });
             return json({ enquiries: [
-                // Two UNSEEN enquiries. Their subs are the same length on
-                // purpose — §3's question is whether the STATUS text decides
-                // the row's height, so nothing else may differ in length.
-                mkE(7, '21a', 'Jane Doe', 20, 24, 130, null),      // 5 days waiting → stale
-                mkE(8, 'jollyboat', 'Ravi Shah', 20, 24, 4, null), // fresh
+                // Two UNSEEN enquiries for the SAME cottage and dates — §3's
+                // question is whether the STATUS text decides the row's height,
+                // so nothing else may differ. They were on two cottages, and the
+                // row names the cottage in full: "21A Westgate" is three letters
+                // longer than "Jollyboat", so on days whose date range is long
+                // enough ("11–15 Nov") one context line wrapped and the other did not.
+                mkE(7, '21a', 'Jane Doe', 20, 24, 130, null), // 5 days waiting → stale
+                mkE(8, '21a', 'Ravi Shah', 20, 24, 4, null),  // fresh
             ] });
         }
         if (url.includes('messages.php')) {

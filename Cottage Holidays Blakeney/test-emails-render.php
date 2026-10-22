@@ -313,37 +313,30 @@ $JOBS = [
 // in two places is the shape check-versions already learned to derive rather than
 // hardcode.
 echo "-- \u{00A7}0 no test file ships --\n";
-$dep = @file_get_contents(dirname($APP) . '/.github/workflows/deploy.yml');
-if ($dep === false) {
+// Both deploy jobs build what they upload with .github/scripts/stage-site.sh, which strips
+// tests BY PATTERN. This runs it (without the build step) and checks what it leaves,
+// rather than parsing its commands.
+$stageSh = dirname($APP) . '/.github/scripts/stage-site.sh';
+if (!is_file($stageSh)) {
     // Running outside a checkout (or from the deployed tree, where this file is not
     // supposed to exist at all). Not a failure; just nothing to say.
-    chk('deploy.yml not present — skipping the strip check', true);
+    chk('stage-site.sh not present — skipping the strip check', true);
 } else {
-    $rmLines = [];
-    foreach (explode("\n", $dep) as $line) {
-        if (strpos($line, 'rm -f') !== false) {
-            $rmLines[] = $line;
-        }
-    }
-    // Vacuity guard: with no rm lines found, everything below passes trivially.
-    chk('deploy.yml still strips files (' . count($rmLines) . ' rm lines found)', count($rmLines) >= 2);
+    $stageOut = sys_get_temp_dir() . '/chb-stage-emails-' . getmypid();
+    $stageLog = [];
+    exec('bash ' . escapeshellarg($stageSh) . ' ' . escapeshellarg($APP) . ' ' . escapeshellarg($stageOut) . ' --no-build 2>&1', $stageLog, $stageRc);
+    // Vacuity guard: a staging that produced nothing would pass everything below.
+    $stagedPhp = count(glob($stageOut . '/*.php') ?: []);
+    chk('the deploy\'s staging ran (' . $stagedPhp . ' PHP files)', $stageRc === 0 && $stagedPhp > 50);
     $tests = array_map('basename', glob($APP . '/test-*.php'));
-    $shipped = [];
-    foreach ($tests as $t) {
-        $seen = 0;
-        foreach ($rmLines as $line) {
-            if (strpos($line, '/' . $t . '"') !== false) {
-                $seen++;
-            }
-        }
-        if ($seen < 2) {
-            $shipped[] = $t . ($seen ? ' (only ' . $seen . ' of the 2 passes)' : '');
-        }
-    }
-    chk('every test-*.php is stripped from BOTH deploy passes (' . count($tests) . ' checked)', $shipped === []);
+    $shipped = array_values(array_filter($tests, fn($t) => file_exists($stageOut . '/' . $t)));
+    chk('no test-*.php ships (' . count($tests) . ' checked)', $stagedPhp > 50 && $shipped === []);
     if ($shipped) {
         echo '        would ship: ' . implode(', ', $shipped) . "\n";
     }
+    exec('rm -rf ' . escapeshellarg($stageOut));
+    $dep = (string) @file_get_contents(dirname($APP) . '/.github/workflows/deploy.yml');
+    chk('both deploy jobs (production and staging) stage with that script', substr_count($dep, 'bash .github/scripts/stage-site.sh "Cottage Holidays Blakeney" deploy') === 2);
 }
 
 // ============================================================================

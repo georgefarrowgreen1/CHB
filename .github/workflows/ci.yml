@@ -14,27 +14,34 @@ concurrency:
   group: ci-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
+# The workflow's own GitHub token can read this repository and nothing more. Every
+# action below is pinned to a full commit, not a tag its publisher can move.
+permissions:
+  contents: read
+
 jobs:
   checks:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           # check-versions.js diffs against the PR base commit.
           fetch-depth: 0
+          persist-credentials: false
 
       - name: Set up Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
-          node-version: '20'
+          node-version: '22'
+          package-manager-cache: false
 
       # PIN PHP: ubuntu-latest's default PHP jumps whenever GitHub rolls the
       # runner image — tests would silently start running on a version the
       # IONOS host doesn't. Keep this pinned to the host's PHP major.minor
       # (check Manage → System diagnostics) and bump both together.
       - name: Set up PHP 8.3 (pinned to the production host)
-        uses: shivammathur/setup-php@v2
+        uses: shivammathur/setup-php@eb7c497e18156a6bbabfef1d3a82760b9eda3962 # 2.40.0
         with:
           php-version: '8.3'
           extensions: mbstring, pdo_mysql, mysqli, gd, curl
@@ -54,7 +61,7 @@ jobs:
       # can only run on a developer's machine is the vacuity trap this file
       # warns about everywhere else. The later steps reuse this install.
       - name: Cache npm (eslint + typescript)
-        uses: actions/cache@v4
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ~/.npm
           key: npm-eslint-${{ runner.os }}-v1
@@ -195,6 +202,9 @@ jobs:
       - name: The scheduled jobs' own key (the master key in no address)
         working-directory: "Cottage Holidays Blakeney"
         run: php test-cron-key.php
+
+      - name: The server file check's judgement (what needs a look, what is never named)
+        run: node .github/scripts/test-server-check.js
 
       - name: Weekly backup encryption (opens with the real openssl binary)
         working-directory: "Cottage Holidays Blakeney"
@@ -339,7 +349,7 @@ jobs:
       # PHPStan's RESULT cache — unchanged files aren't re-analysed, which cuts
       # the analyse step from ~20s to a few seconds on typical PRs.
       - name: Cache PHPStan (phar + result cache)
-        uses: actions/cache@v4
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: |
             /tmp/phpstan.phar
@@ -365,11 +375,13 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
       # Same PHP pin as the checks job (see the comment there).
       - name: Set up PHP 8.3 (pinned to the production host)
-        uses: shivammathur/setup-php@v2
+        uses: shivammathur/setup-php@eb7c497e18156a6bbabfef1d3a82760b9eda3962 # 2.40.0
         with:
           php-version: '8.3'
           extensions: mbstring, pdo_mysql, mysqli, gd, curl
@@ -397,9 +409,10 @@ jobs:
     # here BEFORE it starts failing rather than after.
     timeout-minutes: 25
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
+          persist-credentials: false
 
       # Only the browser/layout suites care about rendered output — skip the
       # (slow) browser install + tests when a PR touches nothing that renders.
@@ -422,13 +435,14 @@ jobs:
 
       - name: Set up Node
         if: steps.fe.outputs.run == 'true'
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
-          node-version: '20'
+          node-version: '22'
+          package-manager-cache: false
 
       - name: Cache Playwright browsers
         if: steps.fe.outputs.run == 'true'
-        uses: actions/cache@v4
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ~/.cache/ms-playwright
           key: playwright-${{ runner.os }}-chromium-1.61.1
@@ -522,9 +536,10 @@ jobs:
       matrix:
         engine: [chromium, webkit]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
+          persist-credentials: false
 
       # Same path filter as browser-core: skip the layout gate on backend-only
       # PRs. Job still reports SUCCESS; fail-safe runs everything if unsure.
@@ -545,13 +560,14 @@ jobs:
 
       - name: Set up Node
         if: steps.fe.outputs.run == 'true'
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
-          node-version: '20'
+          node-version: '22'
+          package-manager-cache: false
 
       - name: Cache Playwright browsers
         if: steps.fe.outputs.run == 'true'
-        uses: actions/cache@v4
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ~/.cache/ms-playwright
           key: playwright-${{ runner.os }}-${{ matrix.engine }}-1.61.1
@@ -630,7 +646,7 @@ jobs:
       # eyeball the design straight from the PR checks page.
       - name: Upload layout screenshots
         if: always() && steps.fe.outputs.run == 'true'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: layout-shots-${{ matrix.engine }}
           path: "Cottage Holidays Blakeney/layout-shots/"

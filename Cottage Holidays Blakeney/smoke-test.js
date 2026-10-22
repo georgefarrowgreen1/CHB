@@ -1818,12 +1818,14 @@ console.log('\n== 10. Design-system & recent-fix contracts ==');
             const saved = zlib.gzipSync(Buffer.from(src)).length - zlib.gzipSync(Buffer.from(out)).length;
             check(`${f}: it saves real bytes (${(saved / 1024).toFixed(1)}KB gz)`, saved > 2000, String(saved));
         });
-        // Both deploy jobs must run it, or the guest payload never shrinks.
+        // The deploy's staging script must run it, with --verify, and both deploy jobs must
+        // stage with that script, or the guest payload never shrinks.
+        const stage = fs.readFileSync(path.join(__dirname, '..', '.github', 'scripts', 'stage-site.sh'), 'utf8');
         const dep = fs.readFileSync(path.join(__dirname, '..', '.github', 'workflows', 'deploy.yml'), 'utf8');
-        const runs = (dep.match(/strip-comments\.js" "\$OUT" --verify/g) || []).length;
-        check('both deploy jobs strip, with --verify (production + staging)', runs === 2, String(runs));
-        check('…and the stripper itself is removed from the artifact',
-            (dep.match(/rm -f "\$OUT\/strip-comments\.js"/g) || []).length === 2);
+        check('the staging script strips, with --verify', /node "\$OUT\/strip-comments\.js" "\$OUT" --verify/.test(stage));
+        check('…and both deploy jobs (production + staging) stage with it',
+            (dep.match(/bash \.github\/scripts\/stage-site\.sh "Cottage Holidays Blakeney" deploy/g) || []).length === 2);
+        check('…and the stripper itself never ships', !stagedFiles().has('strip-comments.js') && stagedFiles().size > 200);
     }
 
     // §12f THE FONTS ARE VERSIONED BY THEIR OWN CONTENT.
@@ -2138,6 +2140,34 @@ if (typeof get('chbSwallow') !== 'function') {
     check('survives a missing report hook', !threw3);
 }
 
+// What the deploy would upload: .github/scripts/stage-site.sh run without its build
+// step (no network or tools), into a temporary folder, as a set of relative paths.
+// Run once and kept; an empty set when it cannot run, which the checks then report.
+function stagedFiles() {
+    if (stagedFiles.memo) return stagedFiles.memo;
+    const os = require('os');
+    const { execFileSync } = require('child_process');
+    const out = fs.mkdtempSync(path.join(os.tmpdir(), 'chb-stage-'));
+    const files = new Set();
+    try {
+        execFileSync('bash', [path.join(__dirname, '..', '.github', 'scripts', 'stage-site.sh'), __dirname, out, '--no-build'], { stdio: 'pipe' });
+        const walk = (dir, rel) => {
+            for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
+                const r = rel ? rel + '/' + e.name : e.name;
+                if (e.isDirectory()) walk(path.join(dir, e.name), r);
+                else files.add(r);
+            }
+        };
+        walk(out, '');
+    } catch (e) {
+        console.log('    (stage-site.sh could not run: ' + String(e.message).split('\n')[0] + ')');
+    } finally {
+        fs.rmSync(out, { recursive: true, force: true });
+    }
+    stagedFiles.memo = files;
+    return files;
+}
+
 // ============================================================
 //  §7. EVERY REQUIRED FILE IS ACTUALLY DEPLOYED.
 //  A `require_once __DIR__ . '/x.php'` is a file its endpoint cannot run without.
@@ -2152,16 +2182,11 @@ if (typeof get('chbSwallow') !== 'function') {
 // ============================================================
 console.log('\n== 7. Every required PHP file survives the deploy ==');
 {
-    const wf = fs.readFileSync(path.join(__dirname, '..', '.github', 'workflows', 'deploy.yml'), 'utf8');
-    // The deploy stages a copy of the app folder then `rm -f`s the dev-only files.
-    // Collect every basename those lines remove.
-    const stripped = new Set();
-    for (const m of wf.matchAll(/rm -f ([^\n]+)/g)) {
-        for (const t of m[1].matchAll(/"\$OUT\/([^"]+)"|"\$OUT"\/(\S+)/g)) {
-            stripped.add((t[1] || t[2]).replace(/^\//, ''));
-        }
-    }
-    check(`the deploy's strip list was parsed (${stripped.size} entries)`, stripped.size > 20);
+    // What the deploy uploads is what .github/scripts/stage-site.sh leaves, so this RUNS
+    // it (without the build step) and reads the result, rather than parsing the commands
+    // that decide it: the outcome, not the ingredient.
+    const shipped = stagedFiles();
+    check(`the deploy's staging ran (${shipped.size} files)`, shipped.size > 200);
     // Every require target, derived from the source rather than listed here.
     const required = new Set();
     for (const f of fs.readdirSync(__dirname).filter((x) => x.endsWith('.php'))) {
@@ -2171,10 +2196,32 @@ console.log('\n== 7. Every required PHP file survives the deploy ==');
         }
     }
     check(`require targets were derived (${required.size} files)`, required.size > 20);
-    // config.php is the one legitimate exception: it IS stripped, because the host
-    // keeps its own (the deploy never deletes remote-only files).
-    const clash = [...required].filter((f) => stripped.has(f) && f !== 'config.php');
-    check(`no required file is stripped from the deploy${clash.length ? ' — ' + clash.join(', ') : ''}`, clash.length === 0);
+    // config.php is the one legitimate exception: it never ships, because the host keeps
+    // its own (the deploy never deletes remote-only files).
+    const clash = [...required].filter((f) => !shipped.has(f) && f !== 'config.php');
+    check(`every required file ships${clash.length ? ' — not shipped: ' + clash.join(', ') : ''}`, clash.length === 0);
+    check('config.php never ships (the host keeps its own)', !shipped.has('config.php'));
+    // Nothing that only builds or tests the site reaches the host. By pattern, as the
+    // script strips them, so a new test or fixture is covered the day it is added.
+    const dev = [...shipped].filter((f) => /^(test-.*\.(php|js)|ui-test.*\.js|.*-test\.js|.*-fixtures\.json|.*-budget\.json|.*\.md|phpstan.*|package(-lock)?\.json|strip-comments\.js|htaccess\.txt|index\.backup-.*\.html)$/.test(f)
+        || /^(node_modules|layout-shots|\.phpstan-cache)\//.test(f));
+    check(`nothing that builds or tests the site ships${dev.length ? ' — ' + dev.slice(0, 8).join(', ') : ''}`, dev.length === 0);
+    check('the Apache rules ship as .htaccess', shipped.has('.htaccess'));
+    // The scripts a browser loads are a decision: a new one must be added here on
+    // purpose, so a dev tool can't ship by accident and a page script can't be missed.
+    const js = [...shipped].filter((f) => !f.includes('/') && f.endsWith('.js')).sort();
+    check(`the shipped scripts are exactly the site's own (${js.join(', ')})`,
+        JSON.stringify(js) === JSON.stringify(['admin.js', 'app.js', 'guest-app.js', 'status.js', 'sw.js']));
+    // The runtime folders ship as their guard files only (a working copy has photos and
+    // session files in them; the host keeps its own).
+    const runtime = [...shipped].filter((f) => /^(uploads|sessions|backups)\//.test(f)).sort();
+    check(`the runtime folders ship as their guards only (${runtime.join(', ')})`,
+        JSON.stringify(runtime) === JSON.stringify(['backups/.htaccess', 'sessions/.gitignore', 'sessions/.htaccess', 'uploads/.htaccess', 'uploads/README.txt']));
+    // Both deploy jobs and the server check build with the one script.
+    const wf = fs.readFileSync(path.join(__dirname, '..', '.github', 'workflows', 'deploy.yml'), 'utf8');
+    check('both deploy jobs stage with stage-site.sh', (wf.match(/bash \.github\/scripts\/stage-site\.sh "Cottage Holidays Blakeney" deploy/g) || []).length === 2);
+    const sc = fs.readFileSync(path.join(__dirname, '..', '.github', 'scripts', 'server-check.sh'), 'utf8');
+    check('the server check builds what it compares with stage-site.sh too', /stage-site\.sh/.test(sc));
     // A required file must also EXIST in the repo, or the checkout ships a dangling
     // require — the same fatal, one step earlier.
     const absent = [...required].filter((f) => !fs.existsSync(path.join(__dirname, f)));
@@ -2574,6 +2621,37 @@ console.log('\n§14 A front-end change runs the browser tests');
     const files = [...new Set([...core, 'sw.js', 'admin.js', 'admin.css', 'admin-views.html', ...harness])];
     const missed = files.filter((f) => !runs.test('Cottage Holidays Blakeney/' + f));
     check(`every front-end file triggers the browser jobs (${files.length} files)`, core.length >= 5 && harness.length >= 20 && missed.length === 0, missed.join(', '));
+}
+
+// ============================================================
+//  §15 — THE PIPELINE RUNS PINNED CODE WITH THE LEAST ACCESS.
+//  The deploy job holds the server's password and the master key, and this
+//  repository is public. A step named by a tag runs whatever its publisher points the
+//  tag at next; a token that can write can be used to; credentials kept in .git/config
+//  outlive the step that needed them. And every connection to the host goes through
+//  .github/scripts/sftp.sh, the one place for its settings.
+// ============================================================
+console.log('\n§15 The pipeline runs pinned code with the least access');
+{
+    const wfDir = path.join(__dirname, '..', '.github', 'workflows');
+    const wfs = fs.readdirSync(wfDir).filter((f) => f.endsWith('.yml'));
+    check(`the workflows were read (${wfs.join(', ')})`, wfs.length >= 3);
+    for (const f of wfs) {
+        const src = fs.readFileSync(path.join(wfDir, f), 'utf8');
+        const uses = [...src.matchAll(/^\s*(?:-\s+)?uses:\s*(\S+)(.*)$/gm)];
+        const loose = uses.filter((m) => !/@[0-9a-f]{40}$/.test(m[1]) || !/#\s*v?\d/.test(m[2])).map((m) => m[1]);
+        check(`${f}: every action is pinned to a full commit, with its version beside it${loose.length ? ' — ' + loose.join(', ') : ''}`, uses.length > 0 && loose.length === 0);
+        check(`${f}: its token can read the repository and nothing more`, /^permissions:\n  contents: read\n/m.test(src) && !/write/.test((src.match(/^permissions:[\s\S]*?(?=^\S)/m) || [''])[0]));
+        const checkouts = uses.filter((m) => /^actions\/checkout@/.test(m[1])).length;
+        check(`${f}: no checkout keeps the token in git's config (${checkouts})`, (src.match(/persist-credentials: false/g) || []).length === checkouts);
+        check(`${f}: connects to the host only through sftp.sh`, !/^\s+lftp\s/m.test(src));
+    }
+    const sftp = fs.readFileSync(path.join(__dirname, '..', '.github', 'scripts', 'sftp.sh'), 'utf8');
+    check('sftp.sh fails the job on a failed transfer', /set cmd:fail-exit yes/.test(sftp));
+    check('…lands each upload by rename, from a temporary *.lftp name', /set xfer:use-temp-file yes; set xfer:temp-file-name '\*\.lftp'/.test(sftp));
+    check('…which the host refuses to serve', /\.\(bak\|old\|orig\|save\|swp\|swo\|tmp\|lftp\)\$/.test(fs.readFileSync(path.join(__dirname, 'htaccess.txt'), 'utf8')));
+    check('…checks the host key against the pinned keys when there are any', /StrictHostKeyChecking=yes/.test(sftp) && /sftp-host-keys/.test(sftp));
+    check('…and keeps the password off every command line', /--env-password/.test(sftp) && !/-u "\$USERNAME,/.test(sftp));
 }
 
 Promise.all(pendingChecks).then(() => {

@@ -154,9 +154,15 @@ async function bootBrowser() {
         } catch (e) {}
     });
     // Wait for php -S to actually accept connections (a fixed sleep flakes on slow CI runners).
+    // The body is read, never left: Node 22's fetch holds an unread body paused,
+    // and when php -S closes the socket under it the process dies on an internal
+    // assertion (assert(!this.paused)) before the suite prints a line. Measured
+    // with PHP 8.3 and Node 22.23.4: two runs in three crashed until it was read.
     for (let i = 0; i < 60; i++) {
         try {
-            if ((await fetch(`http://127.0.0.1:${port}/index.html`)).ok) break;
+            const res = await fetch(`http://127.0.0.1:${port}/index.html`);
+            await res.arrayBuffer();
+            if (res.ok) break;
         } catch (e) {}
         await new Promise((r) => setTimeout(r, 250));
     }
