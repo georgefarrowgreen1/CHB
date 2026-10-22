@@ -13,6 +13,7 @@
 require_once __DIR__ . '/db.php';
 require_once __DIR__ . '/jobs-lib.php'; // weekly_due
 require_once __DIR__ . '/mailer.php';
+require_once __DIR__ . '/pricing.php'; // booking_owed_volunteered: the money owed line
 
 $isCron = cron_request_ok();
 if (!$isCron) {
@@ -153,26 +154,25 @@ try {
     /* pre-migration — direct arrivals still listed */
 }
 
-// ---- Money owed: future, not fully paid ---------------------------------
+// ---- Money owed: Today's "£X to collect", to the penny ---------------------
+// booking_owed_volunteered is the server's chbOwedOf: the refundable deposit still to
+// take counts, a guest staying now or gone in the last fortnight counts, and money the
+// owner collects personally (the cash/bank rail) never does. This read only the rental
+// of stays still to arrive (agreed_total - deposit_paid, check_in >= today), so a guest
+// in the cottage owing £300 was left out, and a deposit still to take never counted.
 $owedCount = 0;
 $owedSum = 0.0;
 try {
-    $s = db()->query("SELECT $totalExpr AS total, deposit_paid, payment_method FROM bookings
-                      WHERE payment <> 'paid' AND check_in >= CURDATE()");
+    $s = db()->prepare('SELECT * FROM bookings WHERE check_out >= ?');
+    $s->execute([date('Y-m-d', strtotime(date('Y-m-d') . ' 12:00:00') - OWED_VOLUNTEER_DAYS * 86400)]);
     foreach ($s->fetchAll() as $b) {
-        // Owner-arranged money (the cash/bank rail) is never volunteered — the
-        // same rule Today's strip and header follow (owner's ask, 06 Aug):
-        // those deposits and prices are discussed personally, so the digest's
-        // "Balances owed" line must not count them either.
-        if (payment_rail($b) !== 'card') {
-            continue;
-        }
-        $out = round((float) $b['total'] - (float) $b['deposit_paid'], 2);
-        if ($out > 0.009) {
+        $out = booking_owed_volunteered($b);
+        if ($out > 0) {
             $owedCount++;
             $owedSum += $out;
         }
     }
+    $owedSum = round($owedSum, 2);
 } catch (\Throwable $e) {
 }
 
@@ -320,6 +320,7 @@ json_out([
     'received' => $received,
     'arrivals' => count($arrivals),
     'owed' => $owedCount,
+    'owed_sum' => $owedSum,
     'pending' => $pending,
     'occupancy_pct' => $occPct,
     'mail' => $res,

@@ -3394,15 +3394,13 @@ function nlgPick(seed, arr) {
 function chbNlgBrief() {
     try {
         const today = todayDashed();
-        let arr = 0, dep = 0, owed = 0;
+        let arr = 0, dep = 0;
         Object.keys(dbBookings || {}).forEach((pk) => (dbBookings[pk] || []).forEach((b) => {
             if (b.checkIn === today) arr++;
             if (b.checkOut === today) dep++;
-            // A throw here would drop this booking's balance from the day's "to
-            // collect" total — the owner would read a figure that's quietly too
-            // low — so record it instead of losing it.
-            try { const ps = bookingDue(pk, b); if (!ps.fullyPaid && ps.balance > 0.5 && (b.checkOut || '') >= today && !bookingOwnerArranged(b)) owed += ps.balance; } catch (e) { chbSwallow(e, 'brief-owed'); }
         }));
+        // The figure Today's pill states (chbOwedTotals), never a third derivation.
+        const owed = chbOwedTotals().sum;
         Object.keys((typeof dbBlocks === 'object' && dbBlocks) || {}).forEach((pk) => (dbBlocks[pk] || []).forEach((bl) => {
             if (isOtaBlock(bl)) { if (bl.checkIn === today) arr++; if (bl.checkOut === today) dep++; }
         }));
@@ -5071,21 +5069,27 @@ function cmdkIntent(q) {
         const head = ans(dHead, n ? 'They’ve checked out — refund the damages deposit' : 'Nothing waiting', () => { closeCmdK(); openBookings(); });
         return [head].concat(rows.map((x) => bk(x.pk, x.b, `Checked out ${fmtDate(x.b.checkOut)} · ${propName(x.pk)}`)));
     }
-    // 0g) Balances to chase — unpaid, arriving within three weeks or already overdue.
+    // 0g) Balances to chase — Today's own list (chbChaseList): due now under the
+    // booking's plan, the sum a chase would send. This had its own rule (arriving
+    // within 21 days, the whole balance) and so listed a guest whose card collects
+    // the money itself, a guest the owner collects from personally, and a balance a
+    // custom plan had not asked for yet, beside a Needs-you strip that named none.
     if (/overdue|to chase|\bchase\b|chasing|behind|due soon|balances? (due|to chase|overdue|outstanding)|payments? (due|overdue)/.test(q)) {
-        const rows = flat
-            .map((x) => ({ x, ps: bookingDue(x.pk, x.b) }))
-            .filter((r) => !r.ps.fullyPaid && r.ps.balance > 0.5)
-            .map((r) => ({ ...r, days: Math.round((new Date((r.x.b.checkIn || today) + 'T00:00:00') - new Date(today + 'T00:00:00')) / 86400000) }))
-            .filter((r) => r.days <= 21)
-            .sort((a, b) => a.days - b.days);
-        const totalDue = rows.reduce((s, r) => s + r.ps.balance, 0);
+        const rows = chbChaseList();
+        const totalDue = rows.reduce((s, r) => s + r.amount, 0);
         const head = ans(
             rows.length ? `${rows.length} balance${rows.length === 1 ? '' : 's'} to chase · ${gbp(totalDue)}` : 'Nothing to chase',
-            rows.length ? 'Due soon or overdue — the “to collect” line on Today lists them' : 'All balances are in hand',
+            rows.length ? 'Due now — Today’s Needs you lists them' : 'All balances are in hand',
             () => { closeCmdK(); Promise.resolve(openBookings()).then(() => bookingsSetFilter('needspay')); },
         );
-        return [head].concat(rows.slice(0, 12).map((r) => { const when = r.days < 0 ? `overdue — was due ${fmtDate(r.x.b.checkIn)}` : r.days === 0 ? 'arrives today' : r.days === 1 ? 'arrives tomorrow' : `arrives in ${r.days} days`; return bk(r.x.pk, r.x.b, `${gbp(r.ps.balance)} · ${when} · ${propName(r.x.pk)}`); }));
+        return [head].concat(rows.slice(0, 12).map((r) => {
+            const gone = (r.b.checkOut || '') < today;
+            const when = !r.late ? (r.days === 0 ? 'arrives today' : r.days === 1 ? 'arrives tomorrow' : `arrives in ${r.days} days`)
+                : gone ? `overdue — left ${fmtDate(r.b.checkOut)}`
+                    : r.days < 0 ? 'overdue — staying now'
+                        : r.dueDate ? `overdue — was due ${fmtDate(r.dueDate)}` : 'overdue';
+            return bk(r.k, r.b, `${gbp(r.amount)} · ${when} · ${propName(r.k)}`);
+        }));
     }
     // 0h) Volume — "how many guests / bookings this year".
     if (/(how many|number of) (guests|people|bookings|stays)|guests? (this|last) year|bookings? (this|last) year/.test(q) && /year|so far|to date|202\d/.test(q)) {
@@ -6531,7 +6535,8 @@ function chbSnapBriefRows() {
     const src = 'From the saved day sheet — offline, so this may have moved';
     const goToday = () => { closeCmdK(); nav('view-backoffice'); };
     const out = [{ type: 'figure', scope: 'bookings', id: 'snap-brief-today', board: 'today', label: g.arrive.length + ' in · ' + g.leave.length + ' out', sub: src, run: goToday }];
-    const ow = (s.rows || []).filter((r) => (r.due || 0) > 0.005);
+    // A landing row volunteers money, so the owner's own arrangements stay out (online's rule).
+    const ow = (s.rows || []).filter((r) => (r.due || 0) > 0.005 && !r.own);
     if (ow.length) {
         const tot = ow.reduce((a, r) => a + (r.due || 0), 0);
         out.push({ type: 'answer', scope: 'bookings', id: 'snap-brief-money', board: 'money', wrap: true, label: gbp(tot) + ' still to collect', sub: ow.map((r) => chbSayFirst(r.nm || 'a guest')).join(', ') + ' · ' + src, run: goToday });
@@ -10507,10 +10512,10 @@ function renderBookingsBody() {
     rows = rows.filter(({ propKey, b }) => {
         if (f === 'upcoming') return !hasCheckedOut(b);
         if (f === 'past') return hasCheckedOut(b);
-        // Deposit-aware, so this list holds exactly the bookings the header's
-        // "£X to collect" button just counted — it links straight here, which
-        // is why owner-arranged (cash/bank) bookings sit this filter out too.
-        if (f === 'needspay') return !bookingDue(propKey, b).fullyPaid && !bookingOwnerArranged(b) && !hasCheckedOut(b);
+        // Exactly the bookings the pill's "£X to collect" counts (chbOwedOf), so the
+        // list it opens names everyone in its figure: a stay that ended owing included,
+        // owner-arranged (cash/bank) money left out.
+        if (f === 'needspay') return chbOwedOf(propKey, b).volunteer;
         // WHICH BOOKINGS ARE NOT ON THE STANDARD SCHEDULE? The override columns
         // were read only inside the hub's own plan panel, so a mistyped plan was
         // invisible until the money came out wrong. Same test the panel uses to
@@ -10532,23 +10537,20 @@ function renderBookingsBody() {
         sum.textContent = rows.length ? `· ${rows.length} ${label}` : '';
     }
     // WHO OWES IS SAID ONCE, as Today's status pill beside its title (the Manage
-    // pill's look). It used to be a count on a Needs payment tab, then the header
-    // row of the bookings card. Same predicate as the filter, so the pill and the
-    // list it opens cannot disagree. Silence from ignorance is refused: with no
-    // bookings loaded at all it claims nothing either way.
-    const owers = allRows.filter(({ propKey, b }) => !bookingDue(propKey, b).fullyPaid && !bookingOwnerArranged(b) && !hasCheckedOut(b));
+    // pill's look). The figure is chbOwedTotals, the one the day sentence and the
+    // greeting state, and the filter it opens is the same predicate, so the pill and
+    // the list cannot disagree. Silence from ignorance is refused: with no bookings
+    // loaded at all it claims nothing either way.
+    const owed = chbOwedTotals();
     let owedPill = '';
-    if (owers.length) {
-        const sumOwed = owers.reduce((n, { propKey, b }) => n + Math.max(0, bookingDue(propKey, b).balance || 0), 0);
-        const fig = `£${Math.round(sumOwed).toLocaleString('en-GB')} to collect`;
-        owedPill = headPill('warn', fig, { act: 'data-act="openBookingsNeedsPay"', label: `${fig} from ${owers.length === 1 ? '1 guest' : owers.length + ' guests'}. Show who` });
+    if (owed.n) {
+        const fig = `£${Math.round(owed.sum).toLocaleString('en-GB')} to collect`;
+        owedPill = headPill('warn', fig, { act: 'data-act="openBookingsNeedsPay"', label: `${fig} from ${owed.n === 1 ? '1 guest' : owed.n + ' guests'}. Show who` });
     } else if (allRows.length) {
         // "Nobody owes you anything" is a claim about EVERYONE. A guest paying the
         // owner directly (owner-arranged) still owes — say that, not "nobody".
-        const arranged = allRows.filter(({ propKey, b }) => !bookingDue(propKey, b).fullyPaid && bookingOwnerArranged(b) && !hasCheckedOut(b));
-        const arrSum = arranged.reduce((n, { propKey, b }) => n + Math.max(0, bookingDue(propKey, b).balance || 0), 0);
-        owedPill = arranged.length
-            ? headPill('ok', 'Nothing to chase', { label: `Nothing to chase. £${Math.round(arrSum).toLocaleString('en-GB')} arranged with ${arranged.length === 1 ? '1 guest' : arranged.length + ' guests'}` })
+        owedPill = owed.arrN
+            ? headPill('ok', 'Nothing to chase', { label: `Nothing to chase. £${Math.round(owed.arrSum).toLocaleString('en-GB')} arranged with ${owed.arrN === 1 ? '1 guest' : owed.arrN + ' guests'}` })
             : headPill('ok', 'Nobody owes you anything');
     }
     headPillSet('bookings-owed', owedPill);
@@ -16539,7 +16541,7 @@ function taxYearShort(startYear) {
     return `${startYear}/${String(startYear + 1).slice(-2)}`;
 }
 
-let accountsReport = null; // cache of the last fetched report (for CSV export)
+let accountsReport = null; // the year pmExport loaded: {year, report, books, expenses}
 
 async function openAccounts() {
     if (!isAuthenticated) {
@@ -16627,9 +16629,6 @@ function accountsOpen(section) {
             renderMoneyPanel();
         } else if (section === 'recent') {
             renderMoneyFeed();
-        } else if (section === 'income') {
-            renderMoneyForecast();
-            renderAccounts();
         } else if (section === 'expenses') {
             renderExpenses();
         }
@@ -16674,124 +16673,6 @@ function accountsScopeCaveats(startYear, expTotal) {
         );
     }
     return out;
-}
-async function renderAccounts() {
-    const sel = document.getElementById('accounts-year');
-    const content = document.getElementById('accounts-content');
-    if (!sel || !content) return;
-    const startYear = parseInt(sel.value, 10);
-    // The old Income & tax page's year box is empty now (the books page has its own):
-    // an expense save asked for accounts.php?year=NaN, which the server reads as tax
-    // year 0, and cached an empty report the CSV then exported.
-    if (!Number.isFinite(startYear)) return;
-    content.innerHTML = skelRows(3);
-
-    let rep;
-    try {
-        rep = await apiGet('accounts.php?year=' + encodeURIComponent(startYear));
-    } catch (e) {
-        content.innerHTML = `<div class="accounts-empty">Couldn't load: ${escapeHtml(e.message)}</div>`;
-        return;
-    }
-    accountsReport = rep; // cache for CSV
-
-    const total = rep.total || 0;
-    const heldDeposits = rep.held_deposits || 0;
-    const undated = rep.undated || { count: 0, total: 0, held: 0 };
-    // Card processing fees — Square keeps these, the owner never receives them,
-    // so they come OFF the profit automatically (a cost, alongside expenses).
-    const cardFees = rep.card_fees || 0;
-    const feeDays = Array.isArray(rep.fee_days) ? rep.fee_days : [];
-    // Kept damage deposits are taxable income (retained for damage) — they live in
-    // the ledger, not in rental income, so add them in here and in the quarters.
-    const keptIncome = rep.kept_deposits || 0;
-    const keptDays = Array.isArray(rep.kept_days) ? rep.kept_days : [];
-    const expYear = expensesForYear(startYear);
-    const expTotal = expYear.reduce((s, x) => s + (x.amount || 0), 0);
-    const net = total + keptIncome - cardFees - expTotal;
-
-    // Quarterly split for Making Tax Digital (UK tax quarters from 6 Apr).
-    // Costs = recorded expenses + that quarter's card fees.
-    const payments = Array.isArray(rep.payments) ? rep.payments : [];
-    const qBounds = [
-        ['Q1 · Apr–Jun', `${startYear}-04-06`, `${startYear}-07-05`],
-        ['Q2 · Jul–Sep', `${startYear}-07-06`, `${startYear}-10-05`],
-        ['Q3 · Oct–Dec', `${startYear}-10-06`, `${startYear + 1}-01-05`],
-        ['Q4 · Jan–Mar', `${startYear + 1}-01-06`, `${startYear + 1}-04-05`],
-    ];
-    // INCOME BY THE DAY IT ARRIVED, not by the booking's payment_date — that field is
-    // restamped on every payment, so £200 in May and £600 in November reported Q1 £0
-    // and Q3 £800, and a row allocated to one tax year but dated in the next fell
-    // outside all four quarters and vanished. income_days is the server's per-date
-    // split (the fee_days/kept_days shape); the payments fallback keeps an older
-    // server working rather than showing four empty quarters.
-    const incomeDays = Array.isArray(rep.income_days) ? rep.income_days : null;
-    const qRows = qBounds.map(([lbl, s, e]) => {
-        const inc =
-            (incomeDays
-                ? incomeDays
-                      .filter((d) => (d.date || '') >= s && (d.date || '') <= e)
-                      .reduce((a, d) => a + (d.amount || 0), 0)
-                : payments
-                      .filter((p) => (p.payment_date || '') >= s && (p.payment_date || '') <= e)
-                      .reduce((a, p) => a + (p.income_part || 0), 0)) +
-            keptDays
-                .filter((k) => (k.date || '') >= s && (k.date || '') <= e)
-                .reduce((a, k) => a + (k.amount || 0), 0);
-        const exp =
-            expYear
-                .filter((x) => (x.date || '') >= s && (x.date || '') <= e)
-                .reduce((a, x) => a + (x.amount || 0), 0) +
-            feeDays
-                .filter((f) => (f.date || '') >= s && (f.date || '') <= e)
-                .reduce((a, f) => a + (f.fee || 0), 0);
-        return { lbl, inc, exp, net: inc - exp };
-    });
-    const scopeBits = accountsScopeCaveats(startYear, expTotal);
-    const scopeNote = scopeBits.length
-        ? `<div class="accounts-note" style="margin-top:10px;">${scopeBits.map(escapeHtml).join(' ')}</div>`
-        : '';
-
-    const quarterly = `<div class="feed-list" style="padding:4px 16px;">
-                    <div class="feed-row" style="grid-template-columns:1fr auto auto auto;gap:12px;font-size:var(--fs-caption);font-weight:600;color:var(--text-muted);"><span>Quarter</span><span>Income</span><span>Costs</span><span>Net</span></div>
-                    ${qRows.map((q) => `<div class="feed-row" style="grid-template-columns:1fr auto auto auto;gap:10px;"><span class="feed-who">${q.lbl}</span><span class="feed-amt">${gbp(q.inc)}</span><span class="feed-amt" style="color:var(--text-muted);">${gbp(q.exp)}</span><span class="feed-amt" style="color:${q.net < 0 ? 'var(--warn)' : 'var(--text-light)'};">${gbp(q.net)}</span></div>`).join('')}
-                </div>`;
-
-    // Fold anatomy: net leads full size; arithmetic / quarters / honesty
-    // notes fold behind rows (gate-read strings kept verbatim — folds decide
-    // visibility, never existence); exports stay one visible tap.
-    const mathFold = `<div class="feed-list" style="padding:4px 16px;">
-                    <div class="feed-row" style="grid-template-columns:1fr auto;"><span class="feed-who">Rental income</span><span class="feed-amt">${gbp(total)}</span></div>
-                    ${Math.abs(keptIncome) > 0.005 ? `<div class="feed-row" style="grid-template-columns:1fr auto;"><span class="feed-who">Damage deposits kept</span><span class="feed-amt">${gbp(keptIncome)}</span></div>` : ''}
-                    ${cardFees > 0 ? `<div class="feed-row" style="grid-template-columns:1fr auto;"><span class="feed-who">Card processing fees</span><span class="feed-amt">− ${gbp(cardFees)}</span></div>` : ''}
-                    <div class="feed-row" style="grid-template-columns:1fr auto;"><span class="feed-who">Expenses${expYear.length ? ` (${expYear.length})` : ''}</span><span class="feed-amt">− ${gbp(expTotal)}</span></div>
-                    <div class="feed-row" style="grid-template-columns:1fr auto;border-top:1px solid var(--glass-border);"><span class="feed-who" style="color:var(--text-light);">Net</span><span class="feed-amt" style="color:var(--text-light);">${gbp(net)}</span></div>
-                </div>`;
-    const scopeFold = `${scopeNote}
-                <div class="accounts-note" style="margin-top:${scopeBits.length ? 8 : 4}px;">
-                    ${heldDeposits > 0 ? gbp(heldDeposits) + ' collected as refundable damages deposits — returned after checkout, <strong>not</strong> income. ' : ''}
-                    Income is money received, allocated to the UK tax year by each payment's recorded date; expenses by their date.${cardFees > 0 ? ' Card processing fees (kept by Square) are deducted automatically from the payments ledger.' : ''} A record-keeping aid, not formal accounting advice.
-                    ${undated.count > 0 ? `<br>${undated.count} payment(s) totalling ${gbp((undated.total || 0) + (undated.held || 0))} have no payment date recorded, so they aren't counted in any tax year — add a payment date on the booking to include them.` : ''}
-                </div>`;
-    content.innerHTML = `
-                <div class="accounts-stat headline" style="max-width:640px;">
-                    <div class="label">${net < 0 ? 'Net loss' : 'Net profit'} — ${taxYearShort(startYear)}</div>
-                    <div class="value ${net < 0 ? 'os-warn' : 'os-good'}">${gbp(net)}</div>
-                </div>
-                <div style="margin-top:12px;">
-                ${bhubFoldGrp('incmath', 'The arithmetic', escapeHtml(`${gbp(total + keptIncome)} in · ${gbp(cardFees + expTotal)} costs`), '', mathFold)}
-                ${bhubFoldGrp('incq', 'Quarterly (Making Tax Digital)', 'the same year in UK tax quarters', '', quarterly)}
-                ${/* "platform stays sit outside it" left "it" alone on line two of
-                      the two-line clamp — the hero-kicker orphan at caption size.
-                      Shortened rather than re-wrapped: a sub names WHAT, and the
-                      fold below it carries the sentence. */ ''}
-                ${bhubFoldGrp('incscope', 'What this number doesn’t cover', escapeHtml(`${expYear.length ? 'logged expenses only' : 'no expenses logged yet'} · no platform stays`), '', scopeFold)}
-                </div>
-                <div class="accounts-actions" style="margin-top:14px;">
-                    <button class="btn-sm btn-edit" ${chbAttrs('downloadYearStatement', startYear)}><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="width:13px;height:13px;vertical-align:-2px;margin-right:4px;"><path d="M12 4v11M7 10l5 5 5-5M4 20h16"/></svg>Statement (PDF)</button>
-                    <button class="btn-sm btn-edit" data-act="exportAccountsCSV"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="width:13px;height:13px;vertical-align:-2px;margin-right:4px;"><path d="M12 4v11M7 10l5 5 5-5M4 20h16"/></svg>Export (CSV)</button>
-                    <button class="btn-sm btn-edit" data-act="accountsOpen" data-arg="expenses">Manage expenses</button>
-                </div>`;
 }
 // ---- Expenses manager (Money → Expenses) ----
 const EXPENSE_CATS = [
@@ -17191,9 +17072,6 @@ async function addExpense() {
         await loadExpenses();
         renderExpenses();
         try {
-            renderAccounts();
-        } catch (e) {}
-        try {
             renderMoneyOverview();
         } catch (e) {}
         toast(wasEditing ? 'Expense updated.' : 'Expense added.');
@@ -17253,9 +17131,6 @@ async function repeatExpense(id) {
         await loadExpenses();
         renderExpenses();
         try {
-            renderAccounts();
-        } catch (e) {}
-        try {
             renderMoneyOverview();
         } catch (e) {}
         toast('Recurring expense added for next month.');
@@ -17269,9 +17144,6 @@ async function deleteExpense(id) {
         await apiPost('expenses.php', { action: 'delete', id });
         await loadExpenses();
         renderExpenses();
-        try {
-            renderAccounts();
-        } catch (e) {}
         try {
             renderMoneyOverview();
         } catch (e) {}
@@ -17864,7 +17736,8 @@ function pmOwedRow(pk, b) {
     const today = todayDashed();
     let dg = null;
     try { dg = bookingDue(pk, b); } catch (e) { return null; }
-    if (!dg || !(dg.balance > 0.005)) return null;
+    // The floor chbOwedOf uses: a penny's rounding is not a guest still to pay.
+    if (!dg || dg.fullyPaid || !(dg.balance > 0.5)) return null;
     const past = (b.checkOut || '') <= today;
     const due = bookingPlanDueDate(b) || '';
     let inWin = false;
@@ -17879,12 +17752,17 @@ function pmOwedRow(pk, b) {
     const depOnly = !!(np && Number(np.due) <= 0.005 && Number(np.damages) > 0.005);
     const asked = String((stage === 'deposit' ? b.depositRequestedAt : b.balanceRemindedAt || b.balanceRequestedAt || b.depositRequestedAt) || '').slice(0, 10);
     // A card on file pays itself on the day, so it is never overdue unless it was declined.
-    const overdue = (!consent || declined) && (past || !!(due && ukShiftDays(due, 7) < today));
+    // Money the owner collects PERSONALLY is never overdue or "due now" here either: it is
+    // listed (this page is the record) but never volunteered, which is what Today's pill
+    // and Needs you do with it. Payments said "1 overdue" in red over a guest Today
+    // called "Nothing to chase".
+    const arranged = bookingOwnerArranged(b);
+    const overdue = !arranged && (!consent || declined) && (past || !!(due && ukShiftDays(due, 7) < today));
     return {
         pk, b, dg, due, past, first, stage, depOnly, asked, overdue, declined,
         auto: consent && !declined && !past,
-        dueNow: past || inWin || stage === 'deposit',
-        arranged: bookingOwnerArranged(b),
+        dueNow: !arranged && (past || inWin || stage === 'deposit'),
+        arranged,
     };
 }
 function pmOwed() {
@@ -17905,7 +17783,7 @@ function pmPlan(r) {
         const nx = pmIso(r.b.autopayNextAt || r.b.autopayDue);
         return { tone: 'ok', cap: 'Collects itself', sub: 'card on file' + (nx ? ' · ' + pmDdm(nx) : '') };
     }
-    if (r.arranged) return { tone: 'unk', cap: 'You arranged it', sub: String(r.b.paymentMethod || '').toLowerCase() + (dDue ? ' · due ' + pmDm(dDue) : '') };
+    if (r.arranged) return { tone: 'unk', cap: 'You arranged it', sub: String(r.b.paymentMethod || '').toLowerCase() + (r.past ? ' · the stay is over' : dDue ? ' · due ' + pmDm(dDue) : '') };
     if (r.dueNow) {
         return r.asked
             ? { tone: 'warn', cap: 'Asked · not paid', sub: `${stage} asked ${pmDm(pmIso(r.asked))}` }
@@ -18903,11 +18781,22 @@ function pmAskSheet() {
     };
     draw();
 }
+// THE YEAR'S FILES STATE THE BOOKS. One call brings the accounts report (the payment
+// rows), the books (every total, money_books) and the expense rows the books summed.
+// The CSV and the PDF used to restate the profit from this page's own expense list,
+// a second sum that could drift from the Payments page's.
 async function pmExport(kind) {
     const y = __pmYear || taxYearStartOf(todayDashed());
     try {
-        accountsReport = await apiGet('accounts.php?year=' + encodeURIComponent(y));
-        await loadExpenses();
+        const r = await apiPost('money.php', { action: 'export', year: y });
+        if (!r || !r.books || !r.report) throw new Error('The year’s books did not load.');
+        accountsReport = {
+            year: y, report: r.report, books: r.books,
+            expenses: (Array.isArray(r.expenses) ? r.expenses : []).map((x) => ({
+                date: String(x.expense_date || ''), category: String(x.category || ''), description: String(x.description || ''),
+                amount: Number(x.amount) || 0, prop_key: String(x.prop_key || ''),
+            })),
+        };
     } catch (e) {
         glassAlert('Couldn’t load the year. ' + chbActErrSay(e));
         return;
@@ -20428,85 +20317,6 @@ function mfPaint() {
         });
     });
 }
-// Projected revenue + occupancy by month from confirmed upcoming bookings.
-function renderMoneyForecast() {
-    const el = document.getElementById('money-forecast');
-    if (!el) return;
-    const now = chbNow();
-    const months = [];
-    for (let i = 0; i < 6; i++) {
-        const d = new Date(now.getFullYear(), now.getMonth() + i, 1);
-        months.push({
-            key: d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0'),
-            label: d.toLocaleDateString('en-GB', { month: 'long', year: 'numeric' }),
-            start: new Date(d.getFullYear(), d.getMonth(), 1),
-            end: new Date(d.getFullYear(), d.getMonth() + 1, 0),
-            revenue: 0,
-            bookings: 0,
-            nights: new Set(),
-        });
-    }
-    const propCount = Object.keys(propertyMeta).length || 3;
-    // Revenue: direct bookings by check-in month. Occupancy: direct bookings + iCal
-    // blocks, each cottage-night counted once.
-    const addNights = (m, propKey, checkIn, checkOut) => {
-        let d = dpParse(checkIn),
-            end = dpParse(checkOut);
-        if (!d || !end) return;
-        for (; d < end; d.setDate(d.getDate() + 1)) {
-            if (d >= m.start && d <= m.end) m.nights.add(propKey + '|' + formatDashed(d));
-        }
-    };
-    Object.keys(dbBookings).forEach((propKey) => {
-        (dbBookings[propKey] || []).forEach((b) => {
-            months.forEach((m) => {
-                const ci = dpParse(b.checkIn);
-                if (ci && ci >= m.start && ci <= m.end) {
-                    m.revenue += (b.agreedPrice && b.agreedPrice.total) || 0;
-                    m.bookings++;
-                }
-                addNights(m, propKey, b.checkIn, b.checkOut);
-            });
-        });
-    });
-    Object.keys(dbBlocks || {}).forEach((propKey) => {
-        (dbBlocks[propKey] || []).forEach((bl) => {
-            if (isOtaBlock(bl)) months.forEach((m) => addNights(m, propKey, bl.checkIn, bl.checkOut)); // blocks are not bookings
-        });
-    });
-    const body = months
-        .map((m) => {
-            const daysInMonth = m.end.getDate();
-            const occ = Math.round((m.nights.size / (daysInMonth * propCount)) * 100);
-            // A ROW, NOT A TABLE COLUMN. The four-column <table> ran to 548px in a
-            // 362px box with `overflow-x: visible`, so at 390 the page simply CLIPPED
-            // Bookings and Occupancy — two of its four facts unreachable, with no
-            // scrollbar and nothing saying they were there. The same six figures also
-            // sat in the bar chart directly above it, which is the duplication that
-            // made the table look optional. The chart stays as the VISUAL; the rows
-            // are the FIGURES, and every one of the four facts is on screen at 360.
-            return `<div class="bhub-kv"><span class="bhub-kv-main"><span class="bhub-kv-label">${escapeHtml(m.label)}</span><span class="bhub-kv-sub">${m.bookings} booking${m.bookings === 1 ? '' : 's'} · ${occ}% occupancy</span></span><span class="bhub-kv-val">${gbp(m.revenue)}</span></div>`;
-        })
-        .join('');
-    const projTotal = months.reduce((s, m) => s + m.revenue, 0);
-    const chart = osVBars(
-        months.map((m) => ({
-            short: m.label.split(' ')[0].slice(0, 3),
-            label: m.label,
-            value: m.revenue,
-        })),
-        moneyShort,
-    );
-    // The block wears the page's own anatomy — a fold group whose summary is the
-    // projected total — instead of a serif h3 above two competing cards.
-    el.innerHTML = bhubFoldGrp('incforecast', 'Income forecast', 'next 6 months',
-        `<span class="bhub-payline-fig">${gbp(projTotal)}</span>`,
-        `<div class="mo-card"><div class="mo-card-title">Projected revenue by month</div>${chart}</div>
-                <div class="bhub-kvs">${body}
-                    <div class="bhub-kv"><span class="bhub-kv-main"><span class="bhub-kv-label"><strong>Total projected</strong></span></span><span class="bhub-kv-val"><strong>${gbp(projTotal)}</strong></span></div>
-                </div>
-                <div class="accounts-note" style="margin-top:8px;">Projected revenue is the agreed total of confirmed bookings whose check-in falls in each month; occupancy counts booked cottage-nights (direct + imported) across all ${propCount} cottages.</div>`);
-}
 // Refresh after any payment change: re-render the money panel if we're on the
 // Money & income view, otherwise re-open the booking detail pop-up (calendar).
 function afterPaymentChange(bookingId) {
@@ -20538,10 +20348,13 @@ function chbCsvSafe(v) {
     const s = String(v == null ? '' : v);
     return /^[=+\-@\t\r]/.test(s) && !/^-?\d+(\.\d+)?$/.test(s) ? "'" + s : s;
 }
-function exportAccountsCSV() {
-    if (!accountsReport) return;
-    const startYear = accountsReport.year;
-    const payments = (accountsReport.payments || [])
+// The CSV's text from the year pmExport loaded. Pure, so a test reads what the file says.
+function accountsCsvText(X) {
+    if (!X || !X.books) return '';
+    const rep = X.report || {};
+    const B = X.books;
+    const startYear = X.year;
+    const payments = (rep.payments || [])
         .slice()
         .sort((a, b) => (a.payment_date || '').localeCompare(b.payment_date || ''));
     const esc = (v) => `"${chbCsvSafe(v).replace(/"/g, '""')}"`;
@@ -20560,14 +20373,12 @@ function exportAccountsCSV() {
                 (parseFloat(r.received) || 0).toFixed(2),
             ].join(',') + '\n';
     });
-    const inc = accountsReport.total || 0,
-        held = accountsReport.held_deposits || 0;
+    const inc = Number(B.income) || 0,
+        held = Number(rep.held_deposits) || 0;
     csv += `,,,,Totals,${inc.toFixed(2)},${held.toFixed(2)},${(inc + held).toFixed(2)}\n`;
-    // Expenses for the same tax year + a net-profit summary.
-    const exp = expensesForYear(startYear)
-        .slice()
-        .sort((a, b) => (a.date || '').localeCompare(b.date || ''));
-    const expTotal = exp.reduce((s, x) => s + (x.amount || 0), 0);
+    // The year's expenses as the books summed them, then the books' own summary.
+    const exp = (X.expenses || []).slice().sort((a, b) => (a.date || '').localeCompare(b.date || ''));
+    const expTotal = Number(B.expenses) || 0;
     csv += '\nExpenses\nDate,Category,Note,Cottage,Amount (GBP)\n';
     exp.forEach((x) => {
         csv +=
@@ -20584,14 +20395,20 @@ function exportAccountsCSV() {
             ].join(',') + '\n';
     });
     csv += `,,,Total expenses,${expTotal.toFixed(2)}\n`;
-    const csvFees = accountsReport.card_fees || 0;
-    const csvKept = accountsReport.kept_deposits || 0;
-    const csvNet = inc + csvKept - csvFees - expTotal;
+    const csvFees = Number(B.fees) || 0;
+    const csvKept = Number(B.kept) || 0;
+    const csvNet = Number(B.profit) || 0;
     csv += `\nSummary\nRental income,${inc.toFixed(2)}\n${Math.abs(csvKept) > 0.005 ? `Damage deposits kept,${csvKept.toFixed(2)}\n` : ''}Card processing fees,-${csvFees.toFixed(2)}\nExpenses,${expTotal.toFixed(2)}\n${csvNet < 0 ? 'Net loss' : 'Net profit'},${csvNet.toFixed(2)}\n`;
     const scopeCsv = accountsScopeCaveats(startYear, expTotal);
     if (scopeCsv.length) {
         csv += '\nScope\n' + scopeCsv.map((t) => esc(t)).join('\n') + '\n';
     }
+    return csv;
+}
+function exportAccountsCSV() {
+    const csv = accountsCsvText(accountsReport);
+    if (!csv) return;
+    const startYear = accountsReport.year;
     const blob = new Blob([csv], { type: 'text/csv' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
@@ -20611,17 +20428,19 @@ async function downloadYearStatement(startYear) {
         glassAlert("The PDF tool couldn't load — please check your connection and try again.");
         return;
     }
-    const rep = accountsReport && accountsReport.year === startYear ? accountsReport : null;
-    const income = rep ? rep.total || 0 : 0;
-    const held = rep ? rep.held_deposits || 0 : 0;
-    const cardFees = rep ? rep.card_fees || 0 : 0;
-    const keptIncome = rep ? rep.kept_deposits || 0 : 0;
-    const byProp = rep ? rep.by_property || {} : {};
-    const exp = expensesForYear(startYear)
-        .slice()
-        .sort((a, b) => (a.date || '').localeCompare(b.date || ''));
-    const expTotal = exp.reduce((s, x) => s + (x.amount || 0), 0);
-    const net = income + keptIncome - cardFees - expTotal;
+    // Every figure is the books' (pmExport loaded them), never a sum of its own.
+    const X = accountsReport && accountsReport.year === startYear && accountsReport.books ? accountsReport : null;
+    if (!X) return;
+    const rep = X.report || {};
+    const B = X.books;
+    const income = Number(B.income) || 0;
+    const held = Number(rep.held_deposits) || 0;
+    const cardFees = Number(B.fees) || 0;
+    const keptIncome = Number(B.kept) || 0;
+    const byProp = rep.by_property || {};
+    const exp = X.expenses.slice().sort((a, b) => (a.date || '').localeCompare(b.date || ''));
+    const expTotal = Number(B.expenses) || 0;
+    const net = Number(B.profit) || 0;
 
     const { jsPDF } = window.jspdf;
     const doc = new jsPDF({ unit: 'pt', format: 'a4' });
@@ -23723,6 +23542,42 @@ function prSmartToggle() {
 //  "O'Brien" would have arrived pre-escaped in a context that escapes again. Escaping
 //  belongs at the render boundary, and now happens there.
 // ============================================================
+// WHAT A BOOKING STILL OWES, AND WHETHER IT IS OURS TO SAY UNASKED. One answer for
+// every surface that totals money still to come in. They used to differ: Today's pill
+// left out a stay that had ended, so a guest who left owing £300 read "Nobody owes you
+// anything" beside a red "£300 overdue" duty; the day sentence cut at midnight where
+// the pill cut at the checkout hour; and a 1p residue made the pill say "£0 to collect".
+//   due        bookingDue's balance (the refundable deposit included); 0 under 50p.
+//   arranged   the owner collects it personally, so it is never volunteered.
+//   stale      the stay ended more than CHB_OWED_DAYS ago: a record now (Payments, a
+//              direct question), not a chore. An unreconciled stay must not nag forever.
+//   volunteer  due, not arranged, not stale: what Today's pill, the day sentence and
+//              the greeting total (owner-digest.php's booking_owed_volunteered too).
+const CHB_OWED_DAYS = 14;
+function chbOwedOf(pk, b) {
+    let gt = null;
+    try { gt = bookingDue(pk, b); } catch (e) { chbSwallow(e, 'owed-of'); }
+    const bal = gt && !gt.fullyPaid ? Number(gt.balance) || 0 : 0;
+    const due = bal > 0.5 ? Math.round(bal * 100) / 100 : 0;
+    const arranged = bookingOwnerArranged(b);
+    const stale = !!(b && b.checkOut) && b.checkOut < ukShiftDays(todayDashed(), -CHB_OWED_DAYS);
+    return { due, gt, arranged, stale, volunteer: due > 0 && !arranged && !stale };
+}
+// The sums across every booking: what is volunteered, and what the owner arranged
+// personally (named on Today's pill, so "Nothing to chase" never reads as "nobody owes").
+function chbOwedTotals() {
+    const t = { sum: 0, n: 0, arrSum: 0, arrN: 0 };
+    const horizon = ukShiftDays(todayDashed(), -CHB_OWED_DAYS);
+    Object.keys(dbBookings || {}).forEach((pk) => (dbBookings[pk] || []).forEach((b) => {
+        if (b && b.checkOut && b.checkOut < horizon) return; // stale: never counted, so never priced
+        const o = chbOwedOf(pk, b);
+        if (o.volunteer) { t.sum += o.due; t.n++; }
+        else if (o.due > 0 && o.arranged && !o.stale) { t.arrSum += o.due; t.arrN++; }
+    }));
+    t.sum = Math.round(t.sum * 100) / 100;
+    t.arrSum = Math.round(t.arrSum * 100) / 100;
+    return t;
+}
 // ONE decision about a booking's chase — is money due NOW under its OWN plan,
 // at which stage, for how much. chbDuties and chbOwedLater both read it, so
 // the two surfaces cannot disagree. PLAN-AWARE via the hub's payask
@@ -23750,7 +23605,7 @@ function chbChaseInfo(k, b) {
     const today = todayDashed();
     const t0 = dpParse(today).getTime();
     const outAgo = b.checkOut ? Math.round((t0 - dpParse(b.checkOut).getTime()) / 86400e3) : 0;
-    if (outAgo > 14) return null;
+    if (outAgo > CHB_OWED_DAYS) return null;
     const gt = bookingDue(k, b);
     if (gt.fullyPaid || !(gt.balance > 0.5) || !b.checkIn) return null;
     const days = Math.round((dpParse(b.checkIn).getTime() - t0) / 86400e3);
@@ -23771,6 +23626,17 @@ function chbChaseInfo(k, b) {
     // the custom date has arrived, which the arrival window cannot see.
     const chase = due && (days <= 21 || !!(b.balanceDueDate && bookingInBalanceWindow(b)));
     return { chase, due, kind, amount, days, late, dueDate: bookingPlanDueDate(b), gt, k, b };
+}
+// The bookings whose money is due NOW under their own plan, soonest arrival first.
+// The strip's balance rows and the "balances to chase" answer read this one list, so
+// the two cannot name different guests or different sums.
+function chbChaseList() {
+    const out = [];
+    Object.keys(dbBookings || {}).forEach((k) => (dbBookings[k] || []).forEach((b) => {
+        const info = chbChaseInfo(k, b);
+        if (info && info.chase) out.push(info);
+    }));
+    return out.sort((a, z) => a.days - z.days);
 }
 // How close to arrival a missing register becomes a duty. Wide enough that the
 // owner has time to chase the guest, narrow enough that a booking made in January
@@ -23960,7 +23826,6 @@ function chbDutiesAll() {
         });
     // 3) Damages deposits to give back (guest has checked out) and
     // 4) balances to collect before arrival (soonest arrivals first).
-    const chase = [];
     const regCut = ukShiftDays(today, REG_DUTY_DAYS); // the register's window, as a date
     Object.keys(dbBookings || {}).forEach((k) =>
         (dbBookings[k] || []).forEach((b) => {
@@ -24009,15 +23874,12 @@ function chbDutiesAll() {
                     run: () => { closeCmdK(); openBookingHub(b.id); },
                 });
             }
-            // Balances: what the booking's OWN plan says is due now
-            // (chbChaseInfo). The old rule was date-only (≤21 days to arrival)
-            // and quoted the whole outstanding whatever the plan said.
-            const info = chbChaseInfo(k, b);
-            if (info && info.chase) chase.push(info);
         }),
     );
-    chase
-        .sort((a, b) => a.days - b.days)
+    // Balances: what the booking's OWN plan says is due now (chbChaseList, the
+    // list the "balances to chase" answer reads too). The old rule was date-only
+    // (≤21 days to arrival) and quoted the whole outstanding whatever the plan said.
+    chbChaseList()
         .forEach(({ days, b, k, kind: stage, amount, late, dueDate, gt }) => {
             const gone = (b.checkOut || '') < today;
             // THE MONEY LEADS. This row used to open with the arrival — "Bob Carter
@@ -24719,7 +24581,9 @@ function chbOpsParts(tuples) {
             departures++;
             (inout[t.pk] = inout[t.pk] || {}).out = true;
         }
-        if ((t.co || '') >= today) owed += Math.max(0, t.due || 0);
+        // Each caller has already decided what its tuples may volunteer (chbDayTuples
+        // reads chbOwedOf; the day sheet drops a saved row that has since ended).
+        owed += Math.max(0, t.due || 0);
     });
     Object.keys(inout).forEach((k) => { if (inout[k].in && inout[k].out) changeovers++; });
     const parts = [];
@@ -24731,20 +24595,21 @@ function chbOpsParts(tuples) {
 }
 // The day's direct-booking movements as tuples for chbOpsParts — the ops
 // line and the day sentence share it, so they cannot disagree about the
-// shape of the day. Deposit-aware (bookingDue) and owner-arranged
-// money is never volunteered, the same judgements the ops line always made.
+// shape of the day. The money is chbOwedOf's volunteered figure, the one
+// Today's pill states: a stay that ENDED still owing rides along (its dates
+// are not today, so it moves no arrival or departure count).
 function chbDayTuples() {
     const tuples = [];
     const today = todayDashed();
+    const horizon = ukShiftDays(today, -CHB_OWED_DAYS);
     Object.keys(dbBookings || {}).forEach((k) => {
         (dbBookings[k] || []).forEach((b) => {
-            // A stay that ended before today adds nothing chbOpsParts counts.
-            if ((b.checkOut || '') < today && b.checkIn !== today) return;
-            let due = 0;
-            if ((b.checkOut || '') >= today && !bookingOwnerArranged(b)) {
-                const ps = bookingDue(k, b);
-                if (!ps.fullyPaid) due = Math.max(0, ps.balance || 0);
-            }
+            const ended = (b.checkOut || '') < today && b.checkIn !== today;
+            // Years of finished stays cost nothing: past the horizon none is volunteered.
+            if (ended && (b.checkOut || '') < horizon) return;
+            const o = chbOwedOf(k, b);
+            const due = o.volunteer ? o.due : 0;
+            if (ended && !due) return; // adds nothing chbOpsParts counts
             tuples.push({ pk: k, ci: b.checkIn, co: b.checkOut, arrived: typeof hasCheckedIn === 'function' && hasCheckedIn(b), due });
         });
     });
@@ -24895,11 +24760,18 @@ function chbSnapRead(raw) {
 function chbSnapRowsFromStores() {
     const today = todayDashed(), dayAfter = ukShiftDays(today, 2);
     const rows = [];
+    const horizon = ukShiftDays(today, -CHB_OWED_DAYS);
     Object.keys(dbBookings || {}).forEach((pk) => {
         (dbBookings[pk] || []).forEach((b) => {
             if (!b || !b.checkIn || !b.checkOut) return;
+            // The chase decision Needs you makes online rides each row, so the sheet's
+            // money duties are the strip's: an arranged or self-collecting stay is never
+            // one, and a stay that ENDED owing still is (its row joins for that alone).
+            let ch = null;
+            if (b.checkOut >= horizon) { try { ch = chbChaseInfo(pk, b); } catch (e) {} }
+            const chase = !!(ch && ch.chase);
             const keep = b.checkOut === today || (b.checkIn >= today && b.checkIn < dayAfter)
-                || (b.checkIn < today && b.checkOut > today);
+                || (b.checkIn < today && b.checkOut > today) || (chase && b.checkOut < today);
             if (!keep) return;
             // bookingDue returns the displayGrand SHAPE — the balance member is
             // the one owner-facing "still to collect" figure (see CLAUDE.md).
@@ -24926,6 +24798,10 @@ function chbSnapRowsFromStores() {
                 dmg: Math.round((Number(b.damagesDeposit) || 0) * 100) / 100,
                 holdNone: (b.holdStatus || 'none') === 'none',
                 notes: String(b.notes || '').slice(0, 300),
+                own: bookingOwnerArranged(b) ? 1 : 0,
+                chase: chase ? 1 : 0,
+                amt: chase ? Math.round((Number(ch.amount) || 0) * 100) / 100 : 0,
+                late: chase && ch.late ? 1 : 0,
             });
         });
     });
@@ -25468,7 +25344,9 @@ function chbSnapWrite() {
         // mirror rides the same way (last-seen when this session hasn't
         // loaded it) — the offline duty and capture need it at the door.
         const upRows = chbSnapUpFromStores();
-        chbSnapStore({ at: Date.now(), day: today, rows, up: upRows, upN: __chbSnapUpTotal, ops, cots, coast: prev.coast || null, ks: __keysafe || prev.ks || null });
+        // `owed` is Today's pill as it stood (chbOwedTotals): the rows only cover the
+        // day's window, and the sheet's "to collect" must be the figure online stated.
+        chbSnapStore({ at: Date.now(), day: today, rows, up: upRows, upN: __chbSnapUpTotal, owed: chbOwedTotals(), ops, cots, coast: prev.coast || null, ks: __keysafe || prev.ks || null });
     } catch (e) {}
 }
 // The coast joins the snapshot ASYNC (never waited on; a failed fetch leaves
@@ -25533,7 +25411,7 @@ function renderOfflineDaySheet() {
     const day = chbDayRows();
     const snap = chbSnapRead();
     const s = day.source === 'live'
-        ? Object.assign({}, snap || {}, (() => { const u = chbSnapUpFromStores(); return { at: day.at, day: todayDashed(), rows: day.rows, up: u, upN: __chbSnapUpTotal, __live: true }; })())
+        ? Object.assign({}, snap || {}, (() => { const u = chbSnapUpFromStores(); return { at: day.at, day: todayDashed(), rows: day.rows, up: u, upN: __chbSnapUpTotal, owed: chbOwedTotals(), __live: true }; })())
         : snap;
     const host = document.getElementById('view-backoffice');
     if (!s || !host) return false;
@@ -25571,7 +25449,9 @@ function renderOfflineDaySheet() {
         else if (r.due > 0.005) chips.push('<span class="bhub-chip is-warn">' + e(gbp(r.due)) + ' to collect</span>');
         if (depDecided.indexOf(r.dbId) !== -1) chips.push('<span class="bhub-chip is-warn">Deposit decided · confirm when back on</span>');
         else if (r.dep > 0.005) chips.push('<span class="bhub-chip">' + e(gbp(r.dep)) + ' deposit held</span>');
-        const sev = r.due > 0.005 && !r._q ? ' ny-danger' : g === 'leave' && r.dep > 0.005 ? '' : ' ny-ok';
+        // Money the owner collects personally keeps its chip (the record) and loses the
+        // red: never volunteered, the online rule.
+        const sev = r.due > 0.005 && !r._q && !r.own ? ' ny-danger' : g === 'leave' && r.dep > 0.005 ? '' : ' ny-ok';
         // The captures: the SAFE writes, right on the row they belong to. A cash
         // payment is a ledger record (money already handed over), a deposit
         // DECISION moves nothing until it is confirmed back on signal — and
@@ -25621,7 +25501,7 @@ function renderOfflineDaySheet() {
         + '<div id="ods-queue" class="ods-queue" style="display:none;"></div>'
         + odsCoastLine(s)
         + '<h1 class="bo-sec-title" style="margin-top:12px;">Today</h1>'
-        + odsOpsLineHtml(s.rows || [], s.__live)
+        + odsOpsLineHtml(s.rows || [], s.__live, s.owed)
         // the action row sits where online's does — right under the ops line
         + '<div class="ods-btns" style="margin:4px 0 14px;">'
         + '<button class="btn-sm btn-edit" ' + chbAttrs('odsEnquiry') + '>Save an enquiry</button>'
@@ -25649,10 +25529,16 @@ function renderOfflineDaySheet() {
 //    online header's grammar (chbOpsParts), the duties wear the Needs-you
 //    row vocabulary and route to the CAPTURES (there is no live hub to open),
 //    and the timeline draws exactly the days the rows vouch for.
-function odsOpsLineHtml(rows, live) {
+function odsOpsLineHtml(rows, live, owedTot) {
     // OTA rows excluded — todayOpsLine's tuples are bookings-only, and the
     // two lines must speak the same figures (§21's agreement check).
-    const { parts, owed } = chbOpsParts((rows || []).filter((r) => !r.ota).map((r) => ({ pk: r.pk, ci: r.ci, co: r.co, arrived: false, due: r.due || 0 })));
+    // THE MONEY is Today's pill as the sheet was saved (`owedTot`, chbOwedTotals):
+    // the rows only cover the day's window, so summing them stated a different
+    // figure from the one online. A sheet saved by an older build has no total, and
+    // sums its own rows, as it always did, but never a row that has since ended.
+    const today = todayDashed();
+    const { parts, owed: rowSum } = chbOpsParts((rows || []).filter((r) => !r.ota).map((r) => ({ pk: r.pk, ci: r.ci, co: r.co, arrived: false, due: (r.co || '') >= today && !r.own ? r.due || 0 : 0 })));
+    const owed = owedTot && typeof owedTot.sum === 'number' ? owedTot.sum : rowSum;
     if (owed > 0.005) parts.push('£' + Math.round(owed).toLocaleString('en-GB') + ' to collect');
     const e = escapeHtml;
     return '<div class="ods-opsline">' + e(parts.length ? parts.join(' · ') : 'all quiet today')
@@ -25663,11 +25549,17 @@ function odsDutiesHtml(rows) {
     const out = [];
     const decided = odsDepDecisions().map((d2) => d2.dbId);
     (rows || []).forEach((r, i) => {
-        if ((r.due || 0) > 0.005 && (r.co || '') >= today && __odsQueued.indexOf(r.dbId) === -1 && r.dbId) {
+        // A row saved with the chase decision (`chase`) follows it: the money duty is
+        // the one Needs you showed online, with its figure and its "overdue". A sheet
+        // saved by an older build has no decision and keeps the old rule.
+        const hasChase = r.chase !== undefined;
+        const owes = hasChase ? r.chase && (r.amt || 0) > 0.005 : (r.due || 0) > 0.005 && (r.co || '') >= today;
+        if (owes && __odsQueued.indexOf(r.dbId) === -1 && r.dbId) {
+            const fig = gbp(hasChase ? r.amt : r.due);
             out.push({
                 sev: 'ny-danger',
-                l: gbp(r.due) + ' to collect from ' + (r.nm || 'a guest'),
-                s: (r.ci === today ? 'arriving today' : r.ci < today ? 'in residence' : 'arriving ' + fmtDate(r.ci)) + ' · ' + r.cot,
+                l: fig + (hasChase && r.late ? ' overdue from ' : ' to collect from ') + (r.nm || 'a guest'),
+                s: ((r.co || '') < today ? 'left ' + fmtDate(r.co) : r.ci === today ? 'arriving today' : r.ci < today ? 'in residence' : 'arriving ' + fmtDate(r.ci)) + ' · ' + r.cot,
                 act: chbAttrs('odsPay', String(i)),
             });
         }
@@ -39064,7 +38956,7 @@ async function mailboxDelete(uid) {
     }
 }
 
-[ivToggle, shareStayDetails, editPaymentPlan, sendPaymentReminder, crownSheetToggle, accountsBack, accountsOpen, accountsShowIndex, activityLogSearch, addAdminPasskey, afterPaymentChange, autoSyncIcalBlocks, backfillWebp, bookingHubBack, changeAdminPassword, changeMonth, timelineToday, inboxFolder, initBackOffice, loadAdminMessages, loadDiagnostics, logoutStaff, offerUpdatedConfirmationEmail, openAccounts, openAddBooking, openArea, openBlockDates, openBookingHub, openBookings, openBookingEmail, bookingsSetFilter, bookingsSetSearch, renderBookings, openEnquiryHub, enquiryHubBack, openInbox, openSettings, openStagingSite, refreshModerationCounts, renderAccounts, renderActivityLog, renderCalendar, renderExpenses, renderInbox, renderMoneyOverview, requestPayment, renderSquareSettings, runMigrations, saveApiKey, saveContent, saveBacsDetails, saveDepositPct, saveInstalFloor, instalFloorPreview, saveGoogleReviewUrl, saveHostText, sendBroadcast, sendSampleEmails, sendTestEmail, settingsBack, settingsFilter, settingsOpen, settingsOpenAccom, settingsOpenAccomSec, settingsOpenCalendar, settingsOpenCancel, settingsSearchKey, settingsShowIndex, tryAccessBackOffice, oaDevOpenTarget, oaDevClose, oaPwClose].forEach((f) => {
+[ivToggle, shareStayDetails, editPaymentPlan, sendPaymentReminder, crownSheetToggle, accountsBack, accountsOpen, accountsShowIndex, activityLogSearch, addAdminPasskey, afterPaymentChange, autoSyncIcalBlocks, backfillWebp, bookingHubBack, changeAdminPassword, changeMonth, timelineToday, inboxFolder, initBackOffice, loadAdminMessages, loadDiagnostics, logoutStaff, offerUpdatedConfirmationEmail, openAccounts, openAddBooking, openArea, openBlockDates, openBookingHub, openBookings, openBookingEmail, bookingsSetFilter, bookingsSetSearch, renderBookings, openEnquiryHub, enquiryHubBack, openInbox, openSettings, openStagingSite, refreshModerationCounts, renderActivityLog, renderCalendar, renderExpenses, renderInbox, renderMoneyOverview, requestPayment, renderSquareSettings, runMigrations, saveApiKey, saveContent, saveBacsDetails, saveDepositPct, saveInstalFloor, instalFloorPreview, saveGoogleReviewUrl, saveHostText, sendBroadcast, sendSampleEmails, sendTestEmail, settingsBack, settingsFilter, settingsOpen, settingsOpenAccom, settingsOpenAccomSec, settingsOpenCalendar, settingsOpenCancel, settingsSearchKey, settingsShowIndex, tryAccessBackOffice, oaDevOpenTarget, oaDevClose, oaPwClose].forEach((f) => {
     window[f.name] = f;
 });
 try { cmdkPrefetchExperiences(); } catch (e) {} // published things-to-do → searchable
