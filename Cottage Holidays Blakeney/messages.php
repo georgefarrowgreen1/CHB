@@ -250,6 +250,21 @@ function chat_typing_by($tid)
     }
     return $by > 0 && !empty(chat_team_ids()[$by]) ? $by : 0;
 }
+// A guest's thread, or {"same": true} when the poll already holds it. The open chat
+// polls every 4 seconds and the thread rarely changes between two of them, so the
+// page names what it holds (`have`, the `h` of its last answer) and is told nothing
+// new instead of hearing the whole conversation again. The hash covers what is shown,
+// the read marks included, so a "Seen" changing is an answer, never a "same".
+function chat_thread_reply($tid, array $in): array
+{
+    $msgs = chat_msgs($tid);
+    $h = payload_hash($msgs);
+    $have = (string) ($in['have'] ?? '');
+    if ($h !== '' && preg_match('/^[0-9a-f]{16}$/', $have) && hash_equals($h, $have)) {
+        return ['ok' => true, 'same' => true, 'h' => $h];
+    }
+    return ['ok' => true, 'messages' => $msgs, 'h' => $h];
+}
 // What a guest's chat is told beside its messages: who is typing, and, when the page
 // asks (it does as the chat opens), who answers and whether they are away now.
 function chat_guest_payload($tid, array $in, array $out)
@@ -864,7 +879,7 @@ if ($guestId) {
         db()
             ->prepare("UPDATE messages SET read_by_guest = 1 WHERE thread_id = ? AND sender_role = 'admin'")
             ->execute([$tid]);
-        json_out(chat_guest_payload($tid, $in, ['ok' => true, 'messages' => chat_msgs($tid)]));
+        json_out(chat_guest_payload($tid, $in, chat_thread_reply($tid, $in)));
     } catch (\Throwable $e) {
         json_out(['error' => 'Messages not ready — has migration-chat-threads.sql been run?'], 500);
     }
@@ -961,7 +976,7 @@ try {
     db()
         ->prepare("UPDATE messages SET read_by_guest = 1 WHERE thread_id = ? AND sender_role = 'admin'")
         ->execute([$tid]);
-    json_out(chat_guest_payload($tid, $in, ['ok' => true, 'messages' => chat_msgs($tid)]));
+    json_out(chat_guest_payload($tid, $in, chat_thread_reply($tid, $in)));
 } catch (\Throwable $e) {
     json_out(['error' => 'Messages not ready — has migration-chat-threads.sql been run?'], 500);
 }

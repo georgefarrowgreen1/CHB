@@ -729,6 +729,50 @@ function json_out($data, $code = 200)
     echo $json;
     exit();
 }
+// AN UNCHANGED ANSWER IS NOT SENT AGAIN. A caller that already holds a part names it
+// with the hash this gave it last time, and a part that hashes the same comes back as
+// {"same": true}: the caller keeps what it has. Nothing is kept on the server and
+// nothing reaches the browser's HTTP cache (the owner's payload is no-store on
+// purpose): the copy lives in the page's memory, where it already was.
+function payload_hash($value): string
+{
+    $json = json_encode($value, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_INVALID_UTF8_SUBSTITUTE);
+    return $json === false ? '' : substr(md5($json), 0, 16);
+}
+// What a caller says it holds: "bookings.<16 hex>,enquiries.<16 hex>". Anything else
+// is ignored, so a malformed value costs a full answer, never a wrong one.
+function payload_have(string $raw): array
+{
+    $have = [];
+    foreach (array_slice(explode(',', $raw), 0, 12) as $item) {
+        if (preg_match('/^([a-z]{1,20})\.([0-9a-f]{16})$/', trim($item), $m)) {
+            $have[$m[1]] = $m[2];
+        }
+    }
+    return $have;
+}
+// Replaces each named part the caller already holds with {"same": true}, and says
+// every part's hash in `hashes` so the next ask can name what it holds.
+function payload_parts_diff(array $out, array $keys, string $haveRaw): array
+{
+    $have = payload_have($haveRaw);
+    $hashes = [];
+    foreach ($keys as $k) {
+        if (!isset($out[$k])) {
+            continue;
+        }
+        $h = payload_hash($out[$k]);
+        if ($h === '') {
+            continue;
+        }
+        $hashes[$k] = $h;
+        if (isset($have[$k]) && hash_equals($h, $have[$k])) {
+            $out[$k] = ['same' => true];
+        }
+    }
+    $out['hashes'] = (object) $hashes;
+    return $out;
+}
 function body()
 {
     $raw = file_get_contents('php://input');

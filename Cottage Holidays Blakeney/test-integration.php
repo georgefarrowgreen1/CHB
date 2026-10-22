@@ -7329,6 +7329,65 @@ it_check('§95 …and the very figure the Payments page\'s books show', abs((flo
     json_encode([$bk95['json']['books']['profit'] ?? null, $b95['profit'] ?? null]));
 $rootDb->exec("DELETE FROM expenses WHERE description = 'Changeover clean 95'");
 
+// §96 AN UNCHANGED ANSWER IS NOT SENT AGAIN. The owner's payload carries every booking
+// there has ever been, on every trip to Today; the open guest chat asked for the whole
+// thread every 4 seconds. Each now names what it holds and hears {"same": true} for a
+// part that has not changed. A change, a malformed claim or a stale hash costs a full
+// answer, never a wrong one; and a read mark is news, not "same".
+echo "\n== §96 an unchanged answer is not sent again ==\n";
+$parts96 = ['bookings', 'enquiries', 'blocks', 'rates'];
+$ab96 = http($adm83, 'GET', '/admin-bootstrap.php');
+$h96 = is_array($ab96['json']['hashes'] ?? null) ? $ab96['json']['hashes'] : [];
+it_check('§96 the owner\'s payload says the hash of each part that grows with the years',
+    count(array_filter($parts96, fn($k) => preg_match('/^[0-9a-f]{16}$/', (string) ($h96[$k] ?? '')))) === 4 && isset($ab96['json']['bookings']['bookings']),
+    json_encode($h96));
+$have96 = implode(',', array_map(fn($k) => $k . '.' . ($h96[$k] ?? ''), $parts96));
+$ab96b = http($adm83, 'GET', '/admin-bootstrap.php?have=' . rawurlencode($have96));
+it_check('§96 a page naming what it holds hears "same" for each unchanged part (nothing in them varies by the request)',
+    count(array_filter($parts96, fn($k) => ($ab96b['json'][$k]['same'] ?? null) === true)) === 4,
+    json_encode(array_map(fn($k) => is_array($ab96b['json'][$k] ?? null) ? array_keys($ab96b['json'][$k]) : null, $parts96)));
+it_check('§96 …so the answer is a fraction of the full one (' . strlen($ab96b['raw']) . ' bytes against ' . strlen($ab96['raw']) . ')', $ab96b['raw'] !== '' && strlen($ab96b['raw']) * 3 < strlen($ab96['raw']),
+    strlen($ab96b['raw']) . ' bytes against ' . strlen($ab96['raw']));
+it_check('§96 …while the small parts still come whole (the feeds, the dismissed duties, the jobs\' state)',
+    array_key_exists('feeds', $ab96b['json']) && array_key_exists('dismissed', $ab96b['json']) && isset($ab96b['json']['cron']), '');
+$rootDb->prepare("INSERT INTO bookings (prop_key, name, email, check_in, check_out, adults, children, payment, deposit_paid, agreed_total, agreed_nightly, agreed_txn_fee, agreed_nights)
+    VALUES (?, 'Have Ninetysix', 'have96@example.com', ?, ?, 2, 0, 'unpaid', 0, 300, 300, 0, 2)")->execute([$propKey, $ukPlus(90), $ukPlus(92)]);
+$ab96c = http($adm83, 'GET', '/admin-bootstrap.php?have=' . rawurlencode($have96));
+$names96 = array_map(fn($b) => $b['name'] ?? '', is_array($ab96c['json']['bookings']['bookings'] ?? null) ? $ab96c['json']['bookings']['bookings'] : []);
+it_check('§96 a new booking: that part comes back whole, with the new stay and a new hash',
+    in_array('Have Ninetysix', $names96, true) && ($ab96c['json']['hashes']['bookings'] ?? '') !== ($h96['bookings'] ?? ''),
+    json_encode($ab96c['json']['hashes'] ?? null));
+it_check('§96 …and the parts that did not change still say "same"',
+    ($ab96c['json']['enquiries']['same'] ?? null) === true && ($ab96c['json']['rates']['same'] ?? null) === true, '');
+$rootDb->exec("DELETE FROM bookings WHERE email = 'have96@example.com'");
+$ab96d = http($adm83, 'GET', '/admin-bootstrap.php?have=' . rawurlencode('bookings.zzzz,../etc,rates.' . str_repeat('0', 16)));
+it_check('§96 a malformed or stale "have" gets the whole payload',
+    isset($ab96d['json']['bookings']['bookings']) && isset($ab96d['json']['rates']['properties']), substr($ab96d['raw'], 0, 160));
+// The guest's chat poll.
+$rootDb->exec("DELETE FROM login_attempts WHERE identifier IN ('chat')");
+$anon96 = [];
+$tok96 = bin2hex(random_bytes(16));
+http($anon96, 'POST', '/messages.php', ['action' => 'send', 'token' => $tok96, 'name' => 'Poll Ninetysix', 'email' => 'poll96@gmail.com', 'body' => 'Is there parking?']);
+$tid96 = (int) $rootDb->query('SELECT id FROM chat_threads WHERE token = ' . $rootDb->quote($tok96))->fetchColumn();
+$t96 = http($anon96, 'POST', '/messages.php', ['action' => 'thread', 'token' => $tok96]);
+$th96 = (string) ($t96['json']['h'] ?? '');
+it_check('§96 the guest\'s thread carries its hash', $tid96 > 0 && preg_match('/^[0-9a-f]{16}$/', $th96) && count($t96['json']['messages'] ?? []) === 1, $t96['raw']);
+$t96b = http($anon96, 'POST', '/messages.php', ['action' => 'thread', 'token' => $tok96, 'have' => $th96]);
+it_check('§96 a poll naming it hears "same", with who is typing and without the messages',
+    ($t96b['json']['same'] ?? null) === true && !isset($t96b['json']['messages']) && array_key_exists('peer_typing', $t96b['json']), $t96b['raw']);
+$rootDb->prepare('UPDATE messages SET read_by_admin = 1 WHERE thread_id = ?')->execute([$tid96]);
+$t96c = http($anon96, 'POST', '/messages.php', ['action' => 'thread', 'token' => $tok96, 'have' => $th96]);
+it_check('§96 the owner reading it is news: the thread comes again, now read, with a new hash',
+    !isset($t96c['json']['same']) && ($t96c['json']['messages'][0]['read'] ?? null) === true && ($t96c['json']['h'] ?? '') !== $th96, $t96c['raw']);
+$th96c = (string) ($t96c['json']['h'] ?? '');
+http($adm83, 'POST', '/messages.php', ['action' => 'send', 'thread_id' => $tid96, 'body' => 'Yes, two spaces']);
+$t96d = http($anon96, 'POST', '/messages.php', ['action' => 'thread', 'token' => $tok96, 'have' => $th96c]);
+it_check('§96 …and so is a reply', count($t96d['json']['messages'] ?? []) === 2 && !isset($t96d['json']['same']), $t96d['raw']);
+$t96e = http($anon96, 'POST', '/messages.php', ['action' => 'thread', 'token' => $tok96, 'have' => 'zz' . substr($th96c, 2)]);
+it_check('§96 a "have" that is not a hash gets the whole thread', count($t96e['json']['messages'] ?? []) === 2, $t96e['raw']);
+$rootDb->prepare('DELETE FROM messages WHERE thread_id = ?')->execute([$tid96]);
+$rootDb->prepare('DELETE FROM chat_threads WHERE id = ?')->execute([$tid96]);
+
 echo "\n== Summary ==\n";
 if ($fail) {
     echo "  $fail CHECK(S) FAILED \xE2\x9D\x8C\n\n";

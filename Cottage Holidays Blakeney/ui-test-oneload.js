@@ -12,6 +12,12 @@
 //      and so does an unchanged sync while a feed was in trouble (its state
 //      lives in the reload)
 //   5. on a phone the hidden rail costs nothing; on a computer it still works
+//   6. an unchanged part of the owner's payload is not sent again: the page names
+//      what it holds, a "same" part is re-read from the text it arrived as (so a
+//      store the page has since changed cannot leak back), and a "same" for a hash
+//      the page never held asks the part's own endpoint
+//   7. the open guest chat names the thread it holds, and a "same" answer moves
+//      only the typing line
 const { bootBrowser } = require('./ui-test-lib');
 let fails = 0;
 const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails++; };
@@ -22,6 +28,12 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
   p.on('pageerror', (e) => { console.log('  PAGEERR:', e.message); fails++; });
   const hits = [];
   let windowFeeds = [];
+  const mkB = (id, name) => ({ id, prop_key: 'jollyboat', name, email: `b${id}@x.com`, phone: '', check_in: '2026-11-10', check_out: '2026-11-13', adults: 2, children: 0, payment: 'paid', deposit_paid: 300, agreed_total: 300, agreed_nightly: 300, agreed_txn_fee: 0, agreed_nights: 3, hold_status: 'none' });
+  const parts = {
+    on: false, lie: false, haves: [],
+    bk: [mkB(601, 'Alice Held'), mkB(602, 'Ben Held')], bkH: 'aaaaaaaaaaaaaaaa',
+    rates: { properties: [], seasons: { jollyboat: [{ label: 'Peak', start: '2026-07-01', end: '2026-08-31', couple_rate: 200 }] } }, rtH: 'cccccccccccccccc',
+  };
   let syncAnswer = { ok: true, result: {} };
   const modDelay = 400;
   await p.route(/\.php/, async (route) => {
@@ -30,7 +42,17 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
     let body = {}; try { body = JSON.parse(req.postData() || '{}'); } catch (e) {}
     hits.push({ url, action: body.action || '', at: Date.now() });
     const json = (o) => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(o) });
-    if (url.includes('admin-bootstrap.php')) return json({ ok: true, feeds: windowFeeds, dismissed: {} });
+    if (url.includes('admin-bootstrap.php')) {
+      if (!parts.on) return json({ ok: true, feeds: windowFeeds, dismissed: {} });
+      // A server that hashes its parts and honours ?have=, like admin-bootstrap.php.
+      const have = new URL(url).searchParams.get('have') || '';
+      parts.haves.push(have);
+      const held = Object.fromEntries(have.split(',').filter(Boolean).map((x) => x.split('.')));
+      const out = { ok: true, feeds: [], dismissed: {}, hashes: { bookings: parts.bkH, rates: parts.rtH } };
+      out.bookings = held.bookings === parts.bkH || parts.lie ? { same: true } : { bookings: parts.bk };
+      out.rates = held.rates === parts.rtH ? { same: true } : parts.rates;
+      return json(out);
+    }
     if (url.includes('ical-import.php') && body.action === 'sync') return json(syncAnswer);
     if (/(reviews|photos|experiences)\.php/.test(url) && body.action === 'list_admin') {
       await new Promise((r) => setTimeout(r, modDelay));
@@ -126,6 +148,98 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
   await p.waitForTimeout(400);
   ok(await railCalls() >= 1, '…and on a computer, where the rail is painted, it still works the day out');
   ok(await p.evaluate(() => { const r = document.getElementById('admin-rail'); return !!r && getComputedStyle(r).display !== 'none'; }), '…with the rail on screen');
+
+  console.log('6. an unchanged part is not sent again');
+  await p.setViewportSize({ width: 390, height: 844 });
+  parts.on = true;
+  const names = () => p.evaluate(() => Object.values(dbBookings).flat().map((b) => b.name).sort().join(', '));
+  // The bookings loader's own fallback is a bare GET of bookings.php; other screens
+  // post actions to the same file, which is why the count reads the action.
+  const listAsks = () => hits.filter((h) => /\/bookings\.php/.test(h.url) && !h.action).length;
+  const season = () => p.evaluate(() => ((propertySeasons.jollyboat || [])[0] || {}).label || '');
+  hits.length = 0;
+  await p.evaluate(() => window.initBackOffice());
+  await quiet();
+  ok(parts.haves[0] === '', `the first load names nothing, holding nothing yet ("${parts.haves[0]}")`);
+  ok((await names()) === 'Alice Held, Ben Held' && (await season()) === 'Peak', `…and fills the stores from the parts (${await names()} · ${await season()})`);
+  // A store the page changes after the load must not leak back on a "same": the
+  // rates loader hands the part's own seasons object to propertySeasons.
+  await p.evaluate(() => { propertySeasons.jollyboat[0].label = 'Mutated'; });
+  hits.length = 0;
+  await p.evaluate(() => window.initBackOffice());
+  await quiet();
+  const have2 = parts.haves[1] || '';
+  ok(have2.includes('bookings.aaaaaaaaaaaaaaaa') && have2.includes('rates.cccccccccccccccc'), `the next load names what it holds (${have2})`);
+  ok((await names()) === 'Alice Held, Ben Held', `…and on "same" the bookings are re-read from what it holds (${await names()})`);
+  ok((await season()) === 'Peak', `…from the TEXT it arrived as, so a store changed since does not leak back (${await season()})`);
+  ok(listAsks() === 0, `…without asking the bookings endpoint (${listAsks()})`);
+  parts.bk = [...parts.bk, mkB(603, 'Cara New')];
+  parts.bkH = 'bbbbbbbbbbbbbbbb';
+  await p.evaluate(() => window.initBackOffice());
+  await quiet();
+  ok((await names()) === 'Alice Held, Ben Held, Cara New', `a changed part comes whole and is used (${await names()})`);
+  await p.evaluate(() => window.initBackOffice());
+  await quiet();
+  ok((parts.haves[parts.haves.length - 1] || '').includes('bookings.bbbbbbbbbbbbbbbb'), `…and the next load names its new hash (${parts.haves[parts.haves.length - 1]})`);
+  // A "same" for a hash this page never held: its loader asks its own endpoint.
+  parts.lie = true;
+  parts.bkH = 'dddddddddddddddd';
+  hits.length = 0;
+  await p.evaluate(() => window.initBackOffice());
+  await quiet();
+  ok(listAsks() === 1, `a "same" for a hash it never held asks the bookings endpoint instead (${listAsks()})`);
+  parts.lie = false;
+  parts.on = false;
+
+  console.log('7. the open chat asks only for what changed');
+  const g = await t.browser.newPage({ viewport: { width: 390, height: 844 } });
+  g.on('pageerror', (e) => { console.log('  PAGEERR:', e.message); fails++; });
+  const asks = [];
+  const thread = { msgs: [{ id: 1, role: 'guest', body: 'Is there parking?', at: '2026-10-22 10:00:00', seen: false, read: false, attachment: '', by: 0, kind: '' }], h: 'eeeeeeeeeeeeeeee', typing: false };
+  await g.route(/\.php/, async (route) => {
+    const req = route.request();
+    let body = {}; try { body = JSON.parse(req.postData() || '{}'); } catch (e) {}
+    const json = (o) => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(o) });
+    if (req.url().includes('messages.php') && body.action === 'thread') {
+      asks.push(body);
+      const base = { ok: true, peer_typing: thread.typing, typing_by: 0 };
+      if (thread.h && body.have === thread.h) return json({ ...base, same: true, h: thread.h });
+      return json({ ...base, messages: thread.msgs, ...(thread.h ? { h: thread.h } : {}) });
+    }
+    return json({ ok: true, bookings: [], enquiries: [], threads: [], reviews: [], content: {}, properties: [], seasons: {}, occupancy: {} });
+  });
+  await g.goto(t.base + '/index.html');
+  await g.waitForTimeout(800);
+  await g.evaluate(() => { localStorage.setItem('chb-chat-token', 'f'.repeat(32)); toggleChat(); });
+  await g.waitForFunction(() => /Is there parking/.test(document.getElementById('chat-thread').textContent), null, { timeout: 8000 }).catch(() => {});
+  await g.evaluate(() => chatStopPolling());
+  ok(asks.length >= 1 && !asks[0].have, `opening the chat asks for the whole thread (${JSON.stringify(asks[0] || null)})`);
+  const before = await g.evaluate(() => document.getElementById('chat-thread').innerHTML);
+  thread.typing = true;
+  await g.evaluate(() => chatPoll());
+  ok(asks[asks.length - 1].have === 'eeeeeeeeeeeeeeee', `the poll names the thread it holds (${asks[asks.length - 1].have})`);
+  const after = await g.evaluate(() => { const t = document.getElementById('chat-thread'); return { bubbles: t.querySelectorAll('.chat-row').length, typing: !!t.querySelector('.chat-typing'), text: t.textContent }; });
+  ok(after.bubbles === 1 && /Is there parking/.test(after.text), `a "same" answer leaves the conversation as it was (${after.bubbles} bubble)`);
+  ok(after.typing, '…and still shows who is typing');
+  // The hourly photo link (or anything else) can change the hash with the messages
+  // unchanged: that full answer must not redraw the conversation, which it would if a
+  // "same" answer had been read as an empty thread (the arrival animation replays).
+  await g.evaluate(() => { document.querySelector('#chat-thread .chat-row').dataset.keep = '1'; });
+  thread.h = '1111111111111111';
+  await g.evaluate(() => chatPoll());
+  ok(await g.evaluate(() => !!document.querySelector('#chat-thread .chat-row[data-keep="1"]')), 'after a "same", a full answer with the same messages leaves the conversation in place');
+  thread.msgs = [...thread.msgs, { id: 2, role: 'admin', body: 'Yes, two spaces', at: '2026-10-22 10:01:00', seen: true, read: false, attachment: '', by: 0, kind: '' }];
+  thread.h = 'ffffffffffffffff';
+  thread.typing = false;
+  await g.evaluate(() => chatPoll());
+  ok(/Yes, two spaces/.test(await g.evaluate(() => document.getElementById('chat-thread').textContent)), 'a changed thread comes whole and the reply shows');
+  await g.evaluate(() => chatPoll());
+  ok(asks[asks.length - 1].have === 'ffffffffffffffff', `…and the next poll names its new hash (${asks[asks.length - 1].have})`);
+  thread.h = '';
+  await g.evaluate(() => chatPoll());
+  await g.evaluate(() => chatPoll());
+  ok(!asks[asks.length - 1].have, 'an older server (no hash) is asked in full every time, as before');
+  ok(before.includes('Is there parking'), '(vacuity) the thread rendered before the polls');
 
   await t.done(fails);
 })().catch(async (e) => { console.error(e); process.exit(1); });
