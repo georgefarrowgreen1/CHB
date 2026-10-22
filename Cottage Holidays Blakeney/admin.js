@@ -9920,26 +9920,109 @@ function chbReducedMotion() {
 // An unchanged part is not sent again (admin-bootstrap.php ?have=; see CLAUDE.md). Each
 // is held as the TEXT it arrived as, never the parsed object: the loaders hand pieces of
 // it to the stores (propertySeasons IS the rates part's object), so an object drifts.
-const AB_HELD_PARTS = ['bookings', 'enquiries', 'blocks', 'rates'];
-/** @type {Record<string, {h: string, text: string}>} */
+const AB_HELD_PARTS = ['bookings', 'enquiries', 'blocks', 'rates', 'inbox', 'dismissed'];
+/** @typedef {{h: string, text: string, bh?: Record<string, string>, bs?: number}} HeldCopy */
+/** @type {Record<string, HeldCopy>} */
 let __abHeld = {};
 function abHeldAsk() {
     return AB_HELD_PARTS.filter((k) => __abHeld[k]).map((k) => k + '.' + __abHeld[k].h).join(',');
 }
+// A LIST SENT AS CHANGES (db.php held_list; see CLAUDE.md). A long list is held with its
+// buckets' hashes (bh, bucket size bs), names them on the next ask, and takes back only
+// the buckets that changed. The merged list must be the list the server would send, so
+// each list's order is its query's ORDER BY, restated: the bookings by check-in then id,
+// the chat list by its last message then thread, newest first. The email log is a map by
+// booking, which has no order to keep.
+const HELD_LISTS = {
+    bookings: { field: 'bookings', id: 'id', order: (a, b) => heldCmp(a.check_in, b.check_in) || Number(a.id) - Number(b.id) },
+    email_logs: { field: 'logs', id: null, order: null },
+    threads: { field: 'threads', id: 'thread_id', order: (a, b) => heldCmp(b.last_at, a.last_at) || Number(b.thread_id) - Number(a.thread_id) },
+};
+// What a list's answer carries about itself rather than its data: left out of the copy.
+const HELD_META = ['srv', 'bh', 'bs', 'n', 'delta'];
+function heldCmp(a, b) {
+    const x = a == null ? '' : String(a);
+    const y = b == null ? '' : String(b);
+    return x < y ? -1 : x > y ? 1 : 0;
+}
+function heldBhOk(bh) {
+    if (!bh || typeof bh !== 'object' || Array.isArray(bh)) return false;
+    const keys = Object.keys(bh);
+    return keys.length <= 4000 && keys.every((k) => /^\d{1,7}$/.test(k) && /^[0-9a-f]{16}$/.test(String(bh[k])));
+}
+// "<size>:<key>.<hash>,…", the claim db.php held_have_buckets reads.
+function heldClaim(held) {
+    return held && held.bh && held.bs ? held.bs + ':' + Object.keys(held.bh).map((k) => k + '.' + held.bh[k]).join(',') : '';
+}
+// [key → entries] of a held list, as db.php held_buckets cuts it: a list's rows by id
+// range, a map's [id, value] pairs by their id.
+function heldBucketsOf(list, spec, size) {
+    /** @type {Map<number, any[]>} */
+    const out = new Map();
+    const put = (id, e) => {
+        const k = Math.floor(Math.max(0, Math.trunc(Number(id)) || 0) / size);
+        const arr = out.get(k);
+        if (arr) arr.push(e);
+        else out.set(k, [e]);
+    };
+    if (spec.id === null) Object.keys(list && typeof list === 'object' ? list : {}).forEach((key) => put(key, [key, list[key]]));
+    else (Array.isArray(list) ? list : []).forEach((row) => put(row && row[spec.id], row));
+    return out;
+}
+// The answer a delta stands for: the unchanged buckets of the copy the ask named, with
+// the changed ones that came back, in the list's own order. Null when the copy cannot be
+// trusted to make it (held at another size, a bucket it should hold and does not, rows
+// for a bucket it holds unchanged, a count that does not add up): the caller then asks
+// for the whole answer.
+function heldMerge(held, r, spec) {
+    if (!held || !held.bh || !held.bs || held.bs !== r.bs || !heldBhOk(r.bh)) return null;
+    let base = null;
+    try {
+        base = JSON.parse(held.text);
+    } catch (e) {}
+    if (!base || typeof base !== 'object') return null;
+    const old = heldBucketsOf(base[spec.field], spec, r.bs);
+    const fresh = heldBucketsOf(r[spec.field], spec, r.bs);
+    for (const k of fresh.keys()) if (!(String(k) in r.bh) || held.bh[k] === r.bh[k]) return null;
+    const parts = [];
+    for (const k of Object.keys(r.bh)) {
+        const src = held.bh[k] === r.bh[k] ? old.get(Number(k)) : fresh.get(Number(k));
+        if (!src) return null;
+        parts.push(...src);
+    }
+    /** @type {any} */
+    let list;
+    if (spec.id === null) {
+        list = {};
+        parts.forEach(([key, v]) => {
+            list[key] = v;
+        });
+        if (Object.keys(list).length !== r.n) return null;
+    } else {
+        list = parts.sort(spec.order);
+        if (list.length !== r.n) return null;
+    }
+    const out = Object.assign({}, r);
+    HELD_META.forEach((x) => delete out[x]);
+    out[spec.field] = list;
+    return out;
+}
 // The owner's payload, naming the parts this page holds: loadData (through window, once
 // this bundle is in) and Manage's Run sync.
 async function abFetch() {
+    const sent = Object.assign({}, __abHeld); // what this ask names, for a delta to merge into
     const have = abHeldAsk();
-    const ab = await apiGet('admin-bootstrap.php' + (have ? '?have=' + encodeURIComponent(have) : ''));
+    const bk = have ? heldClaim(sent.bookings) : '';
+    const ab = await apiGet('admin-bootstrap.php' + (have ? '?have=' + encodeURIComponent(have) + (bk ? '&haveb=' + encodeURIComponent(bk) : '') : ''));
     if (!ab || !ab.ok) return null;
-    abHeldResolve(ab);
+    abHeldResolve(ab, sent);
     return ab;
 }
 // The same for a read that is one answer (db.php json_out_held): the email log, the Sent
 // list, the chat list and the settings. A "same" is re-read from the TEXT it arrived as;
 // a "same" for a copy this page no longer holds (another read replaced it) asks again in
 // full, and an answer with no hash (an older server) holds nothing. Memory only.
-/** @type {Record<string, {h: string, text: string}>} */
+/** @type {Record<string, HeldCopy>} */
 let __heldReads = {};
 /**
  * @param {string} key one per distinct answer (the chat list's archived view is its own)
@@ -9948,8 +10031,11 @@ let __heldReads = {};
  * @returns {Promise<any>}
  */
 async function apiPostHeld(key, endpoint, payload) {
+    const spec = HELD_LISTS[key.split(':')[0]] || null;
     const held = __heldReads[key];
-    let r = await apiPost(endpoint, held ? Object.assign({}, payload, { have: held.h }) : payload);
+    const claim = spec ? heldClaim(held) : '';
+    let resp = await apiPost(endpoint, held ? Object.assign({}, payload, { have: held.h }, claim ? { haveb: claim } : {}) : payload);
+    let r = resp;
     if (r && r.same === true) {
         const now = __heldReads[key];
         if (now && now.h === r.h) {
@@ -9958,28 +10044,52 @@ async function apiPostHeld(key, endpoint, payload) {
             } catch (e) {}
         }
         delete __heldReads[key];
-        r = await apiPost(endpoint, payload);
-        if (r && r.same === true) throw new Error('Unexpected server response.');
+        resp = r = await apiPost(endpoint, payload);
+        if (r && (r.same === true || r.delta === true)) throw new Error('Unexpected server response.');
+    } else if (r && r.delta === true) {
+        // Only the buckets that changed came back: merged into the copy this ask named,
+        // or, when that copy cannot make it, the whole answer asked for.
+        r = spec ? heldMerge(held, resp, spec) : null;
+        if (!r) {
+            delete __heldReads[key];
+            resp = r = await apiPost(endpoint, payload);
+            if (r && (r.same === true || r.delta === true)) throw new Error('Unexpected server response.');
+        }
     }
-    const h = r && typeof r.h === 'string' && /^[0-9a-f]{16}$/.test(r.h) ? r.h : '';
+    const h = resp && typeof resp.h === 'string' && /^[0-9a-f]{16}$/.test(resp.h) ? resp.h : '';
     try {
         if (!h) throw 0;
         const copy = Object.assign({}, r);
         delete copy.srv;
-        __heldReads[key] = { h, text: JSON.stringify(copy) };
+        if (spec) HELD_META.forEach((x) => delete copy[x]);
+        const bs = spec && heldBhOk(resp.bh) && Number.isInteger(resp.bs) && resp.bs > 0 ? resp.bs : 0;
+        __heldReads[key] = bs ? { h, text: JSON.stringify(copy), bh: resp.bh, bs } : { h, text: JSON.stringify(copy) };
     } catch (e) {
         delete __heldReads[key];
     }
     return r;
 }
-function abHeldResolve(ab) {
+/**
+ * @param {any} ab
+ * @param {Record<string, HeldCopy>} [sent] the copies the ask named
+ */
+function abHeldResolve(ab, sent) {
     const hashes = ab && ab.hashes && typeof ab.hashes === 'object' ? ab.hashes : {};
     AB_HELD_PARTS.forEach((k) => {
         const h = typeof hashes[k] === 'string' ? hashes[k] : '';
         const part = ab[k];
-        if (part && part.same === true) {
-            // Read afresh; a hash this page never held leaves the part to its own endpoint.
-            const held = __abHeld[k];
+        const spec = HELD_LISTS[k] || null;
+        if (part && part.delta === true) {
+            // Only the buckets that changed came back. A copy that cannot make the whole
+            // part leaves it to its own endpoint, as a "same" for a copy not held does.
+            const merged = spec && /^[0-9a-f]{16}$/.test(h) ? heldMerge(sent && sent[k], part, spec) : null;
+            ab[k] = merged;
+            if (merged) __abHeld[k] = { h, text: JSON.stringify(merged), bh: part.bh, bs: part.bs };
+            else delete __abHeld[k];
+        } else if (part && part.same === true) {
+            // Read afresh from the copy this ask named (another load may have replaced the
+            // page's since); a hash this page never held leaves the part to its own endpoint.
+            const held = sent && sent[k] && sent[k].h === h ? sent[k] : __abHeld[k];
             let v = null;
             try {
                 v = held && held.h === h ? JSON.parse(held.text) : null;
@@ -9988,7 +10098,10 @@ function abHeldResolve(ab) {
             if (!v) delete __abHeld[k];
         } else if (part && h) {
             try {
-                __abHeld[k] = { h, text: JSON.stringify(part) };
+                const copy = Object.assign({}, part);
+                if (spec) HELD_META.forEach((x) => delete copy[x]);
+                const bs = spec && heldBhOk(part.bh) && Number.isInteger(part.bs) && part.bs > 0 ? part.bs : 0;
+                __abHeld[k] = bs ? { h, text: JSON.stringify(copy), bh: part.bh, bs } : { h, text: JSON.stringify(copy) };
             } catch (e) {
                 delete __abHeld[k];
             }
@@ -10092,7 +10205,7 @@ function abHeldRestore() {
             // A date from a clock since gone backwards reads as old, never as fresh.
             const at = Number(r.at) || 0;
             const when = at <= now + 300000 ? at : 0;
-            __abHeld[r.part] = { h: r.h, text };
+            __abHeld[r.part] = heldBhOk(r.bh) && Number.isInteger(r.bs) && r.bs > 0 ? { h: r.h, text, bh: r.bh, bs: r.bs } : { h: r.h, text };
             __abSaved[r.part] = r.h;
             __abSavedAt[r.part] = when;
             if (now - when <= CHB_SNAP_MAX_AGE_H * 3600000) parts[r.part] = v;
@@ -10119,7 +10232,9 @@ async function abHeldSave() {
         if (!seal) return; // no key: nothing is kept in the clear
         if (!isAuthenticated || abHeldWho() !== who) return; // signed out while it was sealed
         const at = Date.now();
-        const done = await abHeldTx('readwrite', (st) => st.put({ id: k, part: k, who, h: held.h, at, seal }));
+        // The bucket hashes ride beside the whole hash, outside the seal: like it, they say
+        // which copy this is and nothing of what is in it.
+        const done = await abHeldTx('readwrite', (st) => st.put({ id: k, part: k, who, h: held.h, bh: held.bh || null, bs: held.bs || 0, at, seal }));
         if (done) {
             __abSaved[k] = held.h;
             __abSavedAt[k] = at;

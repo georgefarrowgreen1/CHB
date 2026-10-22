@@ -188,11 +188,17 @@ if (!admin_can('owner')) {
 if (!admin_can('co.sync')) {
     $out['feeds'] = [];
 }
-// The four parts that grow with the years go only when they changed: the page names
-// what it holds (?have=bookings.<hash>,…), and a trip to Today with nothing new no
-// longer downloads every booking there has ever been. Hashed AFTER the permission
-// trims above, so a hash describes exactly what this person is sent.
-$out = payload_parts_diff($out, ['bookings', 'enquiries', 'blocks', 'rates'], $haveRaw, $bkSkip ? ['bookings' => $bkMemo['h']] : []);
+// The parts that grow with the years go only when they changed: the page names what it
+// holds (?have=bookings.<hash>,…), and a trip to Today with nothing new no longer
+// downloads every booking there has ever been. The Inbox's record and the dismissed
+// duties joined them: 36KB on every trip on a five-year business. Hashed AFTER the
+// permission trims above, so a hash describes exactly what this person is sent.
+$out = payload_parts_diff($out, ['bookings', 'enquiries', 'blocks', 'rates', 'inbox', 'dismissed'], $haveRaw, $bkSkip ? ['bookings' => $bkMemo['h']] : []);
+// A bookings part that changed goes as its changed buckets when the page names the ones
+// it holds (?haveb=; db.php held_list): one payment recorded no longer sends every stay.
+if (isset($out['bookings']['bookings']) && is_array($out['bookings']['bookings'])) {
+    $out['bookings'] = held_list($out['bookings'], 'bookings', 'id', (string) ($_GET['haveb'] ?? ''));
+}
 // EVERY BUILD CHECKS THE FINGERPRINT: one already remembered must produce the remembered
 // hash, or the fingerprint missed something the part is made from. Said loudly (and
 // refused under CHB_PAYLOAD_FP_STRICT, which the integration harness sets, so each of its

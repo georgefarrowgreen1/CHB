@@ -273,6 +273,53 @@ const freePort = () => new Promise((resolve) => {
         };
     }
 
+    // 5b. The lists that grow with the years, after one change. A page holding a copy names
+    // its buckets and gets back only the bucket that changed (db.php held_list); each
+    // read is asked three times with the same claim, so each run is the same delta.
+    const db = '`' + NAME + '`';
+    const someBooking = Number(sql(`SELECT id FROM ${db}.bookings ORDER BY id DESC LIMIT 1 OFFSET 40`)[0].id);
+    const someThread = Number(sql(`SELECT t.id FROM ${db}.chat_threads t WHERE t.archived = 0 AND EXISTS (SELECT 1 FROM ${db}.messages m WHERE m.thread_id = t.id) ORDER BY t.id LIMIT 1 OFFSET 100`)[0].id);
+    const claimOf = (j) => (j && j.bh && j.bs ? `${j.bs}:${Object.keys(j.bh).map((k) => `${k}.${j.bh[k]}`).join(',')}` : '');
+    const noteFor = (id) => `INSERT INTO ${db}.activity_log (actor, category, action, summary, entity, entity_id, meta, created_at) VALUES ('owner', 'comms', 'comms.message', 'Volume note', 'booking', '${id}', '{"subject":"Volume","body":"Hello"}', NOW())`;
+    const CHANGED = [
+        ['owner boot, one booking changed', async () => {
+            const j = (await call('owner', 'GET', '/admin-bootstrap.php')).json || {};
+            sql(`UPDATE ${db}.bookings SET notes = CONCAT(COALESCE(notes, ''), ' .') WHERE id = ${someBooking}`);
+            // Naming every part it holds, as the page does.
+            const have = Object.entries(j.hashes || {}).map(([k, h]) => `${k}.${h}`).join(',');
+            return ['GET', '/admin-bootstrap.php?have=' + encodeURIComponent(have) + '&haveb=' + encodeURIComponent(claimOf(j.bookings)), undefined, (r) => !!(r.json && r.json.bookings && r.json.bookings.delta === true)];
+        }],
+        ['owner email log, one email sent', async () => {
+            const j = (await call('owner', 'POST', '/bookings.php', { action: 'email_logs' })).json || {};
+            sql(noteFor(someBooking));
+            return ['POST', '/bookings.php', { action: 'email_logs', have: j.h, haveb: claimOf(j) }, (r) => !!(r.json && r.json.delta === true)];
+        }],
+        ['owner chat list, one message', async () => {
+            const j = (await call('owner', 'POST', '/messages.php', { action: 'threads' })).json || {};
+            sql(`INSERT INTO ${db}.messages (thread_id, sender_role, body, read_by_admin, read_by_guest, created_at) VALUES (${someThread}, 'guest', 'One more question', 0, 0, NOW())`);
+            return ['POST', '/messages.php', { action: 'threads', have: j.h, haveb: claimOf(j) }, (r) => !!(r.json && r.json.delta === true)];
+        }],
+    ];
+    for (const [label, prep] of CHANGED) {
+        const [method, url, body, isDelta] = await prep();
+        const runs = [];
+        for (let i = 0; i < 3; i++) {
+            const before = await settled();
+            const r = await call('owner', method, url, body);
+            const after = await settled();
+            runs.push({ ...r, q: after.q - before.q, rows: after.r - before.r });
+        }
+        const last = runs[runs.length - 1];
+        if (last.status !== 200 || !isDelta(last)) { ok(false, `${label}: no delta came back (${last.status} ${last.buf.toString().slice(0, 120)})`); continue; }
+        measured[label] = {
+            bytes: last.buf.length,
+            gz: zlib.gzipSync(last.buf, { level: 6 }).length,
+            statements: Math.min(...runs.map((x) => x.q)),
+            rowsRead: Math.min(...runs.map((x) => x.rows)),
+            ms: Math.round(runs.map((x) => x.ms).sort((a, b) => a - b)[1]),
+        };
+    }
+
     // 6. In a browser: Today on this much data.
     let chromium;
     try { ({ chromium } = require('playwright')); } catch (e) { fatal('playwright is not installed here (npm install playwright)'); }
@@ -340,6 +387,43 @@ const freePort = () => new Promise((resolve) => {
         const today = { elements: await page.evaluate(() => document.getElementsByTagName('*').length) };
         for (const [k, fn] of Object.entries(CHANGES)) today[k] = await restyled(fn);
         measured['Today in a browser'] = today;
+
+        // THE PAGE'S OWN MERGE, on five years of data: each list after a change, made from
+        // the copy it held and the buckets that came back, is the list a fresh ask returns,
+        // row for row and in the same order (the order is the page's to restore).
+        const deltas = [];
+        const onResp = async (resp) => {
+            if (!/admin-bootstrap\.php\?have=|bookings\.php|messages\.php/.test(resp.url())) return;
+            try {
+                if (/"delta":true/.test(await resp.text())) deltas.push(resp.url().replace(base, ''));
+            } catch (e) {}
+        };
+        page.on('response', onResp);
+        await page.evaluate(() => Promise.all([apiPostHeld('email_logs', 'bookings.php', { action: 'email_logs' }), apiPostHeld('threads:0', 'messages.php', { action: 'threads', archived: 0 })]));
+        sql(`UPDATE ${db}.bookings SET notes = CONCAT(COALESCE(notes, ''), ' ..') WHERE id = ${someBooking - 3}`);
+        sql(noteFor(someBooking - 3));
+        sql(`INSERT INTO ${db}.messages (thread_id, sender_role, body, read_by_admin, read_by_guest, created_at) VALUES (${someThread}, 'guest', 'And another', 0, 0, NOW())`);
+        const merged = await page.evaluate(async () => {
+            const ab = await abFetch();
+            const full = await apiGet('admin-bootstrap.php');
+            const logs = await apiPostHeld('email_logs', 'bookings.php', { action: 'email_logs' });
+            const logsFull = await apiPost('bookings.php', { action: 'email_logs' });
+            const threads = await apiPostHeld('threads:0', 'messages.php', { action: 'threads', archived: 0 });
+            const threadsFull = await apiPost('messages.php', { action: 'threads', archived: 0 });
+            const same = (a, b) => !!a && !!b && JSON.stringify(a) === JSON.stringify(b);
+            return {
+                bookings: same(ab && ab.bookings && ab.bookings.bookings, full && full.bookings && full.bookings.bookings),
+                nBookings: ab && ab.bookings && Array.isArray(ab.bookings.bookings) ? ab.bookings.bookings.length : -1,
+                logs: same(logs && logs.logs, logsFull && logsFull.logs),
+                threads: same(threads && threads.threads, threadsFull && threadsFull.threads),
+            };
+        });
+        await new Promise((r) => setTimeout(r, 300));
+        page.off('response', onResp);
+        const came = (re) => deltas.some((u) => re.test(u));
+        ok(merged.bookings && came(/admin-bootstrap/), `the page's merge: the bookings after one changed are the ${merged.nBookings} a fresh ask returns, in its order (a delta came: ${came(/admin-bootstrap/)})`);
+        ok(merged.logs && came(/bookings\.php/), `…the email log after one email, likewise (a delta came: ${came(/bookings\.php/)})`);
+        ok(merged.threads && came(/messages\.php/), `…the chat list after one message, likewise (a delta came: ${came(/messages\.php/)})`);
         await ctx.close();
     } finally {
         await browser.close();
@@ -364,7 +448,7 @@ const freePort = () => new Promise((resolve) => {
     const nudges = [];
     for (const [label, m] of Object.entries(measured)) {
         const b = budget[label];
-        if (!b) { ok(false, `${label}: no budget (node volume-test.js --update)`); continue; }
+        if (!b) { ok(false, `${label}: no budget (node volume-test.js --update): ${Object.entries(m).map(([k, v]) => `${k} ${fmt(k, v)}`).join(', ')}`); continue; }
         const over = [];
         for (const [k, v] of Object.entries(m)) {
             if (k === 'rowsRead' && budget.engine !== (maria ? 'mariadb' : 'mysql')) continue; // rows are counted differently by the other engine

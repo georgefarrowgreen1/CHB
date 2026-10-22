@@ -7521,8 +7521,10 @@ $rootDb->prepare('UPDATE properties SET couple_rate = couple_rate - 1 WHERE prop
 // change, a claim that is not a hash or another view's hash costs a full answer.
 echo "\n== §98 the email log, the Sent list, the chat list and the settings are not sent again ==\n";
 $fl98 = JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_INVALID_UTF8_SUBSTITUTE;
+// The hash is of the answer's data: not of what it says about itself (its hash, the
+// server's clock, and a long list's bucket hashes, size and length; §100).
 $hashOf98 = function (array $j) use ($fl98) {
-    unset($j['h'], $j['srv']);
+    unset($j['h'], $j['srv'], $j['bh'], $j['bs'], $j['n']);
     return substr(md5((string) json_encode($j, $fl98)), 0, 16);
 };
 $log98 = function (string $summary) use ($rootDb) {
@@ -7750,6 +7752,194 @@ $rootDb->exec('DELETE FROM pv_day');
 $rootDb->exec('DELETE FROM pv_visit');
 $rootDb->exec('DELETE FROM pv_exit');
 $rootDb->exec('UPDATE pv_rollup SET version = 0');
+
+// §100 A LONG LIST IS SENT AS ITS CHANGED BUCKETS (db.php held_list). The owner's bookings,
+// the email log and the chat list came whole whenever anything in them changed (2.3MB for
+// one payment on a five-year business). Each list is cut into buckets of 32 ids by id range
+// and says every bucket's hash; a page naming the buckets it holds gets only the rows of the
+// ones that differ. Checked the way the page uses it: the copy held before a change, merged
+// with the buckets that came back, must hold exactly the rows a fresh ask returns. (Their
+// ORDER is the page's to restore, and volume-test checks it on five years of data.)
+echo "\n== §100 a long list is sent as its changed buckets ==\n";
+$fl100 = JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_INVALID_UTF8_SUBSTITUTE;
+$hash100 = fn($v) => substr(md5((string) json_encode($v, $fl100)), 0, 16);
+$group100 = function ($list, ?string $idKey): array {
+    $b = [];
+    foreach (is_array($list) ? $list : [] as $k => $row) {
+        $id = $idKey === null ? (int) $k : (int) ($row[$idKey] ?? 0);
+        $b[intdiv(max(0, $id), 32)][$k] = $row;
+    }
+    ksort($b);
+    return $b;
+};
+$claim100 = fn(array $bh): string => '32:' . implode(',', array_map(fn($k) => $k . '.' . $bh[$k], array_keys($bh)));
+// The page's merge, restated: the held buckets whose hash did not change, with the ones
+// that came back. Null when a bucket it needs is not there.
+$merge100 = function (array $held, array $heldBh, $delta, array $newBh, ?string $idKey) use ($group100) {
+    $old = $group100($held, $idKey);
+    $fresh = $group100($delta, $idKey);
+    $out = [];
+    foreach ($newBh as $k => $h) {
+        $src = (($heldBh[$k] ?? '') === $h) ? ($old[$k] ?? null) : ($fresh[$k] ?? null);
+        if ($src === null) {
+            return null;
+        }
+        foreach ($src as $rk => $row) {
+            if ($idKey === null) {
+                $out[$rk] = $row;
+            } else {
+                $out[] = $row;
+            }
+        }
+    }
+    return $out;
+};
+$rows100 = function ($list, ?string $idKey) use ($fl100): string {
+    $list = is_array($list) ? $list : [];
+    if ($idKey === null) {
+        ksort($list);
+    } else {
+        usort($list, fn($x, $y) => (int) ($x[$idKey] ?? 0) <=> (int) ($y[$idKey] ?? 0));
+    }
+    return (string) json_encode($list, $fl100);
+};
+// The bucket hashes of a full answer are the hashes of exactly its rows, bucket by bucket.
+$bhOk100 = function (array $j, string $field, ?string $idKey) use ($group100, $hash100): bool {
+    $bh = is_array($j['bh'] ?? null) ? $j['bh'] : null;
+    if ($bh === null || ($j['bs'] ?? 0) !== 32 || ($j['n'] ?? -1) !== count((array) ($j[$field] ?? []))) {
+        return false;
+    }
+    $g = $group100($j[$field] ?? [], $idKey);
+    if (array_map('intval', array_keys($bh)) !== array_keys($g)) {
+        return false;
+    }
+    foreach ($g as $k => $rows) {
+        if (($bh[$k] ?? '') !== $hash100($idKey === null ? (object) $rows : array_values($rows))) {
+            return false;
+        }
+    }
+    return true;
+};
+// Rows far apart: three buckets of bookings, and a chat thread and an email log in two of them.
+$ins100 = $rootDb->prepare("INSERT INTO bookings (id, prop_key, name, email, check_in, check_out, adults, children, payment, deposit_paid, agreed_total, agreed_nightly, agreed_txn_fee, agreed_nights)
+    VALUES (?, ?, ?, 'list100@example.com', ?, ?, 2, 0, 'unpaid', 0, 300, 300, 0, 2)");
+foreach ([[93200, 'List Bucket A', 120], [93201, 'List Bucket A2', 121], [96400, 'List Bucket B', 130]] as [$id100, $nm100, $d100]) {
+    $ins100->execute([$id100, $propKey, $nm100, $ukPlus($d100), $ukPlus($d100 + 2)]);
+}
+$logIns100 = $rootDb->prepare("INSERT INTO activity_log (actor, category, action, summary, entity, entity_id, meta) VALUES ('owner', 'comms', 'comms.message', ?, 'booking', ?, ?)");
+$logIns100->execute(['A note one hundred', '93200', json_encode(['subject' => 'A note', 'body' => 'Hello'])]);
+$logIns100->execute(['A note far away', '96400', json_encode(['subject' => 'Far', 'body' => 'Hello'])]);
+foreach ([93300, 96500] as $tid100) {
+    $rootDb->prepare("INSERT INTO chat_threads (id, token, name, email) VALUES (?, ?, 'List Hundred', 'list100@gmail.com')")->execute([$tid100, bin2hex(random_bytes(16))]);
+    $rootDb->prepare("INSERT INTO messages (thread_id, sender_role, body) VALUES (?, 'guest', 'Is there a cot?')")->execute([$tid100]);
+}
+$lists100 = [
+    'the owner\'s bookings' => [
+        'ask' => fn(string $haveWhole, string $haveb) => http($adm83, 'GET', '/admin-bootstrap.php' . ($haveWhole === '' ? '' : '?have=' . rawurlencode('bookings.' . $haveWhole) . '&haveb=' . rawurlencode($haveb))),
+        'part' => fn(array $j) => is_array($j['bookings'] ?? null) ? $j['bookings'] : [],
+        'whole' => fn(array $j) => (string) ($j['hashes']['bookings'] ?? ''),
+        'field' => 'bookings', 'id' => 'id',
+        'change' => fn() => $rootDb->exec("UPDATE bookings SET notes = 'changed one hundred' WHERE id = 93201"),
+        'changed' => [2912], 'dn' => 0,
+        'reshape' => function () use ($rootDb, $ins100, $propKey, $ukPlus) {
+            $rootDb->exec('DELETE FROM bookings WHERE id = 96400');
+            $ins100->execute([99600, $propKey, 'List Bucket C', $ukPlus(140), $ukPlus(142)]);
+        },
+        'gone' => 3012, 'new' => 3112,
+    ],
+    'the email log' => [
+        'ask' => fn(string $haveWhole, string $haveb) => http($adm83, 'POST', '/bookings.php', ['action' => 'email_logs'] + ($haveWhole === '' ? [] : ['have' => $haveWhole, 'haveb' => $haveb])),
+        'part' => fn(array $j) => $j,
+        'whole' => fn(array $j) => (string) ($j['h'] ?? ''),
+        'field' => 'logs', 'id' => null,
+        'change' => fn() => $logIns100->execute(['Another note one hundred', '93201', json_encode(['subject' => 'Another', 'body' => 'Hi'])]),
+        // The note is the first for its booking: one more entry in the map.
+        'changed' => [2912], 'dn' => 1,
+        'reshape' => function () use ($rootDb, $logIns100) {
+            $rootDb->exec("DELETE FROM activity_log WHERE entity = 'booking' AND entity_id = '96400'");
+            $logIns100->execute(['A new far note', '99600', json_encode(['subject' => 'New', 'body' => 'Hi'])]);
+        },
+        'gone' => 3012, 'new' => 3112,
+    ],
+    'the chat list' => [
+        'ask' => fn(string $haveWhole, string $haveb) => http($adm83, 'POST', '/messages.php', ['action' => 'threads'] + ($haveWhole === '' ? [] : ['have' => $haveWhole, 'haveb' => $haveb])),
+        'part' => fn(array $j) => $j,
+        'whole' => fn(array $j) => (string) ($j['h'] ?? ''),
+        'field' => 'threads', 'id' => 'thread_id',
+        'change' => fn() => $rootDb->exec("INSERT INTO messages (thread_id, sender_role, body) VALUES (93300, 'guest', 'And a high chair?')"),
+        'changed' => [2915], 'dn' => 0,
+        'reshape' => function () use ($rootDb) {
+            $rootDb->exec('DELETE FROM messages WHERE thread_id = 96500');
+            $rootDb->exec('DELETE FROM chat_threads WHERE id = 96500');
+            $rootDb->prepare("INSERT INTO chat_threads (id, token, name, email) VALUES (99700, ?, 'List Hundred', 'list100@gmail.com')")->execute([bin2hex(random_bytes(16))]);
+            $rootDb->exec("INSERT INTO messages (thread_id, sender_role, body) VALUES (99700, 'guest', 'Hello again')");
+        },
+        'gone' => 3015, 'new' => 3115,
+    ],
+];
+foreach ($lists100 as $what => $L) {
+    [$f, $idk] = [$L['field'], $L['id']];
+    $a = $L['ask']('', '');
+    $pa = $L['part']($a['json'] ?? []);
+    $bhA = is_array($pa['bh'] ?? null) ? $pa['bh'] : [];
+    it_check("§100 $what: a full answer says each bucket's hash, the hash of exactly its rows (" . count($bhA) . ' buckets of 32 ids)',
+        $bhOk100($pa, $f, $idk) && count($bhA) >= 2 && !isset($pa['delta']), substr(json_encode(array_diff_key($pa, [$f => 1])), 0, 200));
+    $same = $L['ask']($L['whole']($a['json'] ?? []), $claim100($bhA));
+    $ps = $L['part']($same['json'] ?? []);
+    it_check('§100 …nothing changed: still "same", buckets named or not', ($ps['same'] ?? null) === true, substr($same['raw'], 0, 120));
+    $L['change']();
+    $b = $L['ask']($L['whole']($a['json'] ?? []), $claim100($bhA));
+    $pb = $L['part']($b['json'] ?? []);
+    $bhB = is_array($pb['bh'] ?? null) ? $pb['bh'] : [];
+    $sentKeys = array_keys($group100($pb[$f] ?? [], $idk));
+    it_check('§100 …one row changed: only its bucket comes back, marked a delta (' . strlen($b['raw']) . ' bytes against ' . strlen($a['raw']) . ')',
+        ($pb['delta'] ?? null) === true && $sentKeys === $L['changed'] && ($pb['n'] ?? -1) === ($pa['n'] ?? -2) + $L['dn'] && strlen($b['raw']) < strlen($a['raw']),
+        json_encode($sentKeys) . ' ' . substr($b['raw'], 0, 160));
+    $fresh = $L['ask']('', '');
+    $pf = $L['part']($fresh['json'] ?? []);
+    $m = $merge100((array) ($pa[$f] ?? []), $bhA, $pb[$f] ?? [], $bhB, $idk);
+    it_check('§100 …and the copy held before, with that bucket, holds exactly what a fresh ask returns',
+        $m !== null && $rows100($m, $idk) === $rows100($pf[$f] ?? [], $idk) && $bhB === ($pf['bh'] ?? null) && count($m) === ($pb['n'] ?? -1),
+        $m === null ? 'a bucket was missing' : count($m) . ' against ' . count((array) ($pf[$f] ?? [])));
+    $L['reshape']();
+    $c = $L['ask']($L['whole']($b['json'] ?? []), $claim100($bhB));
+    $pc = $L['part']($c['json'] ?? []);
+    $bhC = is_array($pc['bh'] ?? null) ? $pc['bh'] : [];
+    $fresh2 = $L['ask']('', '');
+    $pf2 = $L['part']($fresh2['json'] ?? []);
+    $m2 = $merge100($m ?? [], $bhB, $pc[$f] ?? [], $bhC, $idk);
+    it_check('§100 …a bucket left empty goes, a new one comes, and the merged copy is again what a fresh ask returns',
+        ($pc['delta'] ?? null) === true && !isset($bhC[$L['gone']]) && isset($bhC[$L['new']]) && $m2 !== null && $rows100($m2, $idk) === $rows100($pf2[$f] ?? [], $idk),
+        json_encode(array_keys($bhC)));
+    $d = $L['ask']($L['whole']($b['json'] ?? []), '16:' . substr($claim100($bhB), 3));
+    $pd = $L['part']($d['json'] ?? []);
+    $e = $L['ask']($L['whole']($b['json'] ?? []), '32:zz.' . str_repeat('0', 16));
+    $pe = $L['part']($e['json'] ?? []);
+    it_check('§100 …a claim made with another bucket size, or one that is not a claim, gets the whole list',
+        !isset($pd['delta']) && count((array) ($pd[$f] ?? [])) === count((array) ($pf2[$f] ?? [])) && !isset($pe['delta']) && count((array) ($pe[$f] ?? [])) === count((array) ($pf2[$f] ?? [])),
+        substr($d['raw'], 0, 100) . ' | ' . substr($e['raw'], 0, 100));
+}
+// The Inbox's record and the dismissed duties ride every trip to Today (36KB of the 37KB a
+// page holding everything else downloads, on five years of data): held like the parts.
+$rootDb->exec("INSERT INTO content (item_key, item_value) VALUES ('inbox-state', '{\"since\":\"2026-01-01\",\"done\":{\"e:held100@example.com\":\"2026-02-01\"}}') ON DUPLICATE KEY UPDATE item_value = VALUES(item_value)");
+$rootDb->exec("INSERT INTO content (item_key, item_value) VALUES ('duty-dismissed', '{\"register:93200\":{\"sev\":\"warn\",\"at\":1767225600}}') ON DUPLICATE KEY UPDATE item_value = VALUES(item_value)");
+$f100 = http($adm83, 'GET', '/admin-bootstrap.php');
+$hs100 = is_array($f100['json']['hashes'] ?? null) ? $f100['json']['hashes'] : [];
+$named100 = implode(',', array_map(fn($k) => $k . '.' . $hs100[$k], array_keys($hs100)));
+$s100 = http($adm83, 'GET', '/admin-bootstrap.php?have=' . rawurlencode($named100));
+it_check('§100 the Inbox\'s record and the dismissed duties say their hashes, and answer "same" when named',
+    preg_match('/^[0-9a-f]{16}$/', (string) ($hs100['inbox'] ?? '')) === 1 && preg_match('/^[0-9a-f]{16}$/', (string) ($hs100['dismissed'] ?? '')) === 1
+        && ($s100['json']['inbox']['same'] ?? null) === true && ($s100['json']['dismissed']['same'] ?? null) === true,
+    json_encode($hs100) . ' ' . substr($s100['raw'], 0, 200));
+$rootDb->exec("UPDATE content SET item_value = '{\"since\":\"2026-01-01\",\"done\":{}}' WHERE item_key = 'inbox-state'");
+$c100 = http($adm83, 'GET', '/admin-bootstrap.php?have=' . rawurlencode($named100));
+it_check('§100 …and a changed record comes whole, the duties still "same"',
+    ($c100['json']['inbox']['since'] ?? '') === '2026-01-01' && !isset($c100['json']['inbox']['same']) && ($c100['json']['dismissed']['same'] ?? null) === true, substr($c100['raw'], 0, 200));
+$rootDb->exec("DELETE FROM content WHERE item_key IN ('inbox-state', 'duty-dismissed')");
+$rootDb->exec("DELETE FROM bookings WHERE email = 'list100@example.com'");
+$rootDb->exec("DELETE FROM activity_log WHERE entity = 'booking' AND entity_id IN ('93200', '93201', '96400', '99600')");
+$rootDb->exec('DELETE FROM messages WHERE thread_id IN (93300, 96500, 99700)');
+$rootDb->exec('DELETE FROM chat_threads WHERE id IN (93300, 96500, 99700)');
 
 echo "\n== Summary ==\n";
 if ($fail) {

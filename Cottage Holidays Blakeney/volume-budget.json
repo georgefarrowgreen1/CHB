@@ -24,8 +24,8 @@
     "ms": 1000
   },
   "owner boot, parts held": {
-    "bytes": 40897,
-    "gz": 3378,
+    "bytes": 952,
+    "gz": 476,
     "statements": 46,
     "rowsRead": 7178,
     "ms": 1000
@@ -105,5 +105,26 @@
     "restyledByText": 40,
     "restyledByClass": 40,
     "restyledByRow": 40
+  },
+  "owner boot, one booking changed": {
+    "bytes": 60134,
+    "gz": 7791,
+    "statements": 54,
+    "rowsRead": 18989,
+    "ms": 1000
+  },
+  "owner email log, one email sent": {
+    "bytes": 34978,
+    "gz": 6417,
+    "statements": 6,
+    "rowsRead": 19284,
+    "ms": 1000
+  },
+  "owner chat list, one message": {
+    "bytes": 8646,
+    "gz": 2731,
+    "statements": 6,
+    "rowsRead": 11163,
+    "ms": 1000
   }
 }

@@ -783,7 +783,10 @@ function payload_parts_diff(array $out, array $keys, string $haveRaw, array $kno
 // the settings): `$have` names the hash of the copy the page holds, and an answer that
 // hashes the same is {"same": true}; a full answer carries its hash as `h`. Only a READ
 // may call this: "same" says "what you hold is still true", which a write never is.
-function json_out_held(array $out, $have): void
+// `$list` names an answer's one long list as [field, id key (null: a map keyed by id),
+// the caller's bucket claim], so a changed answer goes as its changed buckets
+// (held_list below).
+function json_out_held(array $out, $have, ?array $list = null): void
 {
     $h = payload_hash($out);
     if ($h !== '') {
@@ -791,8 +794,83 @@ function json_out_held(array $out, $have): void
             json_out(['same' => true, 'h' => $h]);
         }
         $out['h'] = $h;
+        if ($list !== null) {
+            $out = held_list($out, (string) $list[0], $list[1] ?? null, $list[2] ?? '');
+        }
     }
     json_out($out);
+}
+// A LIST SENT AS CHANGES (see CLAUDE.md). The answers that grow with the years (the
+// owner's bookings, the email log, the chat list) went whole whenever anything in them
+// changed: 2.3MB for one payment recorded on a five-year business. Such a list is cut
+// into BUCKETS of HELD_BUCKET ids by id RANGE, so the old rows that never change share
+// buckets that never change, and the answer says every bucket's hash (`bh`, with the
+// size as `bs` and the list's length as `n`). A caller holding a copy names its
+// buckets' hashes ("<size>:<key>.<hash>,…") and gets only the rows of the buckets that
+// differ, marked `delta`. What it does not name (a new bucket, a claim made with another
+// size, a malformed claim) comes in full. The whole answer's hash (`h`) is unchanged, so
+// "same" still answers an untouched list without any of this.
+const HELD_BUCKET = 32;
+// [bucket key => the rows (a list's, in its order) or entries (a map's, by id)].
+function held_buckets(array $list, ?string $idKey): array
+{
+    $b = [];
+    foreach ($list as $k => $row) {
+        $id = $idKey === null ? (int) $k : (int) (is_array($row) ? ($row[$idKey] ?? 0) : 0);
+        $b[intdiv(max(0, $id), HELD_BUCKET)][$k] = $row;
+    }
+    ksort($b);
+    return $b;
+}
+// What a caller says it holds, by bucket: [key => hash], or [] when the claim is
+// malformed or was made with another bucket size.
+function held_have_buckets($raw): array
+{
+    if (!is_string($raw) || !preg_match('/^(\d{1,4}):([0-9a-f.,]*)$/', $raw, $m) || (int) $m[1] !== HELD_BUCKET) {
+        return [];
+    }
+    $have = [];
+    foreach (array_slice(explode(',', $m[2]), 0, 4000) as $item) {
+        if (preg_match('/^(\d{1,7})\.([0-9a-f]{16})$/', $item, $p)) {
+            $have[(int) $p[1]] = $p[2];
+        }
+    }
+    return $have;
+}
+function held_list(array $answer, string $field, ?string $idKey, $haveRaw): array
+{
+    $list = $answer[$field] ?? null;
+    if (!is_array($list)) {
+        return $answer;
+    }
+    $buckets = held_buckets($list, $idKey);
+    $bh = [];
+    foreach ($buckets as $k => $rows) {
+        $bh[$k] = payload_hash($idKey === null ? (object) $rows : array_values($rows));
+    }
+    $answer['bh'] = (object) $bh;
+    $answer['bs'] = HELD_BUCKET;
+    $answer['n'] = count($list);
+    $have = held_have_buckets($haveRaw);
+    if (!$have) {
+        return $answer;
+    }
+    $send = [];
+    foreach ($buckets as $k => $rows) {
+        if (isset($have[$k]) && hash_equals($have[$k], $bh[$k])) {
+            continue;
+        }
+        foreach ($rows as $rk => $row) {
+            if ($idKey === null) {
+                $send[$rk] = $row;
+            } else {
+                $send[] = $row;
+            }
+        }
+    }
+    $answer[$field] = $idKey === null ? (object) $send : $send;
+    $answer['delta'] = true;
+    return $answer;
 }
 // AN UNCHANGED BOOKINGS PART IS NOT BUILT AGAIN (see CLAUDE.md). It is the whole cost
 // of the owner's payload (measured on a five-year business: 48ms to build and 12ms to

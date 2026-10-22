@@ -29,7 +29,11 @@
 //      text, the chat list's archived view is its own copy, a "same" for a copy the
 //      page no longer holds asks again in full, an older server's answer holds
 //      nothing, and a failed read keeps the last good copy
-const { bootBrowser, appReadyGoto, bootVerdict, d } = require('./ui-test-lib');
+//  10. a long list is sent as its changed buckets: the copy is held with its bucket
+//      hashes and names them, a delta is merged into the copy the ask named (in the
+//      list's own order), a delta that copy cannot make asks again in full, and a
+//      "same" reads the copy the ask named even when another load replaced it since
+const { bootBrowser, appReadyGoto, bootVerdict, d, now } = require('./ui-test-lib');
 let fails = 0;
 const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails++; };
 
@@ -41,7 +45,7 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
   let windowFeeds = [];
   const mkB = (id, name) => ({ id, prop_key: 'jollyboat', name, email: `b${id}@x.com`, phone: '', check_in: '2026-11-10', check_out: '2026-11-13', adults: 2, children: 0, payment: 'paid', deposit_paid: 300, agreed_total: 300, agreed_nightly: 300, agreed_txn_fee: 0, agreed_nights: 3, hold_status: 'none' });
   const parts = {
-    on: false, lie: false, haves: [],
+    on: false, lie: false, haves: [], havebs: [],
     bk: [mkB(601, 'Alice Held'), mkB(602, 'Ben Held')], bkH: 'aaaaaaaaaaaaaaaa',
     rates: { properties: [], seasons: { jollyboat: [{ label: 'Peak', start: '2026-07-01', end: '2026-08-31', couple_rate: 200 }] } }, rtH: 'cccccccccccccccc',
   };
@@ -62,17 +66,24 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
     : /\/messages\.php/.test(url) && b.action === 'threads' ? 'threads'
     : /\/content\.php/.test(url) && b.action === 'get_all' ? 'get_all' : '');
   const modDelay = 400;
+  // §10: scripted answers, one per ask, for a list read through apiPostHeld.
+  const lst = { answers: [], bodies: [] };
   await p.route(/\.php/, async (route) => {
     const req = route.request();
     const url = req.url();
     let body = {}; try { body = JSON.parse(req.postData() || '{}'); } catch (e) {}
     hits.push({ url, action: body.action || '', at: Date.now() });
     const json = (o) => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(o) });
+    if (url.includes('held-test.php')) {
+      lst.bodies.push(body);
+      return json(lst.answers.shift() || { error: 'no answer scripted' });
+    }
     if (url.includes('admin-bootstrap.php')) {
       if (!parts.on) return json({ ok: true, feeds: windowFeeds, dismissed: {} });
       // A server that hashes its parts and honours ?have=, like admin-bootstrap.php.
       const have = new URL(url).searchParams.get('have') || '';
       parts.haves.push(have);
+      parts.havebs.push(new URL(url).searchParams.get('haveb') || '');
       const held = Object.fromEntries(have.split(',').filter(Boolean).map((x) => x.split('.')));
       const out = { ok: true, feeds: [], dismissed: {}, hashes: { bookings: parts.bkH, rates: parts.rtH } };
       out.bookings = held.bookings === parts.bkH || parts.lie ? { same: true } : { bookings: parts.bk };
@@ -416,7 +427,9 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
 
   // 8f. A copy over two days old is not painted, but is still named.
   pg = await visit(ME(7, true));
-  await putRecords(pg, { at: Date.now() - 49 * 3600000 });
+  // On the page's clock (the lib's now(): after 22:00 UK the page runs three hours behind
+  // node, and a node-side Date.now() made this copy 46 hours old, fresh enough to paint).
+  await putRecords(pg, { at: now() - 49 * 3600000 });
   await leave(pg);
   hold();
   pg = await visit(ME(7, true));
@@ -428,7 +441,7 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
   ok(have8f.includes('bookings.' + K.bkH), `…but is still named, so the server can confirm it (${have8f})`);
   kept.open();
   ok(await waitFor(async () => (await storeNames(pg)) === 'Ada Kept, Bo Kept'), '…and confirmed "same", it fills the stores');
-  ok(await waitFor(async () => ((await records(pg)) || []).every((x) => Date.now() - x.at < 600000), 8000), '…and is dated afresh, now the server has said it is current');
+  ok(await waitFor(async () => ((await records(pg)) || []).every((x) => now() - x.at < 600000), 8000), '…and is dated afresh, now the server has said it is current');
   await leave(pg);
 
   // 8g. A failed load withdraws the copy: it never stands in for an answer.
@@ -458,7 +471,7 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
   ok(!have8h.includes('bookings.') && have8h.includes('rates.' + K.rtH), `…nor named, while the parts that open still are (${have8h})`);
   kept.open();
   ok(await waitFor(async () => (await storeNames(pg)) === 'Ada Kept, Bo Kept'), '…and the part comes whole');
-  ok(await waitFor(async () => { const r = await records(pg); const b = (r || []).find((x) => x.id === 'bookings'); return !!b && Date.now() - b.at < 60000; }, 8000), '…and is kept again');
+  ok(await waitFor(async () => { const r = await records(pg); const b = (r || []).find((x) => x.id === 'bookings'); return !!b && now() - b.at < 60000; }, 8000), '…and is kept again');
 
   // 8i. Signing out removes it, and nothing is written after.
   await pg.evaluate(async () => { __abSaved = {}; isAuthenticated = false; await chbSecForget(); await abHeldSave(); });
@@ -552,6 +565,86 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
   const plainThreads = (src.match(/apiPost\('messages\.php', \{\s*action: 'threads'/g) || []).length;
   ok(plain.every((n) => n === 0) && plainThreads === 1, `no plain read of the four is left in admin.js (${plain.join(', ')}; threads ${plainThreads})`);
   ok((src.match(/apiPostHeld\(/g) || []).length >= 8, `(vacuity) the held reads are there (${(src.match(/apiPostHeld\(/g) || []).length})`);
+
+  console.log('10. a long list is sent as its changed buckets');
+  // Through the real apiPostHeld and abHeldResolve, against scripted answers. The merge on
+  // five years of real data, row for row and in order, is volume-test's.
+  const H = (c) => c.repeat(16);
+  const askHeld = (key) => p.evaluate((k) => apiPostHeld(k, 'held-test.php', { action: 'list' }), key);
+  lst.answers.push({ logs: { 1: ['a'], 40: ['b'], 70: ['c'] }, h: H('a'), bs: 32, bh: { 0: H('0'), 1: H('1'), 2: H('2') }, n: 3 });
+  let got = await askHeld('email_logs');
+  const bh0 = await p.evaluate(() => (__heldReads.email_logs || {}).bh || null);
+  ok(lst.bodies[0].have === undefined && lst.bodies[0].haveb === undefined && bh0 && bh0['1'] === H('1'),
+    `the first ask names nothing, and the copy is held with its buckets' hashes (${JSON.stringify(bh0)})`);
+  lst.answers.push({ delta: true, logs: { 40: ['b2'], 41: ['d'] }, h: H('b'), bs: 32, bh: { 0: H('0'), 1: H('9'), 2: H('2') }, n: 4 });
+  got = await askHeld('email_logs');
+  ok(lst.bodies[1].have === H('a') && lst.bodies[1].haveb === `32:0.${H('0')},1.${H('1')},2.${H('2')}`, `the next ask names the copy and each of its buckets (${lst.bodies[1].haveb})`);
+  ok(JSON.stringify(got.logs) === '{"1":["a"],"40":["b2"],"41":["d"],"70":["c"]}' && !('delta' in got) && !('bh' in got),
+    `…the changed bucket is merged in and the rest kept (${JSON.stringify(got.logs)})`);
+  const held1 = await p.evaluate(() => { const x = __heldReads.email_logs; return { h: x.h, b1: x.bh['1'], d: JSON.parse(x.text).logs['41'][0] }; });
+  ok(held1.h === H('b') && held1.b1 === H('9') && held1.d === 'd', `…and held as the new copy, with the new hashes (${JSON.stringify(held1)})`);
+  // A refusal: the delta, then the whole answer the page must ask for in full. Each reads
+  // its own asks and leaves no answer behind, so a broken one fails its own check only.
+  const refused = async (delta, full) => {
+    const at = lst.bodies.length;
+    lst.answers.length = 0;
+    lst.answers.push(delta, full);
+    const r = await askHeld('email_logs');
+    const again = lst.bodies[at + 1];
+    lst.answers.length = 0;
+    return { logs: JSON.stringify(r && r.logs), inFull: !!again && again.have === undefined && again.haveb === undefined };
+  };
+  let rf = await refused({ delta: true, logs: {}, h: H('c'), bs: 32, bh: { 0: H('0'), 1: H('8'), 2: H('2') }, n: 4 },
+    { logs: { 1: ['a'], 40: ['z'] }, h: H('d'), bs: 32, bh: { 0: H('0'), 1: H('7') }, n: 2 });
+  ok(rf.logs === '{"1":["a"],"40":["z"]}' && rf.inFull, `a delta the copy cannot make (a bucket said changed, with no rows) asks again in full (${rf.logs})`);
+  rf = await refused({ delta: true, logs: { 40: ['y'] }, h: H('e'), bs: 16, bh: { 0: H('0'), 2: H('6') }, n: 2 },
+    { logs: { 1: ['a'], 40: ['y'] }, h: H('f'), bs: 32, bh: { 0: H('0'), 1: H('5') }, n: 2 });
+  ok(rf.logs === '{"1":["a"],"40":["y"]}' && rf.inFull, `…and so does a delta cut at another bucket size (${rf.logs})`);
+  rf = await refused({ delta: true, logs: { 40: ['x'] }, h: H('3'), bs: 32, bh: { 0: H('0'), 1: H('4') }, n: 9 },
+    { logs: { 1: ['a'], 40: ['x'] }, h: H('6'), bs: 32, bh: { 0: H('0'), 1: H('4') }, n: 2 });
+  ok(rf.logs === '{"1":["a"],"40":["x"]}' && rf.inFull, `…and so does one whose count does not add up (${rf.logs})`);
+  // The chat list keeps its own order: the newest message first, then the higher thread.
+  const T = (id, at) => ({ thread_id: id, name: 'T' + id, last_at: at });
+  lst.answers.push({ ok: true, threads: [T(9, '2026-10-21 09:00:00'), T(41, '2026-10-20 08:00:00'), T(40, '2026-10-20 08:00:00'), T(70, '2026-10-19 10:00:00')], h: H('a'), bs: 32, bh: { 0: H('0'), 1: H('1'), 2: H('2') }, n: 4 });
+  await askHeld('threads:0');
+  lst.answers.push({ ok: true, delta: true, threads: [T(40, '2026-10-22 07:00:00'), T(41, '2026-10-21 09:00:00')], h: H('b'), bs: 32, bh: { 0: H('0'), 1: H('9'), 2: H('2') }, n: 4 });
+  got = await askHeld('threads:0');
+  ok((got.threads || []).map((x) => x.thread_id).join(',') === '40,41,9,70', `the chat list merged is in its own order, a tie going to the higher thread (${(got.threads || []).map((x) => x.thread_id).join(',')})`);
+  // The owner's bookings, through abHeldResolve.
+  const bk10 = await p.evaluate(() => {
+    const H = (c) => c.repeat(16);
+    const R = (id, ci) => ({ id, prop_key: 'jollyboat', name: 'B' + id, check_in: ci });
+    const keep = __abHeld.bookings;
+    const named = { h: H('a'), text: JSON.stringify({ bookings: [R(2, '2026-11-01'), R(40, '2026-11-01'), R(70, '2026-11-05')] }), bh: { 0: H('0'), 1: H('1'), 2: H('2') }, bs: 32 };
+    __abHeld.bookings = named;
+    const ab = { ok: true, hashes: { bookings: H('b') }, bookings: { delta: true, bookings: [R(33, '2026-10-30'), R(40, '2026-11-01')], bh: { 0: H('0'), 1: H('9'), 2: H('2') }, bs: 32, n: 4 } };
+    abHeldResolve(ab, { bookings: named });
+    const held = __abHeld.bookings;
+    const out = { order: ab.bookings ? ab.bookings.bookings.map((r) => r.id).join(',') : null, meta: !!ab.bookings && ('bh' in ab.bookings || 'delta' in ab.bookings), h: held && held.h, b1: held && held.bh && held.bh['1'] };
+    const ab2 = { ok: true, hashes: { bookings: H('c') }, bookings: { delta: true, bookings: [], bh: { 0: H('0'), 1: H('8') }, bs: 32, n: 2 } };
+    abHeldResolve(ab2, { bookings: held });
+    out.failed = ab2.bookings;
+    out.gone = !__abHeld.bookings;
+    __abHeld.bookings = { h: H('1'), text: JSON.stringify({ bookings: [{ id: 1, name: 'Newer' }] }) };
+    const ab3 = { ok: true, hashes: { bookings: H('2') }, bookings: { same: true } };
+    abHeldResolve(ab3, { bookings: { h: H('2'), text: JSON.stringify({ bookings: [{ id: 1, name: 'Named' }] }) } });
+    out.sameName = ab3.bookings ? ab3.bookings.bookings[0].name : null;
+    out.keptNewer = !!__abHeld.bookings && __abHeld.bookings.text.includes('Newer');
+    if (keep) __abHeld.bookings = keep; else delete __abHeld.bookings;
+    return out;
+  });
+  ok(bk10.order === '33,2,40,70' && !bk10.meta && bk10.h === H('b') && bk10.b1 === H('9'),
+    `the bookings merged are in their own order, check-in then id, and held with the new hashes (${bk10.order})`);
+  ok(bk10.failed === null && bk10.gone, `…a delta the copy cannot make leaves the part to its own endpoint and holds nothing`);
+  ok(bk10.sameName === 'Named' && bk10.keptNewer, `a "same" reads the copy the ask named, though another load replaced the page's since (${bk10.sameName})`);
+  // abFetch names the buckets of a copy held with them, and none otherwise.
+  parts.on = true;
+  await p.evaluate(() => { const H = (c) => c.repeat(16); __abHeld.bookings = { h: H('a'), text: '{"bookings":[]}', bh: { 0: H('0'), 3: H('3') }, bs: 32 }; return abFetch(); });
+  const hb1 = parts.havebs[parts.havebs.length - 1];
+  await p.evaluate(() => { const H = (c) => c.repeat(16); __abHeld.bookings = { h: H('a'), text: '{"bookings":[]}' }; return abFetch(); });
+  const hb2 = parts.havebs[parts.havebs.length - 1];
+  parts.on = false;
+  ok(hb1 === `32:0.${H('0')},3.${H('3')}` && hb2 === '', `the owner's payload names a copy's buckets only when it holds them ("${hb1}" · "${hb2}")`);
 
   await t.done(fails);
 })().catch(async (e) => { console.error(e); process.exit(1); });
