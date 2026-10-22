@@ -7515,6 +7515,64 @@ $rootDb->exec("DELETE FROM bookings WHERE id = $bk97");
 $rootDb->exec("DELETE FROM guests WHERE email = 'fp97@example.com'");
 $rootDb->prepare('UPDATE properties SET couple_rate = couple_rate - 1 WHERE prop_key = ?')->execute([$propKey]);
 
+// §98 THE SAME FOR THE READS THAT ARE ONE ANSWER (db.php json_out_held): the email log,
+// the Sent list, the chat list and the settings were downloaded whole on every open of the
+// Inbox and Manage. Each now says its hash, and a page naming it hears {"same": true}; a
+// change, a claim that is not a hash or another view's hash costs a full answer.
+echo "\n== §98 the email log, the Sent list, the chat list and the settings are not sent again ==\n";
+$fl98 = JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_INVALID_UTF8_SUBSTITUTE;
+$hashOf98 = function (array $j) use ($fl98) {
+    unset($j['h'], $j['srv']);
+    return substr(md5((string) json_encode($j, $fl98)), 0, 16);
+};
+$log98 = function (string $summary) use ($rootDb) {
+    $rootDb->prepare("INSERT INTO activity_log (actor, category, action, summary, entity, entity_id, meta) VALUES ('owner', 'comms', 'comms.message', ?, 'booking', '98098', ?)")
+        ->execute([$summary, json_encode(['subject' => $summary, 'body' => 'See you soon'])]);
+};
+$log98('Your stay, ninety-eight');
+$rootDb->exec("INSERT INTO mail_sent (to_email, cc_email, subject, body) VALUES ('held98@example.com', '', 'Held ninety-eight', 'Hello')");
+$rootDb->exec("INSERT INTO content (item_key, item_value) VALUES ('it98-setting', '\"one\"') ON DUPLICATE KEY UPDATE item_value = '\"one\"'");
+$rootDb->exec("DELETE FROM login_attempts WHERE identifier IN ('chat')");
+$anon98 = [];
+$tok98 = bin2hex(random_bytes(16));
+http($anon98, 'POST', '/messages.php', ['action' => 'send', 'token' => $tok98, 'name' => 'Held Ninetyeight', 'email' => 'held98@gmail.com', 'body' => 'Is there a cot?']);
+$tid98 = (int) $rootDb->query('SELECT id FROM chat_threads WHERE token = ' . $rootDb->quote($tok98))->fetchColumn();
+$reads98 = [
+    'the email log' => ['/bookings.php', ['action' => 'email_logs'], 'logs', fn() => $log98('A second note, ninety-eight')],
+    'the Sent list' => ['/mailbox.php', ['action' => 'sent'], 'messages', fn() => $rootDb->exec("INSERT INTO mail_sent (to_email, cc_email, subject, body) VALUES ('held98@example.com', '', 'Held again', 'Hello')")],
+    // The owner reading a conversation changes the list: its unread count is news.
+    'the chat list' => ['/messages.php', ['action' => 'threads'], 'threads', fn() => $rootDb->prepare('UPDATE messages SET read_by_admin = 1 WHERE thread_id = ?')->execute([$tid98])],
+    'the settings' => ['/content.php', ['action' => 'get_all'], 'content', fn() => $rootDb->exec("UPDATE content SET item_value = '\"two\"' WHERE item_key = 'it98-setting'")],
+];
+it_check('§98 (vacuity) the chat list has a conversation to show', $tid98 > 0, '');
+foreach ($reads98 as $what => [$path98, $body98, $key98, $change98]) {
+    $a = http($adm83, 'POST', $path98, $body98);
+    $h = (string) ($a['json']['h'] ?? '');
+    it_check("§98 $what: the answer carries its hash, the hash of exactly what was sent",
+        preg_match('/^[0-9a-f]{16}$/', $h) === 1 && !empty($a['json'][$key98]) && $hashOf98($a['json']) === $h, substr($a['raw'], 0, 160));
+    $b = http($adm83, 'POST', $path98, $body98 + ['have' => $h]);
+    it_check("§98 …a page naming it hears \"same\", without the list (" . strlen($b['raw']) . ' bytes against ' . strlen($a['raw']) . ')',
+        ($b['json']['same'] ?? null) === true && ($b['json']['h'] ?? '') === $h && !isset($b['json'][$key98]) && isset($b['json']['srv']) && strlen($b['raw']) < strlen($a['raw']),
+        substr($b['raw'], 0, 160));
+    $c = http($adm83, 'POST', $path98, $body98 + ['have' => 'zz' . substr($h, 2)]);
+    it_check('§98 …a "have" that is not a hash gets the whole answer', isset($c['json'][$key98]) && !isset($c['json']['same']), substr($c['raw'], 0, 120));
+    $change98();
+    $d = http($adm83, 'POST', $path98, $body98 + ['have' => $h]);
+    $hd = (string) ($d['json']['h'] ?? '');
+    it_check('§98 …after a change it comes whole, with a new hash', isset($d['json'][$key98]) && !isset($d['json']['same']) && $hd !== '' && $hd !== $h, substr($d['raw'], 0, 160));
+    $e = http($adm83, 'POST', $path98, $body98 + ['have' => $hd]);
+    it_check('§98 …which the next ask can name', ($e['json']['same'] ?? null) === true, substr($e['raw'], 0, 120));
+}
+$ta98 = http($adm83, 'POST', '/messages.php', ['action' => 'threads']);
+$tb98 = http($adm83, 'POST', '/messages.php', ['action' => 'threads', 'archived' => 1, 'have' => (string) ($ta98['json']['h'] ?? '')]);
+it_check('§98 the archived chat list is an answer of its own: the active list\'s hash gets it whole',
+    isset($tb98['json']['threads']) && !isset($tb98['json']['same']) && ($tb98['json']['h'] ?? '') !== ($ta98['json']['h'] ?? ''), substr($tb98['raw'], 0, 120));
+$rootDb->exec("DELETE FROM activity_log WHERE entity = 'booking' AND entity_id = '98098'");
+$rootDb->exec("DELETE FROM mail_sent WHERE to_email = 'held98@example.com'");
+$rootDb->exec("DELETE FROM content WHERE item_key = 'it98-setting'");
+$rootDb->prepare('DELETE FROM messages WHERE thread_id = ?')->execute([$tid98]);
+$rootDb->prepare('DELETE FROM chat_threads WHERE id = ?')->execute([$tid98]);
+
 echo "\n== Summary ==\n";
 if ($fail) {
     echo "  $fail CHECK(S) FAILED \xE2\x9D\x8C\n\n";

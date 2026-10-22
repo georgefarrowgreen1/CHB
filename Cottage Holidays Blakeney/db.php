@@ -779,6 +779,21 @@ function payload_parts_diff(array $out, array $keys, string $haveRaw, array $kno
     $out['hashes'] = (object) $hashes;
     return $out;
 }
+// The same for a read that is one answer (the email log, the Sent list, the chat list,
+// the settings): `$have` names the hash of the copy the page holds, and an answer that
+// hashes the same is {"same": true}; a full answer carries its hash as `h`. Only a READ
+// may call this: "same" says "what you hold is still true", which a write never is.
+function json_out_held(array $out, $have): void
+{
+    $h = payload_hash($out);
+    if ($h !== '') {
+        if (is_string($have) && preg_match('/^[0-9a-f]{16}$/', $have) && hash_equals($h, $have)) {
+            json_out(['same' => true, 'h' => $h]);
+        }
+        $out['h'] = $h;
+    }
+    json_out($out);
+}
 // AN UNCHANGED BOOKINGS PART IS NOT BUILT AGAIN (see CLAUDE.md). It is the whole cost
 // of the owner's payload (measured on a five-year business: 48ms to build and 12ms to
 // encode and hash), and the page names the copy it holds on every load. A FINGERPRINT

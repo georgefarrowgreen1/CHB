@@ -134,7 +134,8 @@ require_admin();
 if ($action === 'get_all') {
     // Admin-only: full content including private keys (ical-feeds-*, arrival-*),
     // used by the Settings page editors. Private values are decrypted here.
-    $rows = db()->query('SELECT item_key, item_value FROM content')->fetchAll();
+    // In key order, so the same settings hash the same (json_out_held).
+    $rows = db()->query('SELECT item_key, item_value FROM content ORDER BY item_key')->fetchAll();
     $rows = array_values(array_filter($rows, fn($r) => !content_server_only($r['item_key'])));
     $me = admin_me();
     $out = [];
@@ -166,7 +167,7 @@ if ($action === 'get_all') {
         $decoded = json_decode($val, true);
         $out[$r['item_key']] = $decoded === null && $val !== 'null' ? $val : $decoded;
     }
-    json_out(['content' => $out]);
+    json_out_held(['content' => $out], $in['have'] ?? '');
 }
 
 if ($action === 'set') {

@@ -1222,6 +1222,35 @@ payload, 48ms to build plus 12ms to encode and hash (enquiries 2ms, rates and bl
   in db.php as a comment opener and dropped everything up to the next `*/`, `cron_request_ok` included, so
   a correct file failed. The deploy stripper's lesson again: find comments with a parser.
 
+## Four more reads answer "same" (architectural upgrade 2)
+
+The email log, the Sent list, the chat list and the settings were downloaded whole every time the Inbox or
+Manage opened, after every send and on every Inbox refresh. They answer "same" now, the way the owner's
+payload parts do.
+- **Server: `json_out_held($out, $have)`** (db.php, beside `payload_parts_diff`). It hashes the answer
+  (`payload_hash`, before `srv` is added) and replies `{"same": true, "h"}` when `$have` names that hash;
+  otherwise it sends the answer with `h`. **Only a READ may call it**: "same" means "what you hold is still
+  true", which a write's answer never is. Used by bookings.php `email_logs`, mailbox.php `sent`,
+  messages.php `threads` (each archived view is its own answer) and content.php `get_all`. Nothing is kept
+  on the server.
+- **The same rows must encode the same way**, or an unchanged list hashes differently and comes whole each
+  time: the email log orders by `created_at, id`, the chat list by `last_at, t.id`, the settings by
+  `item_key` (the Sent list already ordered by `sent_at, id`).
+- **Client: `apiPostHeld(key, endpoint, payload)`** (admin.js, beside `abFetch`) keeps the last full answer's
+  TEXT per key in memory (`__heldReads`; the chat list's keys are `threads:0` / `threads:1`) and names its
+  hash as `have`. A "same" is re-read from the text, so a store the page changed since (a mirror written
+  before its save landed, a thread marked read in place) cannot leak back. A "same" for a hash the page no
+  longer holds (a second read replaced the copy meanwhile) asks again in full. An answer with no `h` (an
+  older server) holds nothing, and a failed read throws as before, so each loader keeps its last good copy.
+  The one plain read left is the chat count's fallback for an older server, which reads no store.
+- Gates: test-integration **§98** (22 checks: each read's hash is the hash of exactly the answer sent, minus
+  `h` and `srv`; "same" for the named hash, in 53 bytes against up to 1.7KB in the harness; a claim that is
+  not a hash and a change each get the whole answer; the archived chat list is its own answer) and
+  ui-test-oneload **§9** (25 checks through the real loaders, plus a source scan that no plain read of the
+  four is left). Break-tested four client ways (holding the parsed object, trusting any "same", never naming
+  the copy, one key for both chat views) and three server ways (no comparison, a hash that varies by the
+  request, the Sent list answered plainly), each failing its own named checks.
+
 ## Automatic collection: finished plans, Square's silences, two passes at once (round 5)
 
 Found by the scheduled-jobs review and each reproduced against the real collector code.
