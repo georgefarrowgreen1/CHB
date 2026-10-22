@@ -403,6 +403,49 @@ jobs:
   # Playwright container image hung on this repo's runners) with the browser
   # binaries cached between runs — the install step is a cache hit except when
   # the pinned Playwright version changes.
+  # A five-year business (test-volume-seed.php), served by the real app and held to
+  # volume-budget.json: what each screen's read sends, the statements it runs and the
+  # rows the database reads for it, and Today's size and restyles in a browser. Not
+  # front-end only: a PHP change moves these figures as much as a script does.
+  volume:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up PHP 8.4 (pinned to the production host)
+        uses: shivammathur/setup-php@eb7c497e18156a6bbabfef1d3a82760b9eda3962 # 2.40.0
+        with:
+          php-version: '8.4'
+          extensions: mbstring, pdo_mysql, mysqli, gd, curl
+          coverage: none
+
+      - name: Set up Node
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: '22'
+          package-manager-cache: false
+
+      - name: Start MySQL (preinstalled on the runner)
+        run: |
+          sudo systemctl start mysql
+          mysql -h 127.0.0.1 -u root -proot -e "SELECT VERSION();"
+
+      - name: Install Playwright (Chromium)
+        timeout-minutes: 15
+        working-directory: "Cottage Holidays Blakeney"
+        run: |
+          npm init -y > /dev/null
+          npm install --no-audit --no-fund playwright@1.61.1
+          npx playwright install-deps chromium
+          npx playwright install chromium
+
+      - name: A five-year business (bytes, statements, rows read, Today's restyles vs volume-budget.json)
+        working-directory: "Cottage Holidays Blakeney"
+        run: node volume-test.js
+
   browser-core:
     runs-on: ubuntu-latest
     # 15 was the original ceiling and this job has outgrown it: measured at
