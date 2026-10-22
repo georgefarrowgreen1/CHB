@@ -49,6 +49,9 @@ jobs:
           LFTP_PASSWORD: ${{ secrets.IONOS_SFTP_PASS }}
           PORT: ${{ secrets.IONOS_SFTP_PORT }}
           REMOTE: ${{ secrets.IONOS_REMOTE_PATH }}
+          # The staging site lives in a folder of the same web space; the check compares
+          # it as a copy of the site instead of listing its files as strays.
+          STAGING_REMOTE: ${{ secrets.STAGING_REMOTE_PATH }}
           APP_SECRET: ${{ secrets.APP_SECRET }}
           CRON_SECRET: ${{ secrets.CRON_SECRET }}
           SITE_URL: ${{ secrets.SITE_URL }}

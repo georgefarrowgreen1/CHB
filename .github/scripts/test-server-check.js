@@ -5,7 +5,7 @@
 'use strict';
 
 const zlib = require('zlib');
-const { parseListing, classify, report, blobHash, sameContent, GUARD_RULES } = require('./server-check.js');
+const { parseListing, classify, report, splitNested, blobHash, sameContent, GUARD_RULES } = require('./server-check.js');
 
 let fails = 0;
 let n = 0;
@@ -171,6 +171,39 @@ console.log('== the site\'s own files ==');
     ok('a brotli twin compressed differently but holding the same file is not changed', !r.changed.some((x) => x.path === 'app.js.br'));
     ok('a missing file is reported', r.missing.length === 1 && r.missing[0].path === 'index.html');
     ok('sameContent opens a brotli twin before comparing', sameContent('a.js.br', br('x'), zlib.brotliCompressSync(B('x'), { params: { [zlib.constants.BROTLI_PARAM_QUALITY]: 2 } })) && !sameContent('a.js.br', br('x'), br('y')));
+}
+
+console.log('== a staging copy in a folder of the web root ==');
+{
+    // The live host with the staging site deployed into staging/: the same shipped
+    // files, its own config and sessions, and two things nobody shipped.
+    const { remote, server } = cleanHost();
+    const stg = cleanHost();
+    remote.push({ path: 'staging', type: 'dir', size: 4096 });
+    for (const r of stg.remote) remote.push({ ...r, path: 'staging/' + r.path });
+    for (const [p, buf] of stg.server) server.set('staging/' + p, buf);
+    remote.push({ path: 'staging/mailtest.php', type: 'file', size: 5 });
+    server.set('staging/mailtest.php', B('<?php'));
+    remote.push({ path: 'staging/.user.ini', type: 'file', size: 9 });
+    server.set('staging/.user.ini', B('x=1'));
+    remote.push({ path: 'staging-notes.php', type: 'file', size: 5 });
+    server.set('staging-notes.php', B('<?php'));
+
+    const unsplit = classify({ expected, remote, server, history, webauthn });
+    ok('…which, compared as the live site alone, reads as dozens of strays (the first run\'s 150)', unsplit.needs.filter((x) => x.path.startsWith('staging/')).length >= 5);
+
+    const { outer, inner } = splitNested(remote, server, 'staging/');
+    ok('the live part holds nothing from the folder, its own entry included', !outer.remote.some((r) => r.path === 'staging' || r.path.startsWith('staging/')) && ![...outer.server.keys()].some((p) => p.startsWith('staging/')));
+    ok('…but a root file whose name only starts like it stays live', outer.remote.some((r) => r.path === 'staging-notes.php'));
+    ok('the staging part has the folder taken off its paths', inner.remote.some((r) => r.path === 'mailtest.php') && inner.server.has('db.php') && !inner.remote.some((r) => r.path.startsWith('staging/')));
+    const live = classify({ expected, remote: outer.remote, server: outer.server, history, webauthn });
+    ok('the live site then reports only its own stray', live.needs.length === 1 && live.needs[0].path === 'staging-notes.php' && live.changed.length === 0 && live.missing.length === 0);
+    const copy = classify({ expected, remote: inner.remote, server: inner.server, history, webauthn });
+    ok('the staging copy reports what nobody shipped there, under its own paths', copy.needs.map((x) => x.path).sort().join() === '.user.ini,mailtest.php');
+    ok('…keeps its own config unread and unreported', !copy.needs.concat(copy.leftovers).some((x) => x.path === 'config.php'));
+    ok('…and counts its sessions and photos rather than naming them', copy.counts.sessions === 2 && copy.counts.photos === 4 && copy.changed.length === 0 && copy.missing.length === 0);
+    const text = report(copy, { title: 'The staging copy in staging/' });
+    ok('its report is headed as the staging copy, and names no session or photo', /^## The staging copy in staging\//.test(text) && !/sess_|guest-a1b2|chat-9f9f/.test(text));
 }
 
 console.log('== without the library\'s releases ==');

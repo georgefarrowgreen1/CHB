@@ -4,6 +4,9 @@
 # belong. READ-ONLY on the host: it lists and downloads, never writes or deletes.
 #
 # Env: HOST USERNAME LFTP_PASSWORD [PORT] [REMOTE]  the SFTP login (as the deploy)
+#      [STAGING_REMOTE]                              the staging site's folder; when it
+#                                                    is inside REMOTE it is compared as
+#                                                    a site of its own, not as strays
 #      [SITE_URL] APP_SECRET|CRON_SECRET             to tell the site what it found
 # Exit: 0 nothing needs a look, 1 something does, 2 the check itself could not run.
 set -euo pipefail
@@ -14,37 +17,79 @@ WORK="${CHECK_WORK:-${RUNNER_TEMP:-/tmp}/server-check}"
 # The build goes inside the repository so strip-comments.js finds typescript in the
 # workspace's node_modules, exactly as the deploy's does.
 BUILT="${CHECK_BUILT:-$REPO/server-check-built}"
+NBUILT="$BUILT-staging"
 ROOT="${REMOTE:-/}"
 RUNNER_TEMP="${RUNNER_TEMP:-$WORK}"
-rm -rf "$WORK" "$BUILT"
+rm -rf "$WORK" "$BUILT" "$NBUILT"
 mkdir -p "$WORK"
 
-# 1. Which commit is on the host: the deploy writes it into .deploy-commit.
+# The staging site's folder inside ROOT ("staging"), or nothing when it lives elsewhere.
+NESTED=""
+if [ -n "${STAGING_REMOTE:-}" ]; then
+    R="${ROOT%/}"
+    S="${STAGING_REMOTE%/}"
+    S="${S#./}"
+    if [ -z "$R" ] || [ "$R" = "." ]; then
+        NESTED="${S#/}"
+    else
+        case "$S/" in "$R"/?*) NESTED="${S#"$R"/}" ;; esac
+    fi
+fi
+
+# Which commit a folder on the host was deployed from: the deploy writes .deploy-commit.
+deployed_commit() {
+    local c
+    c="$(bash "$HERE/sftp.sh" "cat \"$1/.deploy-commit\"" 2>/dev/null | tr -dc '0-9a-f' | cut -c1-40)" || c=""
+    if [ "${#c}" -eq 40 ] && git -C "$REPO" cat-file -e "$c^{commit}" 2>/dev/null; then printf '%s' "$c"; fi
+}
+
+# Exactly what a commit's deploy uploaded, built by that commit's own staging script.
+build_commit() {
+    git -C "$REPO" worktree prune
+    git -C "$REPO" worktree add --detach "$WORK/src" "$1" > /dev/null
+    local stage="$WORK/src/.github/scripts/stage-site.sh"
+    [ -f "$stage" ] || stage="$HERE/stage-site.sh"
+    bash "$stage" "$WORK/src/Cottage Holidays Blakeney" "$2" > "$WORK/stage.log" 2>&1 || {
+        cat "$WORK/stage.log"
+        echo "::error::Could not build the deployed commit to compare with."
+        exit 2
+    }
+    git -C "$REPO" worktree remove --force "$WORK/src" 2>/dev/null || true
+}
+
+# 1. Which commit is on the host.
 NOTE=""
-COMMIT="$(bash "$HERE/sftp.sh" "cat \"${ROOT%/}/.deploy-commit\"" 2>/dev/null | tr -dc '0-9a-f' | cut -c1-40)" || COMMIT=""
-if [ "${#COMMIT}" -ne 40 ] || ! git -C "$REPO" cat-file -e "$COMMIT^{commit}" 2>/dev/null; then
+COMMIT="$(deployed_commit "${ROOT%/}")"
+if [ -z "$COMMIT" ]; then
     COMMIT="$(git -C "$REPO" rev-parse HEAD)"
     NOTE="the server does not say which commit it has, so this is the newest"
 fi
 echo "Comparing the server with $COMMIT${NOTE:+ ($NOTE)}"
 
-# 2. Exactly what that commit's deploy uploaded, built by that commit's own staging script.
-git -C "$REPO" worktree prune
-git -C "$REPO" worktree add --detach "$WORK/src" "$COMMIT" > /dev/null
-STAGE="$WORK/src/.github/scripts/stage-site.sh"
-[ -f "$STAGE" ] || STAGE="$HERE/stage-site.sh"
-bash "$STAGE" "$WORK/src/Cottage Holidays Blakeney" "$BUILT" > "$WORK/stage.log" 2>&1 || {
-    cat "$WORK/stage.log"
-    echo "::error::Could not build the deployed commit to compare with."
-    exit 2
-}
-git -C "$REPO" worktree remove --force "$WORK/src" 2>/dev/null || true
+# 2. Exactly what that commit's deploy uploaded.
+build_commit "$COMMIT" "$BUILT"
+
+# 2b. The staging copy, from the commit its own deploy wrote (usually the same one).
+NESTED_ARGS=()
+NCOMMIT=""
+NNOTE=""
+if [ -n "$NESTED" ]; then
+    NCOMMIT="$(deployed_commit "${ROOT%/}/$NESTED")"
+    if [ -z "$NCOMMIT" ]; then
+        NCOMMIT="$COMMIT"
+        NNOTE="the staging folder does not say which commit it has, so this is the live one"
+    fi
+    echo "Comparing the staging copy in $NESTED/ with $NCOMMIT${NNOTE:+ ($NNOTE)}"
+    if [ "$NCOMMIT" = "$COMMIT" ]; then NBUILT="$BUILT"; else build_commit "$NCOMMIT" "$NBUILT"; fi
+    NESTED_ARGS=(--nested "$NESTED=$NBUILT")
+fi
 
 # 3. The host: a listing of everything, and a copy of what can be compared by content.
-#    Not downloaded: the live config (its secrets have no business on a runner),
-#    session files, photos, backups and big binaries; those are compared by name and size.
+#    Not downloaded, at any depth (the staging copy has its own): a config (its secrets
+#    have no business on a runner), session files, photos, backups and big binaries;
+#    those are compared by name and size.
 bash "$HERE/sftp.sh" "cd \"$ROOT\"; find -l ." > "$WORK/listing.txt"
-bash "$HERE/sftp.sh" "mirror --no-perms --parallel=4 -x '^config\\.php\$' -x '^sessions/sess_' -x '\\.(jpe?g|png|gif|webp|avif|heic|ico|woff2?|ttf|otf|eot|zip|gz|bin|onnx)\$' \"$ROOT\" \"$WORK/server\"" > "$WORK/mirror.log" 2>&1 || {
+bash "$HERE/sftp.sh" "mirror --no-perms --parallel=4 -x '(^|/)config\\.php\$' -x '(^|/)sessions/sess_' -x '\\.(jpe?g|png|gif|webp|avif|heic|ico|woff2?|ttf|otf|eot|zip|gz|bin|onnx)\$' \"$ROOT\" \"$WORK/server\"" > "$WORK/mirror.log" 2>&1 || {
     tail -20 "$WORK/mirror.log"
     echo "::error::Could not download the server's files to compare."
     exit 2
@@ -66,10 +111,12 @@ KEYS="$(ssh-keyscan -T 10 -p "${PORT:-22}" "$HOST" 2> /dev/null | awk '{print $2
 
 # 6. Compare.
 STATUS=0
-CHECK_COMMIT="$COMMIT" CHECK_COMMIT_NOTE="$NOTE" CHECK_HOST_KEYS="$KEYS" node "$HERE/server-check.js" \
+CHECK_COMMIT="$COMMIT" CHECK_COMMIT_NOTE="$NOTE" CHECK_NESTED_COMMIT="$NCOMMIT" CHECK_NESTED_COMMIT_NOTE="$NNOTE" \
+    CHECK_HOST_KEYS="$KEYS" node "$HERE/server-check.js" \
     --expected "$BUILT" --listing "$WORK/listing.txt" --server "$WORK/server" --repo "$REPO" \
-    --webauthn "$WORK/webauthn.txt" --json "$WORK/result.json" --summary "${GITHUB_STEP_SUMMARY:-/dev/null}" || STATUS=$?
-rm -rf "$BUILT"
+    --webauthn "$WORK/webauthn.txt" --json "$WORK/result.json" --summary "${GITHUB_STEP_SUMMARY:-/dev/null}" \
+    ${NESTED_ARGS[@]+"${NESTED_ARGS[@]}"} || STATUS=$?
+rm -rf "$BUILT" "$BUILT-staging"
 
 # 7. Tell the site, so Manage → Status and Needs attention say it too (job key only).
 if [ "$STATUS" -le 1 ] && [ -s "$WORK/result.json" ] && [ -n "${APP_SECRET:-}${CRON_SECRET:-}" ]; then
