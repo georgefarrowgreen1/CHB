@@ -11,6 +11,8 @@
 //        Square says about its payout.
 //  POST {action:'payout', id}         -> one Square payout and the payments in it.
 //  POST {action:'books', year}        -> one tax year's books.
+//  POST {action:'export', year}       -> the same books, the accounts report and the
+//        expense rows they summed, for the CSV and the PDF statement.
 //
 //  Reads only. Square is never asked from here: fees and refund states are
 //  settled by the daily job, the webhooks and "Check Square now", so a page
@@ -256,5 +258,18 @@ route_actions([
         }
         $report = money_report($year);
         json_out(['ok' => true, 'books' => money_books($report, money_year_expenses($year), $year), 'years' => $report['years'] ?? [$year]]);
+    },
+    // The year's CSV and PDF statement. They used to restate the profit sum from the
+    // client's own expense list; now every total is the books' (money_books), and the
+    // expense rows come with them, the very rows the books summed, so a file's list
+    // adds up to its own summary and both match the Payments page.
+    'export' => function ($in) {
+        $year = (int) ($in['year'] ?? 0);
+        if ($year < 2000 || $year > 2100) {
+            json_out(['error' => 'Missing the tax year'], 400);
+        }
+        $report = money_report($year);
+        $expenses = money_year_expenses($year);
+        json_out(['ok' => true, 'report' => $report, 'books' => money_books($report, $expenses, $year), 'expenses' => $expenses]);
     },
 ]);

@@ -3365,6 +3365,82 @@ process.on('exit', (code) => { if (!__searchTestDone && code === 0) { console.er
         } finally { documentShim.getElementById = realGet; }
     } else fail('renderNeedsYou / chbDutiesNow missing for §46');
 
+    // §47 ONE OWED FIGURE. Today's pill, the day sentence, the greeting, the offline sheet
+    // and the digest (server, test-payrail) state one figure: chbOwedOf's volunteered
+    // money. The "balances to chase" answer and the strip read one chase list. Payments
+    // never calls money the owner collects personally overdue. The clock is pinned, and
+    // the fixture holds one of each case the surfaces used to disagree about.
+    console.log('\n§47 money: one owed figure everywhere');
+    if (typeof ctx.chbOwedTotals === 'function' && typeof ctx.chbChaseList === 'function' && typeof ctx.mapBookingFromApi === 'function') {
+        vm.runInContext(`globalThis.__realParts47 = ukNowParts; ukNowParts = () => ({ y: 2026, m: 7, d: 15, hh: 12, mm: 0 });`, ctx);
+        try {
+            vm.runInContext(`propertyMeta.jollyboat = propertyMeta.jollyboat || { name: 'Jollyboat' };
+                Object.keys(dbBookings).forEach((k) => dbBookings[k] = []); enquiries = [];
+                const snap = { agreed_total: 500, agreed_nightly: 480, agreed_txn_fee: 20, agreed_booking_fee: 50, agreed_per_night: 120, agreed_nights: 4, agreed_txn_pct: 0, adults: 2, children: 0, prop_key: 'jollyboat', email: 'g@x.co' };
+                const row = (id, name, ci, co, extra) => mapBookingFromApi(Object.assign({ id, name, check_in: ci, check_out: co, deposit_paid: 0, payment: 'unpaid', hold_status: 'none', payment_method: '' }, snap, extra));
+                dbBookings.jollyboat = [
+                    row(471, 'Staying Sam', '2026-07-13', '2026-07-18', { deposit_paid: 125, payment: 'deposit', hold_status: 'charged', hold_amount: 50, payment_method: 'Square card' }),
+                    row(472, 'Left Lou', '2026-07-05', '2026-07-10', {}),
+                    row(473, 'Ancient Ann', '2026-05-28', '2026-06-01', {}),
+                    row(474, 'Cash Cath', '2026-07-20', '2026-07-24', { payment_method: 'Cash' }),
+                    row(475, 'Auto Al', '2026-07-25', '2026-07-29', { deposit_paid: 125, payment: 'deposit', hold_status: 'charged', hold_amount: 50, payment_method: 'Square card', autopay_state: 'armed' }),
+                    row(476, 'Paid Pat', '2026-07-21', '2026-07-23', { deposit_paid: 500, payment: 'paid', hold_status: 'charged', hold_amount: 50, payment_method: 'Square card' }),
+                    row(477, 'Penny Residue', '2026-07-22', '2026-07-26', { deposit_paid: 549.6, payment: 'paid' }),
+                    row(478, 'Bank Bea', '2026-07-14', '2026-07-16', { payment_method: 'Bank transfer' }),
+                ];`, ctx);
+            const tot = ctx.chbOwedTotals();
+            check(`the volunteered figure: Sam £375 + Lou (left five days ago) £550 + Al £375 (${tot.sum} from ${tot.n})`, Math.abs(tot.sum - 1300) < 0.005 && tot.n === 3);
+            check(`…what the owner collects personally is named apart (${tot.arrSum} from ${tot.arrN})`, Math.abs(tot.arrSum - 1100) < 0.005 && tot.arrN === 2);
+            const ow = (id) => vm.runInContext(`(() => { const b = dbBookings.jollyboat.find((x) => x.dbId === ${id}); return chbOwedOf('jollyboat', b); })()`, ctx);
+            check('a stay that ended owing is still volunteered (the pill used to leave it out)', ow(472).volunteer === true);
+            check('…one that ended past the horizon is a record, not a chore', ow(473).volunteer === false && ow(473).stale === true && ow(473).due > 0);
+            check('…a 40p residue is not money owed', ow(477).due === 0 && ow(477).volunteer === false);
+            const day = ctx.chbDaySentence();
+            check(`the day sentence states the pill's figure (${day.shape.owed})`, Math.abs(day.shape.owed - tot.sum) < 0.005);
+            const brief = String(ctx.chbNlgBrief() || '');
+            check(`…and so does the greeting ("${brief}")`, /£1,300(\.00)? still to collect/.test(brief));
+            const chase = ctx.chbChaseList().map((c) => c.b.name);
+            check(`the chase list: due now, never self-collecting, arranged or stale (${chase.join(', ')})`, chase.join('|') === 'Left Lou|Staying Sam');
+            const ans = ctx.cmdkIntent('balances to chase') || [];
+            check(`"balances to chase" reads that list and its sums ("${ans[0] && ans[0].label}")`, ans.length === 3 && /^2 balances to chase · £925\.00$/.test(ans[0].label || ''));
+            const subs = ans.slice(1).map((r) => r.sub || '').join(' | ');
+            check(`…saying which are overdue and why ("${subs}")`, /£550\.00 · overdue — left 10\/07\/2026/.test(subs) && /£375\.00 · overdue — staying now/.test(subs));
+            const strip = ctx.chbDuties().filter((d) => d.kind === 'balance').map((d) => d.key).sort().join(',');
+            check(`…the strip names the same guests (${strip})`, strip === 'balance:471,balance:472');
+            const pm = vm.runInContext(`(() => { const b = dbBookings.jollyboat.find((x) => x.dbId === 474); const r = pmOwedRow('jollyboat', b); return { overdue: r.overdue, dueNow: r.dueNow, cap: pmPlan(r).cap }; })()`, ctx);
+            check(`Payments never calls money the owner collects personally overdue or due now (${JSON.stringify(pm)})`, pm.overdue === false && pm.dueNow === false && pm.cap === 'You arranged it');
+            const lou = vm.runInContext(`(() => { const b = dbBookings.jollyboat.find((x) => x.dbId === 472); return pmOwedRow('jollyboat', b).overdue; })()`, ctx);
+            check('…while a card-rail stay that ended owing still is', lou === true);
+            check('…and a 40p residue is no guest still to pay', vm.runInContext(`pmOwedRow('jollyboat', dbBookings.jollyboat.find((x) => x.dbId === 477))`, ctx) === null);
+            // THE OFFLINE SHEET: rows carry the chase decision, the line states the total.
+            const rows = ctx.chbSnapRowsFromStores();
+            const r = (n) => rows.find((x) => x.nm === n) || {};
+            check('the sheet keeps a stay that ended owing, for its duty', r('Left Lou').chase === 1 && r('Left Lou').late === 1);
+            check('…marks the owner\'s own arrangement', r('Bank Bea').own === 1 && r('Bank Bea').chase === 0);
+            const duties = String(ctx.odsDutiesHtml(rows) || '');
+            check('…its money duties are the strip\'s, with the strip\'s words', /£550\.00 overdue from Left Lou/.test(duties) && /£375\.00 overdue from Staying Sam/.test(duties) && !/Bank Bea/.test(duties));
+            const line = String(ctx.odsOpsLineHtml(rows, false, tot) || '');
+            check(`…and its line states the online figure ("${line.replace(/<[^>]+>/g, '').trim()}")`, /£1,300 to collect/.test(line));
+            const old = String(ctx.odsOpsLineHtml(rows, false, null) || '');
+            check('…a sheet saved before the total rode along sums its own rows, never an arrangement or a stay since ended', /£375 to collect/.test(old));
+            // THE YEAR'S FILES STATE THE BOOKS. The report's own fee figure is made to
+            // disagree with the books', so a file that re-derived its profit would say so.
+            const csv = String(ctx.accountsCsvText({
+                year: 2026,
+                report: { payments: [], total: 1000, held_deposits: 75, card_fees: 99, kept_deposits: 0, by_property: {} },
+                books: { income: 1000, kept: 0, fees: 20, expenses: 100, profit: 880 },
+                expenses: [{ date: '2026-05-01', category: 'Cleaning', description: 'Changeover clean', amount: 100, prop_key: '' }],
+            }) || '');
+            check('the CSV states the books\' fees, expenses and profit, never a sum of its own', /Card processing fees,-20\.00/.test(csv) && /Total expenses,100\.00/.test(csv) && /Net profit,880\.00/.test(csv) && !/801\.00/.test(csv));
+            check('…and lists the expense rows the books summed', /"Changeover clean"/.test(csv));
+            const admSrc47 = require('fs').readFileSync(__dirname + '/admin.js', 'utf8');
+            const dys = (() => { const a = admSrc47.indexOf('async function downloadYearStatement'); return a < 0 ? '' : admSrc47.slice(a, admSrc47.indexOf('\n}\n', a)); })();
+            check('the PDF statement reads the books too (no expense list or profit sum of its own)', /const net = Number\(B\.profit\)/.test(dys) && !/expensesForYear\(/.test(dys) && !/income \+ keptIncome - cardFees - expTotal/.test(dys));
+        } finally {
+            vm.runInContext('ukNowParts = globalThis.__realParts47; delete globalThis.__realParts47; Object.keys(dbBookings).forEach((k) => dbBookings[k] = []);', ctx);
+        }
+    } else fail('chbOwedTotals / chbChaseList / mapBookingFromApi missing for §47');
+
     // ---- Summary ----
     console.log('\n== Summary ==');
     if (failures) { console.log(`  ${failures} CHECK(S) FAILED ❌\n`); __searchTestDone = true; process.exit(1); }

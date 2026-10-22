@@ -1069,6 +1069,58 @@ The rule they share: money is counted once, on the day it moved, with the cottag
   of a charge that carried a refundable deposit, though Square credits back the deposit's share of it when the
   deposit is returned (about £1.30 on £75); the books count the whole fee too, so the two still agree.
 
+## One owed figure everywhere (suggestion 3)
+
+Asked for as the third of five suggestions. Eight surfaces said how much money was still to come in, each
+working it out its own way, and they disagreed on one screen. Today's pill left out a stay that had ended,
+so a guest who left owing £300 read "Nobody owes you anything" beside a red "£300 overdue" duty. The day
+sentence cut at midnight where the pill cut at the checkout hour. A 1p residue made the pill say "£0 to
+collect". Payments called money the owner had arranged personally "overdue". The strip and the search answer
+built their chase lists separately. The weekly digest summed only the rental of stays still to arrive. The
+CSV and PDF restated the profit from the client's own expense list.
+- **`chbOwedOf(pk, b)`** (admin.js) is the one judgement of a booking:
+  - `due`: bookingDue's balance, the refundable deposit included; 0 under 50p;
+  - `arranged`: the owner collects it personally (`bookingOwnerArranged`);
+  - `stale`: the stay ended more than `CHB_OWED_DAYS` (14) days ago, so it is a record, not a chore;
+  - `volunteer`: due, not arranged, not stale.
+
+  **`chbOwedTotals()`** sums it into `sum`/`n` (what is volunteered) and `arrSum`/`arrN` (what was
+  arranged, named on the pill so "Nothing to chase" never reads as "nobody owes"). These read it: Today's
+  pill and its "owe you" filter, the day sentence (`chbOpsParts`), the greeting (`chbNlgBrief`) and the
+  offline sheet.
+- **`chbChaseList()`** is the one list of bookings whose money is due NOW under their own plan
+  (`chbChaseInfo`, which stands down at the same 14 days). The Needs-you strip's balance rows and the
+  "balances to chase" answer both read it, so they name the same guests and the same sums.
+- **Payments never calls arranged money overdue or due now** (`pmOwedRow`). It lists it as the owner's
+  arrangement, with its date.
+- **The offline sheet carries the decisions, not the inputs**: each snapshot row has `own` (arranged),
+  `chase`, `amt` and `late`, and the snapshot carries `owed` (the totals), so the sheet's line and duties
+  match online Today. A snapshot written before this falls back to the old rule.
+- **The server twin** is in pricing.php:
+  - `booking_owed($b)` is `bookingDue().balance` restated: the rental plus the refundable deposit as it was
+    charged, held or returned; a cash deposit counts as taken; an unsnapshotted row is priced live.
+  - `booking_owed_volunteered($b)` adds the card rail and the same 14 days (`OWED_VOLUNTEER_DAYS`).
+
+  The weekly digest sums it (and answers `owed_sum`). It had read `agreed_total - deposit_paid` for stays
+  still to arrive, so a guest in the cottage owing £300 was left out and a deposit still to take never
+  counted. **`owed-fixtures.json`** (16 booking shapes) holds client and server to one set of cases. Like
+  pricing-fixtures, smoke-test loops it against the client and test-payrail against the server; add a
+  case there, never to a test.
+- **The year's files read the books.** `money.php` `export` returns three things: the accounts report,
+  `money_books` and the expense rows the books summed. `accountsCsvText(X)` builds the CSV from them
+  (pure), and the PDF statement's net is the books' profit, so a file cannot disagree with the Payments
+  page.
+- **The old Income & tax page is gone**: `renderAccounts`, `renderMoneyForecast` and `#asec-income`
+  removed. Nothing had opened it since the Payments page, and `accountsOpen('income')` lands on the books.
+- Gates:
+  - search-test §47: the clock pinned, eight booking shapes, every surface's figure equal, the CSV
+    through `accountsCsvText`;
+  - smoke-test: the client fixtures;
+  - test-payrail: the server fixtures, the volunteer rule, the digest's wiring;
+  - test-integration §95: the digest's figure through the real script, the export equal to the books.
+
+  Six client rules and five server ones were break-tested, each failing its own named check.
+
 ## Automatic collection: finished plans, Square's silences, two passes at once (round 5)
 
 Found by the scheduled-jobs review and each reproduced against the real collector code.

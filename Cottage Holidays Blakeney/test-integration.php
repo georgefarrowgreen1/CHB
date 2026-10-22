@@ -7289,6 +7289,46 @@ $nojar94 = [];
 $t94 = http($nojar94, 'GET', '/tide-push.php?cron=' . rawurlencode($SECRET));
 it_check('§94 the retired tide push answers 410 and nothing else, even to the master key', $t94['code'] === 410 && is_array($t94['json']) && array_keys($t94['json']) === ['error'], $t94['code'] . ' ' . $t94['raw']);
 
+// §95 ONE OWED FIGURE, THE SERVER'S HALF. The weekly digest's "money owed" is Today's
+// "£X to collect": booking_owed_volunteered over every recent row. Its old query read the
+// rental alone of stays still to arrive, so a guest in the cottage owing money, one who
+// had left owing, and a refundable deposit still to take were all missing. Measured as a
+// DELTA over what the suite has already stored. Then the year's files: the export action
+// hands over the books with the very expense rows they summed.
+echo "\n== §95 one owed figure: the digest and the year's files ==\n";
+$dig95 = function () use (&$adm83) {
+    $r = http($adm83, 'POST', '/owner-digest.php?force=1', []);
+    return [(int) ($r['json']['owed'] ?? -1), (float) ($r['json']['owed_sum'] ?? -1), $r];
+};
+[$n95a, $s95a] = $dig95();
+$ins95 = $rootDb->prepare("INSERT INTO bookings (prop_key, name, email, check_in, check_out, adults, children, payment, deposit_paid, payment_method, hold_status, hold_amount, agreed_total, agreed_nightly, agreed_txn_fee, agreed_booking_fee, agreed_nights)
+    VALUES (?, ?, 'owed95@example.com', ?, ?, 2, 0, ?, ?, ?, ?, ?, 500, 480, 20, 50, 4)");
+$ins95->execute([$propKey, 'Staying 95', $ukPlus(-2), $ukPlus(2), 'deposit', 125, 'Square card', 'charged', 50]); // £375
+$ins95->execute([$propKey, 'Left 95', $ukPlus(-9), $ukPlus(-5), 'unpaid', 0, '', 'none', 0]); // £550
+$ins95->execute([$propKey, 'Deposit 95', $ukPlus(60), $ukPlus(64), 'paid', 500, '', 'none', 0]); // £50
+$ins95->execute([$propKey, 'Long gone 95', $ukPlus(-40), $ukPlus(-36), 'unpaid', 0, '', 'none', 0]); // past the horizon
+$ins95->execute([$propKey, 'Cash 95', $ukPlus(70), $ukPlus(74), 'unpaid', 0, 'Cash', 'none', 0]); // the owner's own
+[$n95b, $s95b, $raw95] = $dig95();
+it_check('§95 the digest counts what Today\'s pill counts: a stay in progress, one that ended owing, a deposit still to take',
+    $n95b - $n95a === 3 && abs(($s95b - $s95a) - 975) < 0.005, "$n95a/$s95a -> $n95b/$s95b " . substr((string) ($raw95['raw'] ?? ''), 0, 200));
+$rootDb->exec("DELETE FROM bookings WHERE email = 'owed95@example.com'");
+$ty95 = (int) date('Y') - (date('md') < '0406' ? 1 : 0);
+$rootDb->prepare("INSERT INTO expenses (category, description, amount, prop_key, expense_date) VALUES ('Cleaning', 'Changeover clean 95', 40.50, ?, ?)")->execute([$propKey, $ukToday]);
+$x95 = http($adm83, 'POST', '/money.php', ['action' => 'export', 'year' => $ty95]);
+$b95 = $x95['json']['books'] ?? [];
+$e95 = is_array($x95['json']['expenses'] ?? null) ? $x95['json']['expenses'] : [];
+$sum95 = round(array_sum(array_map(fn($e) => (float) ($e['amount'] ?? 0), $e95)), 2);
+it_check('§95 the year\'s export carries the report, the books and the expense rows the books summed',
+    !empty($x95['json']['ok']) && isset($x95['json']['report']['total']) && count($e95) >= 1 && abs($sum95 - (float) ($b95['expenses'] ?? -1)) < 0.005,
+    json_encode([$sum95, $b95['expenses'] ?? null, $x95['code']]));
+it_check('§95 …its profit is the books\' one sum',
+    abs((float) ($b95['profit'] ?? 0) - round((float) ($b95['income'] ?? 0) + (float) ($b95['kept'] ?? 0) - (float) ($b95['fees'] ?? 0) - (float) ($b95['expenses'] ?? 0), 2)) < 0.005,
+    json_encode($b95));
+$bk95 = http($adm83, 'POST', '/money.php', ['action' => 'books', 'year' => $ty95]);
+it_check('§95 …and the very figure the Payments page\'s books show', abs((float) ($bk95['json']['books']['profit'] ?? -1) - (float) ($b95['profit'] ?? -2)) < 0.005,
+    json_encode([$bk95['json']['books']['profit'] ?? null, $b95['profit'] ?? null]));
+$rootDb->exec("DELETE FROM expenses WHERE description = 'Changeover clean 95'");
+
 echo "\n== Summary ==\n";
 if ($fail) {
     echo "  $fail CHECK(S) FAILED \xE2\x9D\x8C\n\n";

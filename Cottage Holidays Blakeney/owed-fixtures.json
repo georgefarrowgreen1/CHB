@@ -1,0 +1,40 @@
+{
+  "_doc": "ONE source of truth for 'what does this booking still owe?' (the rental, and the refundable deposit until it is taken or handed back). Looped by smoke-test.js against bookingDue() in app.js (through mapBookingFromApi, the real row mapper) and by test-payrail.php against booking_owed() in pricing.php, which the weekly digest totals. Add a case here, never to either test. Rows are DB columns; `base` fills what a case leaves out.",
+  "base": {
+    "prop_key": "jollyboat",
+    "check_in": "2030-06-10",
+    "check_out": "2030-06-14",
+    "adults": 2,
+    "children": 0,
+    "agreed_total": 500,
+    "agreed_nightly": 480,
+    "agreed_txn_fee": 20,
+    "agreed_booking_fee": 50,
+    "agreed_per_night": 120,
+    "agreed_nights": 4,
+    "agreed_txn_pct": 0,
+    "price_override": null,
+    "deposit_paid": 0,
+    "payment": "unpaid",
+    "hold_status": "none",
+    "hold_amount": 0
+  },
+  "cases": [
+    { "name": "nothing paid: the rental and the refundable deposit", "row": {}, "owed": 550 },
+    { "name": "the first card payment took the deposit with it", "row": { "deposit_paid": 125, "payment": "deposit", "hold_status": "charged", "hold_amount": 50 }, "owed": 375 },
+    { "name": "paid in full by card", "row": { "deposit_paid": 500, "payment": "paid", "hold_status": "charged", "hold_amount": 50 }, "owed": 0 },
+    { "name": "the rental paid in cash, the deposit still to take", "row": { "deposit_paid": 500, "payment": "paid" }, "owed": 50 },
+    { "name": "the rental and the deposit both handed over in cash", "row": { "deposit_paid": 550, "payment": "paid" }, "owed": 0 },
+    { "name": "part of the deposit handed over in cash", "row": { "deposit_paid": 520, "payment": "paid" }, "owed": 30 },
+    { "name": "the deposit went back after the stay", "row": { "deposit_paid": 500, "payment": "paid", "hold_status": "returned", "hold_amount": 50 }, "owed": 0 },
+    { "name": "a kept deposit was taken, whatever the agreed figure says now", "row": { "agreed_booking_fee": 90, "deposit_paid": 500, "payment": "paid", "hold_status": "kept", "hold_amount": 50 }, "owed": 0 },
+    { "name": "the card took a different deposit from the agreed one", "row": { "agreed_booking_fee": 90, "deposit_paid": 100, "payment": "deposit", "hold_status": "charged", "hold_amount": 50 }, "owed": 400 },
+    { "name": "a custom price with its override", "row": { "agreed_total": 310, "price_override": 310, "deposit_paid": 100, "payment": "deposit", "hold_status": "charged", "hold_amount": 50 }, "owed": 210 },
+    { "name": "override lost: the negotiated total is the rental", "row": { "agreed_total": 260, "deposit_paid": 260, "payment": "paid" }, "owed": 50 },
+    { "name": "override lost, the deposit handed over in cash too", "row": { "agreed_total": 260, "deposit_paid": 310, "payment": "paid" }, "owed": 0 },
+    { "name": "a comped stay still owes its refundable deposit", "row": { "agreed_total": 0, "price_override": 0 }, "owed": 50 },
+    { "name": "legacy: marked paid with less recorded", "row": { "deposit_paid": 400, "payment": "paid", "hold_status": "charged", "hold_amount": 50 }, "owed": 0 },
+    { "name": "legacy card hold still only authorised", "row": { "deposit_paid": 500, "payment": "paid", "hold_status": "authorized", "hold_amount": 50 }, "owed": 50 },
+    { "name": "no refundable deposit agreed", "row": { "agreed_booking_fee": 0, "deposit_paid": 200, "payment": "deposit" }, "owed": 300 }
+  ]
+}

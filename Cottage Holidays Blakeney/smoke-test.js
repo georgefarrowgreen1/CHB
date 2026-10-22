@@ -1373,6 +1373,26 @@ console.log('\n== 10. Design-system & recent-fix contracts ==');
         check(`bookingRentalPure matches all ${rfx.cases.length} shared fixtures`, rBad.length === 0, rBad.slice(0, 3).join(' | '));
     }
 
+    // What a booking still owes: ONE fixture file, looped here against bookingDue (through
+    // the real row mapper) and in test-payrail.php against booking_owed, which the weekly
+    // digest totals. Add cases to the JSON.
+    const owedMap = get('mapBookingFromApi');
+    const owedDue = get('bookingDue');
+    if (typeof owedMap !== 'function' || typeof owedDue !== 'function') { fail('mapBookingFromApi / bookingDue are not defined'); }
+    else {
+        const ofx = JSON.parse(fs.readFileSync(path.join(path.dirname(HTML_PATH), 'owed-fixtures.json'), 'utf8'));
+        check('owed fixtures load', Array.isArray(ofx.cases) && ofx.cases.length >= 12);
+        const oBad = [];
+        ofx.cases.forEach((c, i) => {
+            const row = Object.assign({ id: 900 + i }, ofx.base, c.row);
+            const b = owedMap(row);
+            const g = owedDue(row.prop_key, b);
+            const got = g.fullyPaid ? 0 : Math.round(g.balance * 100) / 100;
+            if (Math.abs(got - c.owed) > 0.005) oBad.push(`${c.name}: got ${got} want ${c.owed}`);
+        });
+        check(`bookingDue owes what all ${ofx.cases.length} shared fixtures say`, oBad.length === 0, oBad.slice(0, 3).join(' | '));
+    }
+
     // ════════════════════════════════════════════════════════════════════════
     //  THE OWNER'S PDF INVOICE, DRIVEN FOR REAL (downloadInvoice → jsPDF).
     //

@@ -5787,8 +5787,8 @@ button.bhub-icbtn { font-family: inherit; cursor: pointer; padding: 0; }
    container's gap, hardcoded. In a flex/grid parent with a 12px gap that nets
    to a clean abutment; in a BLOCK parent (every #asec-* section) there is no
    gap to cancel, so it OVERLAPPED, stacking two translucent 2% fills into a
-   12px lighter band with an edge at both ends (measured -12px on #asec-income
-   against the landing's 0). Groups ABUT by default now, and a container with a
+   12px lighter band with an edge at both ends (measured -12px on an #asec-*
+   section against the landing's 0). Groups ABUT by default now, and a container with a
    gap declares it ONCE as --fold-gap and feeds its own `gap` from it, so the
    two cannot drift. Zeroing the parents' gap would not do: .bhub-grid holds
    the enquiry hub's message and state CARDS beside the fold run. */
@@ -6237,7 +6237,6 @@ button.bhub-icbtn { font-family: inherit; cursor: pointer; padding: 0; }
 /* [hidden] must actually hide: .bhub-grpcap's display:block out-ranks the
    UA rule, so an empty caption painted over a clean page. */
 .bhub-grpcap[hidden] { display: none; }
-#accounts-content .bhub-fold-grp { max-width: 640px; }
 /* THE TRENDS FOLD IS PART OF THE PAGE, not the old dashboard inside it. A
    .mo-card is a 20px-radius bordered card, and four of them sat inside a fold
    group whose own bottom corners are 12px — a child rounder than its container.
@@ -6257,7 +6256,6 @@ button.bhub-icbtn { font-family: inherit; cursor: pointer; padding: 0; }
    everything inside inherits it and nothing is capped twice. */
 @media (min-width: 900px) {
   #accounts-panel .accounts-sec { max-width: 640px; }
-  #asec-income select { max-width: 100%; }
 }
 
 /* ============================================================

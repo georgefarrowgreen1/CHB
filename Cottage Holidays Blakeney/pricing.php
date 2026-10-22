@@ -953,6 +953,66 @@ function booking_next_payment($b, $rate = null)
     ];
 }
 
+// WHAT A BOOKING STILL OWES: the rental, and the refundable deposit until it is taken
+// or handed back. The server's statement of bookingDue(...).balance (app.js), held equal
+// to it by owed-fixtures.json, so the weekly digest and the back office cannot quote two
+// figures for one guest. Everything still to come in, whichever stage asks for it (what
+// the card takes NEXT is booking_next_payment's question). It reads deposit_paid as the
+// client does: the card ledger can run seconds ahead of it, never behind.
+function booking_owed($b, $rate = null)
+{
+    $hold = (string) ($b['hold_status'] ?? 'none');
+    if ($hold === '') {
+        $hold = 'none';
+    }
+    $total = booking_agreed_total($b);
+    $agreedDep = (float) ($b['agreed_booking_fee'] ?? 0);
+    $live = false;
+    if (($b['agreed_total'] ?? null) === null || $b['agreed_total'] === '') {
+        // No snapshot (a legacy row): priced live, as the client prices it.
+        $r = $rate !== null ? $rate : get_rate($b['prop_key'] ?? '');
+        if ($r) {
+            $pp = price_breakdown($r, (int) ($b['adults'] ?? 0), (int) ($b['children'] ?? 0), (string) ($b['check_in'] ?? ''), (string) ($b['check_out'] ?? ''));
+            $total = (float) $pp['total'];
+            $agreedDep = (float) $pp['damagesDeposit'];
+            $live = true;
+        }
+    }
+    $paidRaw = max(0.0, (float) ($b['deposit_paid'] ?? 0));
+    $paidRent = ($b['payment'] ?? '') === 'paid' ? $total : min($total, $paidRaw);
+    $charged = in_array($hold, ['charged', 'captured', 'kept'], true);
+    $held = (float) ($b['hold_amount'] ?? 0);
+    // The deposit as the card took it once charged (an edit can move the agreed one),
+    // nothing once it has gone back.
+    $dep = in_array($hold, ['returned', 'released'], true) ? 0.0 : ($charged && $held > 0 ? $held : max(0.0, $agreedDep));
+    // A cash deposit is money paid above the rental (damages_collected's arithmetic).
+    $cashDep = $hold === 'none' ? min($dep, max(0.0, round($paidRaw - ($live ? $total : booking_rental_price($b)), 2))) : 0.0;
+    $owed = round(($total + $dep) - ($paidRent + ($charged ? $dep : 0.0) + $cashDep), 2);
+    return $owed > 0.001 ? $owed : 0.0;
+}
+
+// How long after checkout an unpaid balance is still VOLUNTEERED (Today's pill, the
+// day sentence, the digest). Past it the stay is a record, not a chore. The same figure
+// as admin.js CHB_OWED_DAYS; test-payrail holds the two equal.
+const OWED_VOLUNTEER_DAYS = 14;
+
+// The money a booking owes that the back office says unasked: not arranged with the
+// owner personally (the cash/bank rail, payment_rail) and not long finished. 0 when it
+// is none of the owner's business to be told. Mirrors admin.js chbOwedOf().volunteer.
+function booking_owed_volunteered($b, $today = null)
+{
+    if (payment_rail($b) !== 'card') {
+        return 0.0;
+    }
+    $today = $today ?: date('Y-m-d');
+    $co = (string) ($b['check_out'] ?? '');
+    if ($co !== '' && $co < date('Y-m-d', strtotime($today . ' 12:00:00') - OWED_VOLUNTEER_DAYS * 86400)) {
+        return 0.0;
+    }
+    $owed = booking_owed($b);
+    return $owed > 0.5 ? $owed : 0.0;
+}
+
 // Effective total + amount due for a kind ('deposit'|'balance'), server-authoritative.
 // 'balance' = everything still outstanding; 'deposit' = the deposit % minus anything paid.
 // DOES THIS BOOKING CARRY A PRICE OF ITS OWN?

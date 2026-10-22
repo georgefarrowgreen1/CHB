@@ -1711,14 +1711,15 @@ chk('request_booking_payment sends the booking-derived due date',
 
 // OWNER-ARRANGED MONEY IS NEVER VOLUNTEERED (owner's ask, 06 Aug): the weekly
 // digest's "Balances owed" line must skip the cash/bank rail exactly as
-// Today's strip does. A wiring scan, because owner-digest is a request script
-// (auth + send inline) that no pure-function test can drive: the guard has to
-// sit INSIDE the owed loop, between the fetch and the sum.
+// Today's strip does. The rule is booking_owed_volunteered (driven below with a
+// cash row); this is the WIRING, because owner-digest is a request script (auth +
+// send inline) that no pure-function test can drive: every row it sums is fetched
+// whole (the rule needs payment_method) and goes through the rule before the sum.
 $digW = (string) file_get_contents(__DIR__ . '/owner-digest.php');
-chk('the digest owed query fetches the payment method',
-    strpos($digW, 'SELECT $totalExpr AS total, deposit_paid, payment_method FROM bookings') !== false);
-chk('...and skips the cash/bank rail before summing',
-    preg_match('/foreach \(\$s->fetchAll\(\) as \$b\) \{[\s\S]{0,600}payment_rail\(\$b\) !== .card.[\s\S]{0,120}continue;[\s\S]{0,600}\$owedSum \+= \$out;/', $digW) === 1);
+chk('the digest owed query fetches whole rows, the payment method with them',
+    strpos($digW, "db()->prepare('SELECT * FROM bookings WHERE check_out >= ?')") !== false);
+chk('...and every row goes through booking_owed_volunteered before the sum',
+    preg_match('/foreach \(\$s->fetchAll\(\) as \$b\) \{\s*\$out = booking_owed_volunteered\(\$b\);[\s\S]{0,120}\$owedSum \+= \$out;/', $digW) === 1);
 // And the CLIENT mirror (bookingOwnerArranged, admin.js — the duty strip, the
 // header line, the filter) matches payment_rail's card pattern BYTE FOR BYTE:
 // a hand-typed "Visa" must not read as card on the server and cash in the app.
@@ -2215,6 +2216,33 @@ foreach (glob(__DIR__ . '/*.php') as $f) {
     if (preg_match('/price_override\'\]\s*\?\?\s*\$\w+\[\'agreed_total\'\]|\$\w+\[\'agreed_total\'\]\s*\?\?\s*\$\w+\[\'price_override\'\]/', $src)) { $inline[] = $bn; }
 }
 chk('no inline price_override/agreed_total read outside db.php' . ($inline ? ' (' . implode(', ', $inline) . ')' : ''), !$inline);
+
+// ── What a booking still owes: one fixture file, shared with smoke-test.js (bookingDue) ──
+echo "\n== What a booking still owes (owed-fixtures.json) ==\n";
+$ofx = json_decode((string) file_get_contents(__DIR__ . '/owed-fixtures.json'), true);
+chk('owed fixtures load', is_array($ofx) && count($ofx['cases'] ?? []) >= 12);
+foreach (($ofx['cases'] ?? []) as $oc) {
+    $row = array_merge($ofx['base'], $oc['row']); // no id, so the ledger is never asked
+    chk('owed: ' . $oc['name'], abs(booking_owed($row) - $oc['owed']) < 0.005);
+}
+// What the back office says UNASKED (chbOwedOf's volunteer): the card rail only, and a
+// stay that ended is still counted for CHB_OWED_DAYS.
+$vToday = '2030-06-20';
+$vRow = array_merge($ofx['base'], ['check_in' => '2030-06-02', 'check_out' => '2030-06-06', 'payment_method' => '']);
+chk('volunteered: a stay that ended 14 days ago still counts', booking_owed_volunteered($vRow, $vToday) === 550.0);
+$vRow['check_out'] = '2030-06-05';
+chk('…15 days ago it is a record, not a chore', booking_owed_volunteered($vRow, $vToday) === 0.0);
+$vRow = array_merge($vRow, ['check_in' => '2030-06-21', 'check_out' => '2030-06-25', 'payment_method' => 'Cash']);
+chk('money the owner collects personally is never volunteered', booking_owed_volunteered($vRow, $vToday) === 0.0);
+$vRow['payment_method'] = 'Square card';
+chk('…the card rail is', booking_owed_volunteered($vRow, $vToday) === 550.0);
+chk('a residue under 50p is not money owed', booking_owed_volunteered(array_merge($vRow, ['deposit_paid' => 549.6, 'payment' => 'deposit']), $vToday) === 0.0);
+$admSrc = (string) file_get_contents(__DIR__ . '/admin.js');
+chk('the horizon is one number in PHP and the back office', preg_match('/const CHB_OWED_DAYS = (\d+);/', $admSrc, $hm) === 1 && (int) $hm[1] === OWED_VOLUNTEER_DAYS);
+// The digest totals this rule; its own rental-only arithmetic is gone.
+$digSrc = preg_replace('#^\s*//.*$#m', '', (string) file_get_contents(__DIR__ . '/owner-digest.php'));
+chk('the weekly digest\'s money owed is booking_owed_volunteered', strpos($digSrc, 'booking_owed_volunteered($b)') !== false
+    && strpos($digSrc, "(float) \$b['total'] - (float) \$b['deposit_paid']") === false);
 
 // A TIMED-OUT BOOKING LOCK REFUSES. book_lock() returns false when another money
 // action on the cottage has held the lock past its wait; refund, return and keep
