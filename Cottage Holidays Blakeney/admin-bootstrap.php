@@ -147,6 +147,16 @@ try {
     $inboxState = null;
 }
 
+// AN UNCHANGED BOOKINGS PART IS NOT BUILT AGAIN (db.php payload_bookings_fingerprint):
+// when the fingerprint is the one that produced the hash the page names, the answer is
+// "same" with nothing built.
+$haveRaw = (string) ($_GET['have'] ?? '');
+$have = payload_have($haveRaw);
+$bkFp = payload_bookings_fingerprint();
+$bkMemo = $bkFp !== '' ? payload_memo_get('bookings') : ['fp' => '', 'h' => ''];
+$bkSkip = $bkFp !== '' && $bkMemo['h'] !== '' && hash_equals($bkMemo['fp'], $bkFp)
+    && isset($have['bookings']) && hash_equals($bkMemo['h'], $have['bookings']);
+
 $out = [
     'ok' => true,
     'feeds' => $feeds,
@@ -158,7 +168,7 @@ $out = [
 ];
 foreach ([
     'rates' => $part('rates_public_payload'),
-    'bookings' => $part('bookings_admin_payload'),
+    'bookings' => $bkSkip ? null : $part('bookings_admin_payload'),
     'enquiries' => $part('enquiries_admin_payload'),
     'cron' => $part('cron_status_payload'),
 ] as $key => $val) {
@@ -182,5 +192,20 @@ if (!admin_can('co.sync')) {
 // what it holds (?have=bookings.<hash>,…), and a trip to Today with nothing new no
 // longer downloads every booking there has ever been. Hashed AFTER the permission
 // trims above, so a hash describes exactly what this person is sent.
-$out = payload_parts_diff($out, ['bookings', 'enquiries', 'blocks', 'rates'], (string) ($_GET['have'] ?? ''));
+$out = payload_parts_diff($out, ['bookings', 'enquiries', 'blocks', 'rates'], $haveRaw, $bkSkip ? ['bookings' => $bkMemo['h']] : []);
+// EVERY BUILD CHECKS THE FINGERPRINT: one already remembered must produce the remembered
+// hash, or the fingerprint missed something the part is made from. Said loudly (and
+// refused under CHB_PAYLOAD_FP_STRICT, which the integration harness sets, so each of its
+// sections tests it), then remembered afresh.
+$bkBuilt = (string) (((array) ($out['hashes'] ?? []))['bookings'] ?? '');
+if (!$bkSkip && $bkFp !== '' && $bkBuilt !== '') {
+    $bkStale = hash_equals($bkMemo['fp'], $bkFp) && $bkMemo['h'] !== '' && !hash_equals($bkMemo['h'], $bkBuilt);
+    payload_memo_put('bookings', $bkFp, $bkBuilt);
+    if ($bkStale) {
+        chb_log_server_error('Payload fingerprint missed a change', 'admin-bootstrap: the bookings part changed under an unchanged fingerprint; a table or setting it reads is missing from PAYLOAD_FP_TABLES / PAYLOAD_FP_CONTENT', __FILE__, __LINE__);
+        if (defined('CHB_PAYLOAD_FP_STRICT') && CHB_PAYLOAD_FP_STRICT) {
+            json_out(['error' => 'The bookings part changed under an unchanged fingerprint', 'code' => 'fp_stale'], 500);
+        }
+    }
+}
 json_out($out);

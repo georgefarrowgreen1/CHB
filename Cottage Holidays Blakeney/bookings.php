@@ -448,7 +448,8 @@ const BOOKINGS_ADMIN_OMIT = [
 ];
 function bookings_admin_payload()
 {
-    $rows = db()->query('SELECT * FROM bookings ORDER BY check_in ASC')->fetchAll();
+    // id breaks a tie, so the same rows always encode the same way (the fingerprint's hash).
+    $rows = db()->query('SELECT * FROM bookings ORDER BY check_in ASC, id ASC')->fetchAll();
     // Attach the refunded-deposit total per booking (for the invoice's deposit
     // status when an owner downloads it). One grouped query, best-effort.
     try {

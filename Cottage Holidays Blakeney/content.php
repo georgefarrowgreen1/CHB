@@ -31,7 +31,7 @@ const CONTENT_VISITOR_SKIP_PREFIX = ['welcome-', 'arrival-', 'ops-', 'keysafe-',
 const CONTENT_SERVER_ONLY = [
     'mailbox-poll', 'mailbox-seen', 'mailbox-new', 'square-payouts', 'square-bank', 'email-optout',
     'uptime-history', 'anniv-sent', 'weather-cache', 'mail-sent-days', 'self-repair-state',
-    'conflict-audit-state', 'testcentre-staged', 'activity-seen', 'owner-ping',
+    'conflict-audit-state', 'testcentre-staged', 'activity-seen', 'owner-ping', 'payload-memo',
     'mac-chat', 'mac-chat-memory', 'mac-chat-imports', 'mac-chat-sum', 'night-shift', 'chat-handoff',
 ];
 const CONTENT_SERVER_ONLY_PREFIX = ['guest-ping-'];
