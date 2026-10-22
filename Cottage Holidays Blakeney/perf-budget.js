@@ -16,11 +16,17 @@
 //  Sizes are node-zlib gzip (default level) so local and CI agree; the live
 //  host serves precompressed brotli, which is smaller still — this is a
 //  consistent relative measure, not an exact wire byte count.
+//
+//  The files the deploy strips (strip-comments.js TARGETS) are measured AS
+//  SHIPPED, comments out. Measured as source, a well-commented change read as
+//  growth while the stripper silently stopping did not register at all: for
+//  weeks it left 209KB of comments in app.js and every budget stayed green.
 // ============================================================
 'use strict';
 const fs = require('fs');
 const path = require('path');
 const zlib = require('zlib');
+const { stripSource, TARGETS } = require('./strip-comments.js');
 
 const DIR = __dirname;
 const budget = JSON.parse(fs.readFileSync(path.join(DIR, 'size-budget.json'), 'utf8'));
@@ -37,6 +43,7 @@ for (const [file, max] of Object.entries(budget)) {
         failures++;
         continue;
     }
+    if (TARGETS.includes(file)) raw = Buffer.from(stripSource(raw.toString('utf8'), file.endsWith('.css') ? 'css' : 'js'));
     const gz = zlib.gzipSync(raw).length;
     if (gz > max) {
         console.error(`  ✗ ${file} — ${kb(gz)} gz OVER its ${kb(max)} budget (+${gz - max} bytes). If this growth is a deliberate trade, raise the budget in this PR and say what the bytes buy.`);
