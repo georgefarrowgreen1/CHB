@@ -1,0 +1,67 @@
+name: Tidy the server's leftover files
+
+# Deletes the files the server check lists as left over that this repository put on
+# the host itself and later removed, and interrupted uploads' temp files. Nothing
+# else: not a script that needs a look, not a file the repository never shipped (a
+# search engine's verification page, the host's own error_log), and never anything in
+# the photo, session or backup folders, the passkey library, a config or a rules file.
+# The judgement is server-check.js's tidyPick; the work is server-check.sh with TIDY.
+#
+# Started only by hand, from the Actions tab. Unticked, it lists what would go and
+# deletes nothing; with "Delete them" ticked it deletes that list, lists the host
+# again, and fails if any of them is still there.
+
+on:
+  workflow_dispatch:
+    inputs:
+      delete:
+        description: 'Delete them (unticked: only list what would go)'
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+# Never alongside a deploy or a check: half an upload would read as left over.
+concurrency:
+  group: deploy-ionos
+  cancel-in-progress: false
+
+jobs:
+  tidy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      # The whole history: the check builds whichever commit the server says it has,
+      # and asks git whether a left-over file was ever part of the site.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Install the tools
+        run: |
+          sudo rm -f /etc/apt/sources.list.d/*microsoft*.list /etc/apt/sources.list.d/*azure*.list 2>/dev/null || true
+          sudo apt-get update -qq -o Acquire::Retries=3 && sudo apt-get install -y -qq lftp brotli > /dev/null
+          npm install --no-audit --no-fund --prefer-offline typescript@5.6.3 > /dev/null
+
+      - name: Check the server, then tidy what is left over
+        env:
+          HOST: ${{ secrets.IONOS_SFTP_HOST }}
+          USERNAME: ${{ secrets.IONOS_SFTP_USER }}
+          LFTP_PASSWORD: ${{ secrets.IONOS_SFTP_PASS }}
+          PORT: ${{ secrets.IONOS_SFTP_PORT }}
+          REMOTE: ${{ secrets.IONOS_REMOTE_PATH }}
+          STAGING_REMOTE: ${{ secrets.STAGING_REMOTE_PATH }}
+          APP_SECRET: ${{ secrets.APP_SECRET }}
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+          SITE_URL: ${{ secrets.SITE_URL }}
+          TIDY: ${{ inputs.delete && 'apply' || 'dry' }}
+        run: |
+          if [ -z "$HOST" ] || [ -z "$USERNAME" ] || [ -z "$LFTP_PASSWORD" ]; then
+            echo "::error::The deploy's SFTP secrets are not set, so there is nothing to tidy."
+            exit 2
+          fi
+          # The check's own findings (exit 1) do not stop a tidy-up of leftovers; a
+          # check that could not run (exit 2) does, inside the script.
+          bash .github/scripts/server-check.sh || [ $? -eq 1 ]

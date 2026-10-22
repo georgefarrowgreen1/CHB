@@ -2699,6 +2699,13 @@ console.log('\n§15 The pipeline runs pinned code with the least access');
         check(`${f}: no checkout keeps the token in git's config (${checkouts})`, (src.match(/persist-credentials: false/g) || []).length === checkouts);
         check(`${f}: connects to the host only through sftp.sh`, !/^\s+lftp\s/m.test(src));
     }
+    // The tidy-up deletes files on the host: started only by hand, it deletes nothing
+    // unless asked, waits in the deploy's queue, and the weekly check stays read-only.
+    const tidyWf = fs.readFileSync(path.join(wfDir, 'server-tidy.yml'), 'utf8');
+    check('the tidy-up starts only by hand (no schedule, push or pull request)', /^on:\n  workflow_dispatch:\n/m.test(tidyWf) && !/^\s+(schedule|push|pull_request):/m.test(tidyWf));
+    check('…deletes nothing unless "Delete them" is ticked', /default: false/.test(tidyWf) && /TIDY: \$\{\{ inputs\.delete && 'apply' \|\| 'dry' \}\}/.test(tidyWf));
+    check('…and waits in the deploy\'s queue, never beside an upload', /group: deploy-ionos/.test(tidyWf) && /cancel-in-progress: false/.test(tidyWf));
+    check('the weekly server check never sets the tidy-up going', !/TIDY/.test(fs.readFileSync(path.join(wfDir, 'server-check.yml'), 'utf8')));
     const sftp = fs.readFileSync(path.join(__dirname, '..', '.github', 'scripts', 'sftp.sh'), 'utf8');
     check('sftp.sh fails the job on a failed transfer', /set cmd:fail-exit yes/.test(sftp));
     check('…lands each upload by rename, from a temporary *.lftp name', /set xfer:use-temp-file yes; set xfer:temp-file-name '\*\.lftp'/.test(sftp));

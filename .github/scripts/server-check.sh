@@ -1,13 +1,16 @@
 #!/usr/bin/env bash
 # The server file check (.github/workflows/server-check.yml): compares every file on
 # the web host with exactly what the last deploy uploaded, and says what does not
-# belong. READ-ONLY on the host: it lists and downloads, never writes or deletes.
+# belong. READ-ONLY on the host: it lists and downloads, never writes or deletes,
+# unless the tidy-up (server-tidy.yml) runs it with TIDY=apply, which deletes exactly
+# the files server-check.js's --tidy list names and nothing else.
 #
 # Env: HOST USERNAME LFTP_PASSWORD [PORT] [REMOTE]  the SFTP login (as the deploy)
 #      [STAGING_REMOTE]                              the staging site's folder; when it
 #                                                    is inside REMOTE it is compared as
 #                                                    a site of its own, not as strays
 #      [SITE_URL] APP_SECRET|CRON_SECRET             to tell the site what it found
+#      [TIDY=dry|apply]                              the tidy-up: list what may go, or delete it
 # Exit: 0 nothing needs a look, 1 something does, 2 the check itself could not run.
 set -euo pipefail
 
@@ -115,8 +118,58 @@ CHECK_COMMIT="$COMMIT" CHECK_COMMIT_NOTE="$NOTE" CHECK_NESTED_COMMIT="$NCOMMIT" 
     CHECK_HOST_KEYS="$KEYS" node "$HERE/server-check.js" \
     --expected "$BUILT" --listing "$WORK/listing.txt" --server "$WORK/server" --repo "$REPO" \
     --webauthn "$WORK/webauthn.txt" --json "$WORK/result.json" --summary "${GITHUB_STEP_SUMMARY:-/dev/null}" \
-    ${NESTED_ARGS[@]+"${NESTED_ARGS[@]}"} || STATUS=$?
+    --tidy "$WORK/tidy.json" ${NESTED_ARGS[@]+"${NESTED_ARGS[@]}"} || STATUS=$?
 rm -rf "$BUILT" "$BUILT-staging"
+
+# 6b. The tidy-up. Its list is the check's own (tidyPick): left over, put there by this
+#     repository or an interrupted upload, never in a protected folder. Each name is
+#     checked again here before it reaches lftp, and after deleting, the host is listed
+#     again: everything deleted must be gone, or the run fails.
+if [ -n "${TIDY:-}" ]; then
+    if [ "$STATUS" -gt 1 ] || [ ! -s "$WORK/tidy.json" ]; then
+        echo "::error::The check could not run, so nothing was tidied."
+        exit 2
+    fi
+    SAFE='const fs = require("fs"); const t = JSON.parse(fs.readFileSync(process.argv[1], "utf8"));
+        const ok = (p) => /^[A-Za-z0-9._@+][A-Za-z0-9._@+\/-]*$/.test(p) && !p.split("/").some((s) => s === "" || s === "." || s === "..");
+        if (process.argv[2] === "keep") { for (const k of t.keep) console.log("- `" + k.path + "`: " + k.why); }
+        else { for (const p of t.delete) if (ok(p)) console.log(p); }'
+    mapfile -t GONE < <(node -e "$SAFE" "$WORK/tidy.json" delete)
+    {
+        echo
+        echo "## Tidy-up"
+        echo
+        if [ "${#GONE[@]}" -eq 0 ]; then
+            echo "Nothing to delete."
+        else
+            if [ "$TIDY" = "apply" ]; then echo "Deleting ${#GONE[@]} left-over file(s):"; else echo "${#GONE[@]} left-over file(s) would be deleted (run it again with \"Delete them\" ticked):"; fi
+            echo
+            for p in "${GONE[@]}"; do echo "- \`$p\`"; done
+        fi
+        KEEP="$(node -e "$SAFE" "$WORK/tidy.json" keep)"
+        if [ -n "$KEEP" ]; then
+            echo
+            echo "Left on the server:"
+            echo
+            echo "$KEEP"
+        fi
+    } | tee -a "${GITHUB_STEP_SUMMARY:-/dev/null}"
+    if [ "$TIDY" = "apply" ] && [ "${#GONE[@]}" -gt 0 ]; then
+        CMDS="cd \"$ROOT\""
+        for p in "${GONE[@]}"; do CMDS="$CMDS; rm \"$p\""; done
+        bash "$HERE/sftp.sh" "$CMDS" || { echo "::error::The server refused a deletion; the listing below says what is left."; }
+        bash "$HERE/sftp.sh" "cd \"$ROOT\"; find -l ." > "$WORK/after.txt"
+        STILL="$(node -e 'const { parseListing } = require(process.argv[1]); const fs = require("fs");
+            const on = new Set(parseListing(fs.readFileSync(process.argv[2], "utf8")).map((r) => r.path));
+            const gone = fs.readFileSync(0, "utf8").split("\n").filter(Boolean);
+            for (const p of gone) if (on.has(p)) console.log(p);' "$HERE/server-check.js" "$WORK/after.txt" < <(printf '%s\n' "${GONE[@]}"))"
+        if [ -n "$STILL" ]; then
+            echo "::error::Still on the server after the tidy-up: $(echo "$STILL" | tr '\n' ' ')"
+            exit 2
+        fi
+        echo "Deleted ${#GONE[@]} file(s); the server no longer lists any of them." | tee -a "${GITHUB_STEP_SUMMARY:-/dev/null}"
+    fi
+fi
 
 # 7. Tell the site, so Manage → Status and Needs attention say it too (job key only).
 if [ "$STATUS" -le 1 ] && [ -s "$WORK/result.json" ] && [ -n "${APP_SECRET:-}${CRON_SECRET:-}" ]; then

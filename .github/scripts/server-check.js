@@ -16,6 +16,8 @@
 // --nested    <folder>=<build>: a folder inside the web root that is another copy of
 //             the site (the staging site lives in staging/). It is compared with its
 //             own build, the same way, instead of being reported file by file.
+// --tidy      <file>: what the tidy-up (server-tidy.yml) may delete, as JSON
+//             {delete: [paths], keep: [{path, why}]}. The check itself never deletes.
 //
 // The repository is public, so its logs are too: nothing here prints a session file,
 // a photo or a backup by name. Those are counted. A file is named only when it needs
@@ -153,7 +155,7 @@ function classify({ expected, remote, server, history = () => null, webauthn = n
             else if (RENDERS.test(p)) needs.push({ path: p, why: 'a page or script a browser would open from the site\'s own address' });
             else if (p.startsWith('uploads/cache/') && /\.w\d+\.webp$/.test(p)) counts.cachedSizes++;
             else if (PHOTO.test(p)) counts.photos++;
-            else leftovers.push({ path: p, why: 'not a photo' });
+            else leftovers.push({ path: p, why: 'not a photo', from: 'uploads' });
             continue;
         }
         if (p.startsWith('lib/WebAuthn/')) {
@@ -171,23 +173,46 @@ function classify({ expected, remote, server, history = () => null, webauthn = n
             const known = [webauthn.get('src/' + rel), webauthn.get(rel)].some((s) => s && s.has(h));
             if (known) counts.library++;
             else if (RUNS.test(p) || RULES.test(p)) needs.push({ path: p, why: 'a passkey-library file that matches no published version' });
-            else leftovers.push({ path: p, why: 'not part of the passkey library' });
+            else leftovers.push({ path: p, why: 'not part of the passkey library', from: 'library' });
             continue;
         }
         if (/^\.well-known\/acme-challenge\/[A-Za-z0-9_-]+$/.test(p)) continue; // certificate renewal
 
         if (/\.lftp$/.test(p)) {
-            leftovers.push({ path: p, why: 'the temporary file of an interrupted upload' });
+            leftovers.push({ path: p, why: 'the temporary file of an interrupted upload', from: 'temp' });
         } else if (RUNS.test(p) || RULES.test(p)) {
             needs.push({ path: p, why: `runs on the server, and is not in the site (${was(p)})` });
         } else {
-            leftovers.push({ path: p, why: was(p) });
+            leftovers.push({ path: p, why: was(p), from: history(p) ? 'repo' : 'never' });
         }
     }
 
     const missing = [...expected.keys()].filter((p) => !seen.has(p)).sort().map((p) => ({ path: p, why: 'uploaded by the deploy, but not on the server' }));
     const byPath = (a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0);
     return { needs: needs.sort(byPath), changed: changed.sort(byPath), missing, leftovers: leftovers.sort(byPath), counts };
+}
+
+// WHAT THE TIDY-UP MAY DELETE (server-tidy.yml), pure. Only what the check calls left
+// over, and of that only what this repository itself put on the host and later removed,
+// or an interrupted upload's temp file: a file it cannot account for (a search engine's
+// verification page, the host's own error_log, the owner's own file) stays, and so does
+// anything that needs a look. Never in the photo, session or backup folders, the passkey
+// library, the certificate folder, a config or a rules file, whatever the reason; and
+// never a name lftp would have to quote.
+const TIDY_NEVER = /(^|\/)(config\.php|\.deploy-commit)$|^(uploads|sessions|backups|lib|\.well-known)(\/|$)/;
+function tidyPick(leftovers) {
+    const del = [];
+    const keep = [];
+    for (const it of leftovers) {
+        const p = it.path;
+        let why = '';
+        if (TIDY_NEVER.test(p) || RULES.test(p) || RUNS.test(p)) why = 'in a part of the site the tidy-up never touches';
+        else if (it.from !== 'repo' && it.from !== 'temp') why = 'not something this repository put there';
+        else if (!/^[A-Za-z0-9._@+][A-Za-z0-9._@+\/-]*$/.test(p) || p.split('/').some((seg) => seg === '' || seg === '.' || seg === '..')) why = 'a name the tidy-up will not send to the server';
+        if (why) keep.push({ path: p, why });
+        else del.push(p);
+    }
+    return { delete: del, keep };
 }
 
 // A copy of the site in a folder of the web root: its entries, with the folder taken
@@ -322,12 +347,21 @@ function main(argv) {
             counts: live.r.counts,
         }));
     }
+    if (arg('tidy')) {
+        // Judged per copy of the site (a nested copy's own folders are protected by name
+        // too), then named by their full path on the host.
+        const picks = parts.map((pt) => ({ prefix: pt.prefix, t: tidyPick(pt.r.leftovers) }));
+        fs.writeFileSync(arg('tidy'), JSON.stringify({
+            delete: picks.flatMap((x) => x.t.delete.map((p) => x.prefix + p)),
+            keep: picks.flatMap((x) => x.t.keep.map((it) => ({ path: x.prefix + it.path, why: it.why }))),
+        }));
+    }
     for (const it of all('leftovers')) console.log(`::notice::Left over on the server: ${it.path} (${it.why})`);
     const found = [...all('needs'), ...all('changed'), ...all('missing')];
     for (const it of found) console.log(`::error::${it.path}: ${it.why}`);
     return found.length ? 1 : 0;
 }
 
-module.exports = { parseListing, classify, report, splitNested, blobHash, sameContent, GUARD_RULES };
+module.exports = { parseListing, classify, report, splitNested, blobHash, sameContent, tidyPick, GUARD_RULES };
 
 if (require.main === module) process.exit(main(process.argv.slice(2)));
