@@ -257,6 +257,9 @@ const freePort = () => new Promise((resolve) => {
         ['owner Status', 'owner', 'POST', '/diagnostics.php', { action: 'run' }],
         ['owner guest list', 'owner', 'POST', '/auth.php', { action: 'guest_crm' }],
         ['owner search', 'owner', 'POST', '/search.php', { q: 'smith' }],
+        // A word nothing holds: the quick search reads the indexes, not every row of nine
+        // tables (CLAUDE.md "Search stays instant at five years").
+        ['owner search, a word nothing has', 'owner', 'POST', '/search.php', { q: 'zebraqx' }],
         ['guest stays', 'guest', 'GET', '/my-bookings.php'],
     ];
     const measured = {};
@@ -466,6 +469,51 @@ const freePort = () => new Promise((resolve) => {
         }
         measured['The back office on five years'] = backOffice;
 
+        // SEARCH STAYS INSTANT AT FIVE YEARS (CLAUDE.md): the meaning index the search window
+        // ranks with is built again after a refresh from the encodings it kept (past 2,000
+        // texts it used to clear them and encode every one again), and after one new booking
+        // only that booking's texts are encoded. Timed at 4x CPU with room; the counts hold
+        // the line.
+        await page.evaluate(() => {
+            const W = /** @type {any} */ (window);
+            W.__rankEnc = 0;
+            const f = W.chbRankEnc;
+            W.chbRankEnc = function (...a) { W.__rankEnc++; return f.apply(this, a); };
+            chbRankQuery('sea view cottage for a family');
+        });
+        await cdp.send('Emulation.setCPUThrottlingRate', { rate: 4 });
+        let rank;
+        try {
+            const rebuild = () => page.evaluate(() => {
+                const W = /** @type {any} */ (window);
+                W.__chbDataGen = (Number(W.__chbDataGen) || 0) + 1;
+                W.__rankEnc = 0;
+                const t = performance.now();
+                chbRankQuery('sea view cottage for a family');
+                return { ms: performance.now() - t, enc: W.__rankEnc, items: CHB_SEARCH.rank.keys.length };
+            });
+            const a = await rebuild();
+            const b = await rebuild();
+            const nb = await page.evaluate(() => {
+                const k = Object.keys(dbBookings)[0];
+                const b0 = dbBookings[k][0];
+                dbBookings[k].push({ ...b0, id: 'vol-new', dbId: 999999, name: 'Wilhelmina Quartermaine', email: 'wq@example.com' });
+                const W = /** @type {any} */ (window);
+                W.__chbDataGen = (Number(W.__chbDataGen) || 0) + 1;
+                W.__rankEnc = 0;
+                chbRankQuery('sea view cottage for a family');
+                const enc = W.__rankEnc;
+                dbBookings[k].pop();
+                W.__chbDataGen++;
+                return enc;
+            });
+            console.log(`  (the search ranks ${a.items} records)`);
+            rank = { rankRebuildEncodes: Math.min(a.enc, b.enc), rankNewBookingEncodes: nb, rankRebuildMs: Math.round(Math.min(a.ms, b.ms)) };
+        } finally {
+            await cdp.send('Emulation.setCPUThrottlingRate', { rate: 1 });
+        }
+        measured['Search on five years'] = rank;
+
         // LONG LISTS DRAW A PAGE AT A TIME (CLAUDE.md "Long lists draw a page at a time"):
         // the elements Today's Past list, the Guest list and Payments put on the page when
         // opened at the top. Each drew its whole list: on five years the Past list was 1,289
@@ -586,7 +634,7 @@ const freePort = () => new Promise((resolve) => {
 
     // 7. Against the budget. One rule for the room a measured figure is given, used by
     // --update to write the budget and by the check to say when a figure came down.
-    const room = { bytes: (n) => Math.ceil(n * 1.1), gz: (n) => Math.ceil(n * 1.1), statements: (n) => n + 2, rowsRead: (n) => Math.ceil(n * 1.1 + 20), ms: (n) => Math.max(1000, n * 5), elements: (n) => Math.ceil(n * 1.1), restyledByText: () => 40, restyledByClass: () => 40, restyledByRow: () => 40, todayMoney: (n) => Math.ceil(n * 1.1 + 20), dutyBuilds: (n) => n + 2, paymentsWrites: (n) => n + 1, paymentsRepeatWrites: (n) => n + 1, restyledAtRest: (n) => Math.max(10, n * 2), todayTaskMs: (n) => Math.max(2000, Math.ceil(n * 3)), paymentsTaskMs: (n) => Math.max(2000, Math.ceil(n * 3)), pastElements: (n) => Math.ceil(n * 1.1), guestElements: (n) => Math.ceil(n * 1.1), paymentsElements: (n) => Math.ceil(n * 1.1) };
+    const room = { bytes: (n) => Math.ceil(n * 1.1), gz: (n) => Math.ceil(n * 1.1), statements: (n) => n + 2, rowsRead: (n) => Math.ceil(n * 1.1 + 20), ms: (n) => Math.max(1000, n * 5), elements: (n) => Math.ceil(n * 1.1), restyledByText: () => 40, restyledByClass: () => 40, restyledByRow: () => 40, todayMoney: (n) => Math.ceil(n * 1.1 + 20), dutyBuilds: (n) => n + 2, paymentsWrites: (n) => n + 1, paymentsRepeatWrites: (n) => n + 1, restyledAtRest: (n) => Math.max(10, n * 2), todayTaskMs: (n) => Math.max(2000, Math.ceil(n * 3)), paymentsTaskMs: (n) => Math.max(2000, Math.ceil(n * 3)), pastElements: (n) => Math.ceil(n * 1.1), guestElements: (n) => Math.ceil(n * 1.1), paymentsElements: (n) => Math.ceil(n * 1.1), rankRebuildEncodes: (n) => n + 2, rankNewBookingEncodes: (n) => n + 2, rankRebuildMs: (n) => Math.max(1000, Math.ceil(n * 3)) };
     if (UPDATE) {
         const out = { comment: 'Ceilings for volume-test.js, written by `node volume-test.js --update` from a run with headroom: bytes and rows +10%, statements +2, time x5 (at least 1s), each small change at most 40 restyled elements. Lower a figure when a change brings it down; never raise one to get green without saying in the PR what grew and why.', engine: maria ? 'mariadb' : 'mysql', measuredOn: seeded.today };
         for (const [label, m] of Object.entries(measured)) {

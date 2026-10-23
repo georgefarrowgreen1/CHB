@@ -3551,6 +3551,107 @@ process.on('exit', (code) => { if (!__searchTestDone && code === 0) { console.er
         }
     } else fail('chbMoneyOf / bookingDueNow / damageHeldNow missing for §48');
 
+    // ---- 49. The ranking index is sparse, and scores exactly as the dense one did ----
+    //  CHB_RANK held a 4,096-wide vector per item, built its IDF in 4,096 passes over every
+    //  item and cleared its cache once the universe passed 2,000 texts, so on five years
+    //  every rebuild re-encoded every item. It keeps each text's features and builds
+    //  postings once per change now. The answers must not move: the dense build is kept
+    //  here as the reference, and every query below must return the same items with the
+    //  same scores (to the last bit) in the same order.
+    if (typeof ctx.chbRankQuery === 'function' && typeof ctx.chbRankEnc === 'function') {
+        console.log('\n== 49. the sparse ranking index scores as the dense one did ==');
+        vm.runInContext(`
+            Object.keys(dbBookings).forEach((k) => { dbBookings[k] = []; });
+            const first = ['Sarah', 'Tom', 'Priya', 'Hannah', 'Joe', 'Lucy', 'Mark', 'Wren', 'Ada', 'Ben'];
+            const last = ['Pemberton', 'Carter', 'Patel', 'Rowe', 'Nudd', 'Smith', 'Green', 'Hale', 'Lovell', 'Booth'];
+            const props = Object.keys(propertyMeta).length ? Object.keys(propertyMeta) : ['21a'];
+            for (let i = 0; i < 300; i++) {
+                const pk = props[i % props.length];
+                (dbBookings[pk] = dbBookings[pk] || []).push({ id: 'r' + i, dbId: 9000 + i, propKey: pk,
+                    name: first[i % 10] + ' ' + last[(i * 7) % 10], email: 'g' + i + '@example.com',
+                    checkIn: '2026-0' + (1 + (i % 9)) + '-1' + (i % 9), checkOut: '2026-0' + (1 + (i % 9)) + '-2' + (i % 9),
+                    adults: 2, children: 0, guests: '2 adults', payment: 'deposit', depositPaid: 100,
+                    agreedPrice: { total: 400 + i }, holdStatus: 'none', notes: i % 5 ? '' : 'dog friendly please' });
+            }
+            window.__chbDataGen = (Number(window.__chbDataGen) || 0) + 1;
+        `, ctx);
+        const dense = (() => {
+            const D = ctx.CHB_SEARCH.nlu.dims;
+            const seen = new Set();
+            const rows = [];
+            for (const it of ctx.CHB_SEARCH.collect('')) {
+                if (!it || it.id == null) continue;
+                const k = it.type + ':' + it.id;
+                if (seen.has(k)) continue;
+                seen.add(k);
+                const txt = ctx.chbRankText(it);
+                if (txt) rows.push({ k, txt });
+            }
+            const raw = rows.map((r) => ({ k: r.k, v: ctx.chbNluVec(r.txt) }));
+            const idf = new Float32Array(D);
+            for (let i = 0; i < D; i++) {
+                let df = 0;
+                for (const r of raw) if (r.v[i] > 0) df++;
+                idf[i] = Math.log((raw.length + 1) / (df + 0.5));
+            }
+            const index = raw.map((r) => {
+                const w = new Float32Array(D);
+                let n = 0;
+                for (let i = 0; i < D; i++) { w[i] = r.v[i] * idf[i]; n += w[i] * w[i]; }
+                n = Math.sqrt(n) || 1;
+                for (let i = 0; i < D; i++) w[i] /= n;
+                return { k: r.k, vec: w };
+            });
+            return (q) => {
+                const ql = String(q).trim();
+                if (ql.length < 4) return [];
+                const rawV = ctx.chbNluVec(ctx.chbRankExpand(ql));
+                const v = new Float32Array(D);
+                let n = 0;
+                for (let i = 0; i < D; i++) { v[i] = rawV[i] * idf[i]; n += v[i] * v[i]; }
+                n = Math.sqrt(n) || 1;
+                const nz = [];
+                for (let i = 0; i < D; i++) if (v[i] !== 0) nz.push(i);
+                const scored = [];
+                for (const e of index) {
+                    let dot = 0;
+                    for (let j = 0; j < nz.length; j++) { const i = nz[j]; dot += (v[i] / n) * e.vec[i]; }
+                    if (dot >= ctx.CHB_SEARCH.rank.min) scored.push({ k: e.k, s: dot });
+                }
+                scored.sort((a, b) => b.s - a.s);
+                return scored.slice(0, ctx.CHB_SEARCH.rank.topK);
+            };
+        })();
+        const QS = ['create a reservation', 'season pricing', 'sarah pemberton', 'dog friendly', 'zzqqxx blorp', 'pay a deposit', 'block dates', 'priya patel booking', 'refund the guest', 'change my password', 'smith', 'hannah'];
+        const differ = [];
+        let answered = 0;
+        for (const q of QS) {
+            const a = ctx.chbRankQuery(q);
+            const b = dense(q);
+            if (b.length) answered++;
+            if (JSON.stringify(a) !== JSON.stringify(b)) differ.push(q + ': ' + JSON.stringify(a) + ' vs ' + JSON.stringify(b));
+        }
+        check(`${QS.length} queries return the same items, scores and order as the dense index${differ.length ? ' — ' + differ.slice(0, 2).join(' | ') : ''}`, differ.length === 0);
+        check(`…${answered} of them with answers to compare, and one with none`, answered >= 8 && answered < QS.length);
+        const nKeys = ctx.CHB_SEARCH.rank.keys.length;
+        check(`…over the whole universe (${nKeys} items, 300 of them bookings)`, nKeys > 300);
+        // What a rebuild after a change costs: one more booking re-encodes its own text, not
+        // every item's (the dense cache was cleared whenever the universe passed 2,000 texts).
+        let enc = 0;
+        const realEnc = ctx.chbRankEnc;
+        ctx.chbRankEnc = (t) => { enc++; return realEnc(t); };
+        try {
+            vm.runInContext(`dbBookings[Object.keys(dbBookings)[0]].push({ id: 'r900', dbId: 9900, propKey: Object.keys(dbBookings)[0], name: 'Newly Booked', email: 'nb@example.com', checkIn: '2026-10-01', checkOut: '2026-10-04', adults: 2, children: 0, guests: '2 adults', payment: 'deposit', depositPaid: 100, agreedPrice: { total: 500 }, holdStatus: 'none' });`, ctx);
+            ctx.chbRankIndex();
+        } finally {
+            ctx.chbRankEnc = realEnc;
+        }
+        check(`a rebuild after one new booking encodes the new texts only (${enc}, of ${ctx.CHB_SEARCH.rank.keys.length} items)`, enc > 0 && enc <= 10);
+        check(`…and the kept encodings are this universe's texts and no more (${ctx.CHB_SEARCH.rank.cache.size})`, ctx.CHB_SEARCH.rank.cache.size <= ctx.CHB_SEARCH.rank.keys.length);
+        check('…and the new booking is found by meaning at once', ctx.chbRankQuery('newly booked').some((h) => /9900|r900/.test(h.k)));
+        vm.runInContext('Object.keys(dbBookings).forEach((k) => { dbBookings[k] = []; }); window.__chbDataGen = (Number(window.__chbDataGen) || 0) + 1;', ctx);
+    } else fail('chbRankQuery / chbRankEnc missing for §49');
+
     // ---- Summary ----
     console.log('\n== Summary ==');
     if (failures) { console.log(`  ${failures} CHECK(S) FAILED ❌\n`); __searchTestDone = true; process.exit(1); }

@@ -110,8 +110,8 @@
   "owner search": {
     "bytes": 4198,
     "gz": 949,
-    "statements": 18,
-    "rowsRead": 16570,
+    "statements": 17,
+    "rowsRead": 466,
     "ms": 1000
   },
   "guest stays": {
@@ -161,5 +161,17 @@
     "pastElements": 398,
     "guestElements": 1263,
     "paymentsElements": 798
+  },
+  "owner search, a word nothing has": {
+    "bytes": 46,
+    "gz": 68,
+    "statements": 16,
+    "rowsRead": 120,
+    "ms": 1000
+  },
+  "Search on five years": {
+    "rankRebuildEncodes": 3,
+    "rankNewBookingEncodes": 4,
+    "rankRebuildMs": 1000
   }
 }

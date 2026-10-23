@@ -126,8 +126,10 @@ const OVERLAYS = [
         const r = await closeAndRead(id, closeSpec, box);
         check(!r.open && r.closing && r.painted && r.pe === 'none' && r.out, `#${id}: open gone at once, exit painted (${r.names.split(',').filter((n) => /Out|Down/.test(n))[0] || '—'}), inert`, JSON.stringify(r));
         check(r.through, `#${id}: the pointer falls through the exiting overlay`, r.through);
-        await page.waitForTimeout(450);
-        const a = await after(id);
+        // Waits on the state, never a clock: on a loaded run the exit's own clean-up lands
+        // late (a stuck exit still fails, at the cap).
+        let a = await after(id);
+        for (let t = 0; t < 30 && (a.closing || a.open || a.painted); t++) { await page.waitForTimeout(100); a = await after(id); }
         check(!a.closing && !a.open && !a.painted, `#${id}: gone after the exit`, JSON.stringify(a));
     }
 
