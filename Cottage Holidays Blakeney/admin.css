@@ -4063,6 +4063,20 @@ svg.sp-rmark path { stroke-dasharray: 30; animation: spDraw 380ms var(--out) 320
 .sp-ilabel { flex: 1 1 auto; min-width: 0; font-size: var(--fs-sub); color: var(--text-light); }
 .sp-inote { flex: none; max-width: 45%; font-size: var(--fs-caption); color: var(--text-muted); text-align: right; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
+/* ---- real visitors (spPerfHtml) ---- */
+.sp-syssub { font-size: var(--fs-caption); color: var(--text-muted); }
+.sp-syshead .st-cap { flex: none; }
+.sp-iic.is-unk { color: var(--text-muted); }
+.sp-ifew { color: var(--text-muted); }
+#sp-perf .sp-inote { font-variant-numeric: tabular-nums; color: var(--text-light); font-weight: 600; }
+.sp-ptrace { display: flex; flex-direction: column; gap: 4px; padding-top: 8px; }
+.sp-ptcap { font-size: var(--fs-caption); color: var(--text-muted); }
+.sp-pbars { display: flex; align-items: flex-end; gap: 4px; height: 28px; }
+.sp-pbar { flex: 1 1 0; border-radius: 2px; background: color-mix(in srgb, var(--ok) 45%, transparent); transform-origin: bottom; animation: spGrow 500ms var(--out) both; }
+.sp-pbar.is-warn { background: color-mix(in srgb, var(--warn) 55%, transparent); }
+.sp-pbar.is-bad { background: color-mix(in srgb, var(--danger) 55%, transparent); }
+.sp-pbar.is-none { background: color-mix(in srgb, var(--text-muted) 20%, transparent); animation: none; }
+
 /* ---- storage ---- */
 .sp-store { padding: 16px; display: flex; flex-direction: column; gap: 12px; }
 .sp-stot { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }

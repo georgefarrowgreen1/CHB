@@ -451,6 +451,7 @@ for ($i = 0; $i < 5400; $i++) {
 }
 $VS_COUNTS['search_log'] = vs_ins($db, 'search_log', ['mode','adults','children','nights','month','check_in','results','found','ip_hash','created_at'], $sl, 1000);
 
+
 // ---- newsletter, push, photos, op ledger -------------------------------------
 $nl = [];
 $nk = [];
@@ -517,5 +518,18 @@ $put('cron-last-run', (string) (time() - 3600));
 // guest-ping rows: one per guest who ever got a push (never deleted)
 for ($i = 1; $i <= 400; $i++) { $put('guest-ping-' . $i, ['title' => 'Your stay', 'body' => vs_words(12), 'url' => './?open=stay', 'at' => time() - mt_rand(86400, 86400 * 900)]); }
 $VS_COUNTS['content'] = vs_ins($db, 'content', ['item_key','item_value'], $c, 50);
+
+// ---- real visitors' speed (perf-lib.php: 30 days kept) -----------------------
+// About what 300 page views a day send: three in four carry the load figures, the rest
+// are later visible stretches (a tap, a shift); one in seven is the back office. LAST, so
+// its draws from the seeded generator move nothing seeded before it.
+$ps = [];
+for ($i = 0; $i < 10500; $i++) {
+    $load = mt_rand(1, 100) <= 75;
+    $ps[] = [vs_dt($TODAY, -mt_rand(0, 29), mt_rand(0, 23)), mt_rand(1, 100) <= 15 ? 'o' : (mt_rand(1, 100) <= 20 ? 'g' : 'v'), vs_pick(['p', 'p', 'p', 't', 'd']), vs_pick(['s', 's', 'c', 'c', 'f', 'e', 'a']), vs_pick(['h', 'c', 'o']), mt_rand(0, 1), mt_rand(1, 100) <= 10 ? 1 : 0,
+        $load ? mt_rand(80, 900) : null, $load ? mt_rand(400, 2600) : null, $load ? mt_rand(600, 4200) : null, $load ? mt_rand(400, 3000) : null, $load ? mt_rand(900, 6000) : null,
+        mt_rand(1, 100) <= 60 ? mt_rand(24, 700) : null, $load ? mt_rand(0, 300) : null];
+}
+$VS_COUNTS['perf_samples'] = vs_ins($db, 'perf_samples', ['created_at', 'kind', 'device', 'browser', 'land', 'early', 'pwa', 'ttfb', 'fcp', 'lcp', 'shown', 'ready', 'inp', 'cls'], $ps, 1000);
 
 echo json_encode(['ok' => true, 'today' => $TODAY, 'counts' => $VS_COUNTS]), "\n";

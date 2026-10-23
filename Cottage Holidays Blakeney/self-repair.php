@@ -592,6 +592,14 @@ try {
     $analyticsDays = analytics_rollup(null);
 } catch (\Throwable $e) {
 }
+// The speed figures real visitors sent (perf-lib.php): each finished day summed, and
+// raw samples past their 30 days dropped.
+$perfDays = 0;
+try {
+    require_once __DIR__ . '/perf-lib.php';
+    $perfDays = perf_rollup();
+} catch (\Throwable $e) {
+}
 
 // ---- 4e. Email outbox: retry queued one-shot emails --------------------------
 // The confirmation / enquiry-ack / owner-alert / newsletter copies whose
@@ -718,4 +726,5 @@ json_out([
     'fixed' => $fixed,
     'flagged' => $flagged,
     'analyticsDays' => $analyticsDays,
+    'perfDays' => $perfDays,
 ]);

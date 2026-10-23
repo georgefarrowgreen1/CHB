@@ -1593,6 +1593,57 @@ the THE PAGE BEFORE THE SCRIPT block in app.css.
   connection's UTC `CURDATE()`. It reads `$ukToday`, as the top of test-integration says.
 - Budgets: index.html +105 bytes gzipped for the two scripts. **Not run**: WebKit (none on this machine).
 
+## Real visitors' speed, measured (third round, upgrade 1)
+
+Every speed figure in these notes so far was measured here, in a browser this machine drives. The site now records
+what visitors' own browsers measured, so a change shows up in real use: each page view sends when the page appeared,
+when the app could be used, the largest paint, how far the layout jumped and how long a tap took to answer. Code:
+`perf-lib.php` (the rules, and the reads and writes), `perf.php` (where a page sends them), migration-150
+(`perf_samples`, `perf_day`), app.js `__perf` / `chbPerfMark` / `chbPerfSend`, admin.js `spPerfHtml`, the "real
+visitors" block in admin.css.
+- **WHAT A PAGE SENDS, AND WHEN**: once, by `sendBeacon`, when it is first put away (`visibilitychange` to hidden, or
+  `pagehide`): `ttfb`, `fcp`, `lcp`, `shown`, `ready`, `cls` (x1000), `inp`, and `land` (home, a cottage, other),
+  `early` (home.php wrote the first screen) and `pwa`. Each later visible stretch sends only its taps and layout, so
+  an installed app's page, open for days, keeps reporting; a stretch with neither sends nothing. A figure from after
+  the page was first hidden is left out (a background tab's paint says nothing about speed). A preview frame sends
+  nothing.
+- **"shown" and "ready"**: `ready` is when `hideLoadingOverlay` runs (the app answers taps); `shown` is when the cover
+  lifts (`go()`), or the first paint on a page home.php wrote, which has no cover. The tap figure is Event Timing's:
+  each tap's slowest event, the stretch's worst tap, or 1 in 50 past fifty taps.
+- **NOTHING PERSONAL**: no address, no browser string, no page beyond its kind, no account. The server keeps a device
+  letter and a browser letter worked out from the browser string, and **whose page it was comes from the session**
+  (`v` visitor, `g` signed-in guest, `o` the back office), never from the request.
+- **perf.php** takes a POST of at most 2KB, refuses one with no figure in range (400; a text, list or out-of-range
+  figure is dropped), and keeps at most 40 an hour from one address (`rate_allow`) and 3,000 an hour in all; past
+  either the answer is the same and nothing is kept.
+- **THE NIGHTLY SUM** (`perf_rollup`, self-repair): each finished day becomes one row per group and figure in
+  `perf_day` (how many, the 50th/75th/90th percentiles by nearest rank, how many good, how many poor), one
+  transaction a day. A sample's day is the day it arrived, so a finished day never gains one. Samples are kept 30
+  days, the daily figures 400.
+- **STATUS** (Manage → Status, "Real visitors", after the vitals): three groups, Phones, Computers and tablets, and
+  Your back office, each with a capsule (Fast / Could be faster / Slow / Too few visits) opening to its figures
+  (what 3 in 4 visits beat, the half and the 9 in 10 in the row's title) and fourteen days of its lead figure from
+  `perf_day`. The week is worked out from the raw samples, so its percentiles are exact. A figure needs 20 visits in
+  the week to be judged; below that it is shown and marked "too few to judge". The lines are Google's Core Web Vitals
+  where one exists (`PERF_METRICS`); "shown" takes first paint's, "ready" the old time-to-interactive's.
+- **THE CHECK ONLY SPEAKS WHEN IT KNOWS**: a "Real visitors" check (Website) exists only once a figure is judged, and
+  warns only when one is poor for 1 in 4 visits, naming it ("For visitors on phones, pages appeared in 3.4s or longer
+  for 1 in 4 visits this week."). Could-be-faster is said on the page and never warns; a quiet week is not a fault.
+  diagnostics.php only reads (the nightly job writes).
+- **AN INTEGRATION ROW WRITTEN BY THE ROOT CONNECTION IS ON UTC**: the app's connection runs on London time
+  (db.php), and a DATETIME default is written in the writer's zone, so the rows §103 wrote to fill the two hourly
+  ceilings read as an hour old and the ceilings were never reached (its first run failed there). The section sets
+  its connection to the London offset, and puts it back after.
+- Gates: **test-perf.php** (55 checks, counter `pfc()`: device and browser from real browser strings, the sample
+  cleaner, the percentiles and lines on both sides, the groups and the judgement, the wiring); test-integration
+  **§103** (the endpoint as a visitor, the owner and a guest, a kind sent by the page not believed, refusals, both
+  ceilings, the nightly sum against known figures, today left alone, both prunes, a second run changing nothing,
+  Status fast then slow then silent, a visitor refused); **ui-test-perf.js** (the beacon once with every figure and
+  nothing personal, a later stretch, a quiet stretch, a page hidden from the start, a preview frame, the Status
+  section's capsules, figures, titles and trace, a figure too few to judge, Needs a look); volume-test "owner
+  Status" with 10,500 samples on the five-year business. Break-tested 16 ways, each failing its own gate.
+- Budgets: app.js +1.1KB gzipped as shipped (every visitor pays it: the recorder), admin.js +1.2KB, admin.css +0.1KB.
+
 ## Automatic collection: finished plans, Square's silences, two passes at once (round 5)
 
 Found by the scheduled-jobs review and each reproduced against the real collector code.

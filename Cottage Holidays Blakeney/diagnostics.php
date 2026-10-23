@@ -538,6 +538,15 @@ if ($cspTrial !== '') {
     );
 }
 
+// ---- Real visitors: how fast the site was in their own browsers (perf-lib.php) ----
+// A check only once a figure has enough visits behind it this week (PERF_MIN_N), and
+// a warning only when a figure is poor for 1 in 4 visits: a quiet week is not a fault.
+require_once __DIR__ . '/perf-lib.php';
+$perf = perf_status();
+if ($perf && $perf['judged']) {
+    add($checks, 'Website', 'Real visitors', $perf['poor'] ? 'warn' : 'ok', $perf['sentence']);
+}
+
 // ---- Welcome book (content-backed, no table) ----------------------------
 add(
     $checks,
@@ -750,4 +759,7 @@ try {
 } catch (\Throwable $e) {
 }
 
+if ($perf) {
+    $insights['perf'] = $perf;
+}
 json_out(['ok' => true, 'summary' => $summary, 'checks' => $checks, 'mail_ready' => $mailOn, 'insights' => $insights]);

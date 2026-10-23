@@ -28866,6 +28866,9 @@ const SP_IC = {
     star: 'M12 3l2.7 5.6 6.1.9-4.4 4.3 1 6.1L12 17l-5.4 2.9 1-6.1-4.4-4.3 6.1-.9z',
     bell: 'M6 16V11a6 6 0 1 1 12 0v5l2 2H4z M10 20h4',
     off: 'M12 3v9 M6.3 6.3a8 8 0 1 0 11.4 0',
+    phone: 'M7 2h10v20H7z M11 18h2',
+    desk: 'M4 5h16v11H4z M2 19h20',
+    work: 'M4 8h16v12H4z M9 8V5h6v3',
 };
 const spSvg = (d, s = 17, w = 2) =>
     `<svg width="${s}" height="${s}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="${w}" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="${d}"></path></svg>`;
@@ -29016,6 +29019,54 @@ function spVitalHtml(v, i) {
         <span class="sp-vbars" aria-hidden="true">${bars}</span>
     </div>`;
 }
+// REAL VISITORS (perf-lib.php): how fast the site was in the visitors' own browsers this
+// week, by group, each figure being what 3 in 4 visits beat. A figure with fewer than the
+// server's minimum of visits is shown but not judged; a group with none says so.
+const SP_PERF_SAY = { shown: 'Page appears', lcp: 'Main picture shows', ready: 'Ready to use', inp: 'Taps answered', cls: 'Layout stays put' };
+const SP_PERF_LEAD = { sp: 'shown', sc: 'shown', bo: 'inp' };
+function spPerfFig(m, v) {
+    return m === 'cls' ? (v / 1000).toFixed(2) : v < 1000 ? v + 'ms' : (v / 1000).toFixed(1) + 's';
+}
+function spPerfHtml(r) {
+    const p = (r.insights || {}).perf;
+    if (!p || !p.groups) return '';
+    const caps = { fast: ['ok', 'Fast'], mid: ['warn', 'Could be faster'], slow: ['bad', 'Slow'], few: ['unk', 'Too few visits'] };
+    const days = [];
+    for (let i = (p.traceDays || 14); i >= 1; i--) days.push(ukShiftDays(todayDashed(), -i));
+    const rows = Object.keys(p.groups).map((k) => {
+        const g = p.groups[k];
+        const figs = Object.keys(SP_PERF_SAY).filter((m) => g.figs && g.figs[m]);
+        const open = __sp.open === 'perf-' + k;
+        const items = figs.map((m, j) => {
+            const f = g.figs[m];
+            const ic = f.rate === 'good' ? spItemIc('ok') : f.rate === 'mid' ? spItemIc('warn') : f.rate === 'poor' ? spItemIc('fail') : '<span class="sp-iic is-unk" aria-hidden="true">·</span>';
+            const title = m === 'cls'
+                ? `3 in 4 visits moved ${spPerfFig(m, f.p75)} or less · ${f.n} measured`
+                : `3 in 4 visits: ${spPerfFig(m, f.p75)} or less · half: ${spPerfFig(m, f.p50)} · 9 in 10: ${spPerfFig(m, f.p90)} · ${f.n} measured`;
+            return `<div class="sp-item" style="animation-delay:${j * 40}ms" title="${escapeHtml(title)}">${ic}<span class="sp-ilabel">${escapeHtml(SP_PERF_SAY[m])}${f.rate ? '' : ' <span class="sp-ifew">(too few to judge)</span>'}</span><span class="sp-inote">${escapeHtml(spPerfFig(m, f.p75))}</span></div>`;
+        }).join('');
+        const lead = SP_PERF_LEAD[k];
+        const tr = ((p.trace || {})[k] || {})[lead] || {};
+        const vals = days.map((d) => (tr[d] ? tr[d][0] : null));
+        const mx = Math.max(1, ...vals.filter((v) => v != null));
+        const lines = (p.lines || {})[lead] || [0, 0];
+        const bars = vals.map((v) => `<span class="sp-pbar${v == null ? ' is-none' : v > lines[1] ? ' is-bad' : v > lines[0] ? ' is-warn' : ''}" style="height:${v == null ? 2 : Math.max(3, Math.round((v / mx) * 26))}px"></span>`).join('');
+        const trace = vals.some((v) => v != null) ? `<div class="sp-ptrace"><span class="sp-ptcap">${escapeHtml(SP_PERF_SAY[lead])}, each day</span><span class="sp-pbars" aria-hidden="true">${bars}</span></div>` : '';
+        const n = g.views || 0;
+        const sub = k === 'bo' ? (n ? `${n} opening${n === 1 ? '' : 's'} this week` : 'Not opened this week') : n ? `${n} visit${n === 1 ? '' : 's'} this week` : 'No visits this week';
+        const [tone, word] = caps[g.tone] || caps.few;
+        return `<div class="sp-sys${open ? ' is-open' : ''}" data-k="perf-${k}">
+            <button type="button" class="sp-syshead" ${chbAttrs('spToggle', 'perf-' + k)} aria-expanded="${open}">
+                <span class="sp-sysic">${spSvg(k === 'bo' ? SP_IC.work : k === 'sp' ? SP_IC.phone : SP_IC.desk)}</span>
+                <span class="sp-systext"><span class="sp-sysname">${escapeHtml(g.label)}</span><span class="sp-syssub">${escapeHtml(sub)}</span></span>
+                ${stCap(tone, word)}
+                <svg class="sp-chev" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 6l6 6-6 6"></path></svg>
+            </button>
+            <div class="sp-fold"${open ? '' : ' hidden'}><div class="sp-foldin">${items || '<div class="sp-item sp-none">Nothing measured yet.</div>'}${trace}</div></div>
+        </div>`;
+    }).join('');
+    return `<section class="sp-sec" id="sp-perf"><h2 class="sp-cap"><span>Real visitors</span><span class="sp-capnote">this week</span></h2><div class="sp-card sp-syslist">${rows}</div></section>`;
+}
 // THIS WEEK — the warnings, grouped and judged. Tapping a day narrows the list.
 function spWeekHtml() {
     const w = (__sp.r && __sp.r.insights && __sp.r.insights.week) || null;
@@ -29108,6 +29159,7 @@ function spHtml(r, reveal) {
     }
     const vit = spVitals(r);
     if (vit.length) h += `<section class="sp-vitals">${vit.map(spVitalHtml).join('')}</section>`;
+    h += spPerfHtml(r);
     h += spWeekHtml();
     if (systems.length) {
         h += `<section class="sp-sec"><h2 class="sp-cap"><span>Everything checked</span></h2><div class="sp-card sp-syslist">${systems.map((s) => {

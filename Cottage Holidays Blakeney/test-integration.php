@@ -8167,6 +8167,134 @@ foreach ($keep102 as $k => $v) {
     }
 }
 
+// §103 REAL VISITORS' SPEED (perf.php + perf-lib.php). A page sends what its own browser
+// measured; the server keeps only the figures, says whose page it was from the session,
+// caps what one address and everyone together may add, sums each finished day at night,
+// and Status judges the week. Driven through the real endpoints and the real daily job.
+echo "\n== §103 real visitors' speed ==\n";
+require_once __DIR__ . '/perf-lib.php';
+// The app's connection runs on London time (db.php), and a DATETIME default is written in
+// the writer's zone, so this section's own rows are written on the app's clock.
+$tz103 = (string) $rootDb->query('SELECT @@session.time_zone')->fetchColumn();
+$rootDb->exec("SET time_zone = '" . (new DateTime('now', new DateTimeZone('Europe/London')))->format('P') . "'");
+$cols103 = array_map(fn($c) => strtolower((string) $c['Field']), $rootDb->query('SHOW COLUMNS FROM perf_samples')->fetchAll(PDO::FETCH_ASSOC));
+it_check('§103 the samples table keeps no address, browser string or page',
+    $cols103 && !array_intersect($cols103, ['ip', 'ip_hash', 'ua', 'user_agent', 'path', 'referrer', 'email', 'guest_id', 'admin_id']), implode(',', $cols103));
+$rootDb->exec('DELETE FROM perf_samples');
+$rootDb->exec('DELETE FROM perf_day');
+$rootDb->exec("DELETE FROM login_attempts WHERE identifier = 'perf'");
+$ua103 = 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.5 Mobile/15E148 Safari/604.1';
+$post103 = function (&$jar, $body) use ($ua103) {
+    $was = (string) ini_get('user_agent');
+    ini_set('user_agent', $ua103);
+    try {
+        return http($jar, 'POST', '/perf.php', $body);
+    } finally {
+        ini_set('user_agent', $was);
+    }
+};
+$last103 = fn() => $rootDb->query('SELECT * FROM perf_samples ORDER BY id DESC LIMIT 1')->fetch(PDO::FETCH_ASSOC) ?: [];
+$count103 = fn() => (int) $rootDb->query('SELECT COUNT(*) FROM perf_samples')->fetchColumn();
+$vis103 = [];
+$r = $post103($vis103, ['ttfb' => 180, 'fcp' => 640, 'lcp' => 1210, 'shown' => 640, 'ready' => 2100, 'cls' => 30, 'inp' => 88, 'land' => 'h', 'early' => true, 'pwa' => false, 'kind' => 'o', 'ip' => '9.9.9.9']);
+$row103 = $last103();
+it_check('§103 a visitor\'s page is kept as a visitor\'s on an iPhone in Safari, its figures as sent',
+    $r['code'] === 200 && ($row103['kind'] ?? '') === 'v' && ($row103['device'] ?? '') === 'p' && ($row103['browser'] ?? '') === 's'
+        && (int) ($row103['shown'] ?? 0) === 640 && (int) ($row103['ready'] ?? 0) === 2100 && (int) ($row103['cls'] ?? -1) === 30 && (int) ($row103['early'] ?? 0) === 1,
+    json_encode($row103));
+it_check('§103 …a "kind" sent by the page is not believed', ($row103['kind'] ?? '') === 'v');
+$r = $post103($adm83, ['inp' => 420]);
+it_check('§103 the back office\'s own page is the owner\'s', $r['code'] === 200 && ($last103()['kind'] ?? '') === 'o' && (int) ($last103()['inp'] ?? 0) === 420);
+$g103 = [];
+$itGuest($g103, 'Perf Guest', 'perf103@example.com');
+$r = $post103($g103, ['ready' => 1900]);
+it_check('§103 a signed-in guest\'s page is a guest\'s', $r['code'] === 200 && ($last103()['kind'] ?? '') === 'g');
+$n103 = $count103();
+$junk103 = $post103($vis103, ['ttfb' => -1, 'fcp' => 'fast', 'shown' => [1], 'land' => 'h']);
+$get103 = http($vis103, 'GET', '/perf.php');
+it_check('§103 a sample with no figure in range is refused and nothing is kept; a GET is refused',
+    $junk103['code'] === 400 && $get103['code'] === 405 && $count103() === $n103, "{$junk103['code']} / {$get103['code']}");
+// The per-address ceiling: forty in an hour from one address, then nothing kept.
+$rootDb->exec("DELETE FROM login_attempts WHERE identifier = 'perf'");
+$la103 = $rootDb->prepare("INSERT INTO login_attempts (ip, identifier, success) VALUES ('127.0.0.1', 'perf', 0)");
+for ($i = 0; $i < PERF_IP_PER_HOUR; $i++) {
+    $la103->execute();
+}
+$n103 = $count103();
+$r = $post103($vis103, ['ready' => 1500]);
+it_check('§103 past the per-address ceiling the answer is the same and nothing is kept', $r['code'] === 200 && $count103() === $n103, (string) $count103());
+$rootDb->exec("DELETE FROM login_attempts WHERE identifier = 'perf'");
+$r = $post103($vis103, ['ready' => 1500]);
+it_check('§103 …and under it again, it is kept', $r['code'] === 200 && $count103() === $n103 + 1);
+// The overall ceiling: everyone together, an hour.
+$vals103 = implode(',', array_fill(0, PERF_ALL_PER_HOUR, "('v','d','o',100)"));
+$rootDb->exec("INSERT INTO perf_samples (kind, device, browser, ttfb) VALUES $vals103");
+$n103 = $count103();
+$r = $post103($vis103, ['ready' => 1500]);
+it_check('§103 past the hour\'s overall ceiling nothing more is kept', $r['code'] === 200 && $count103() === $n103);
+$rootDb->exec("DELETE FROM login_attempts WHERE identifier = 'perf'");
+
+// The daily job: each finished day summed once, today left alone, old rows dropped.
+$rootDb->exec('DELETE FROM perf_samples');
+$ins103 = $rootDb->prepare('INSERT INTO perf_samples (created_at, kind, device, browser, shown, ready, inp) VALUES (?,?,?,?,?,?,?)');
+$day1 = $rootDb->query('SELECT CURDATE() - INTERVAL 1 DAY')->fetchColumn();
+$day2 = $rootDb->query('SELECT CURDATE() - INTERVAL 2 DAY')->fetchColumn();
+for ($i = 0; $i < 20; $i++) {
+    $ins103->execute([$day1 . ' 12:00:00', 'v', 'p', 's', 1000 + 50 * $i, 2000, null]);
+}
+$ins103->execute([$day2 . ' 09:00:00', 'o', 'd', 'c', null, 3000, 240]);
+$rootDb->exec('INSERT INTO perf_samples (created_at, kind, device, browser, shown) VALUES (NOW(), \'v\', \'p\', \'s\', 999)');
+$rootDb->exec('INSERT INTO perf_samples (created_at, kind, device, browser, shown) VALUES (NOW() - INTERVAL ' . (PERF_KEEP_DAYS + 1) . ' DAY, \'v\', \'p\', \'s\', 999)');
+$rootDb->exec("INSERT INTO perf_day (day, grp, metric, n, p50, p75, p90) VALUES (CURDATE() - INTERVAL " . (PERF_DAY_KEEP_DAYS + 1) . " DAY, 'sp', 'shown', 1, 1, 1, 1)");
+$sr103 = http($noJar, 'GET', '/self-repair.php?cron=' . $SECRET);
+$pd103 = $rootDb->prepare('SELECT n, p50, p75, p90, good, poor FROM perf_day WHERE day = ? AND grp = ? AND metric = ?');
+$pd103->execute([$day1, 'sp', 'shown']);
+$sp103 = $pd103->fetch(PDO::FETCH_ASSOC) ?: [];
+it_check('§103 yesterday\'s phone visits are summed: 20 visits, half within 1.45s, 3 in 4 within 1.7s, 9 in 10 within 1.85s, 17 good, none poor',
+    (int) ($sr103['json']['perfDays'] ?? 0) === 2 && $sp103 && (int) $sp103['n'] === 20 && (int) $sp103['p50'] === 1450 && (int) $sp103['p75'] === 1700 && (int) $sp103['p90'] === 1850 && (int) $sp103['good'] === 17 && (int) $sp103['poor'] === 0,
+    json_encode([$sr103['json']['perfDays'] ?? null, $sp103]));
+$pd103->execute([$day2, 'bo', 'inp']);
+$bo103 = $pd103->fetch(PDO::FETCH_ASSOC) ?: [];
+it_check('§103 …the back office in its own group', $bo103 && (int) $bo103['n'] === 1 && (int) $bo103['p75'] === 240, json_encode($bo103));
+it_check('§103 today is not summed until it has finished', (int) $rootDb->query('SELECT COUNT(*) FROM perf_day WHERE day >= CURDATE()')->fetchColumn() === 0);
+it_check('§103 samples past their 30 days and daily figures past theirs are dropped',
+    (int) $rootDb->query('SELECT COUNT(*) FROM perf_samples WHERE created_at < CURDATE() - INTERVAL ' . PERF_KEEP_DAYS . ' DAY')->fetchColumn() === 0
+        && (int) $rootDb->query('SELECT COUNT(*) FROM perf_day WHERE day < CURDATE() - INTERVAL ' . PERF_DAY_KEEP_DAYS . ' DAY')->fetchColumn() === 0);
+$before103 = $rootDb->query('SELECT COUNT(*), SUM(n), SUM(p75) FROM perf_day')->fetch(PDO::FETCH_NUM);
+$sr103b = http($noJar, 'GET', '/self-repair.php?cron=' . $SECRET);
+it_check('§103 a second run sums nothing and changes nothing',
+    (int) ($sr103b['json']['perfDays'] ?? -1) === 0 && $rootDb->query('SELECT COUNT(*), SUM(n), SUM(p75) FROM perf_day')->fetch(PDO::FETCH_NUM) == $before103);
+
+// Status: the week judged from the samples, the days from the roll-up.
+$st103 = http($adm83, 'POST', '/diagnostics.php', ['action' => 'run']);
+$perf103 = $st103['json']['insights']['perf'] ?? [];
+$chk103 = array_values(array_filter($st103['json']['checks'] ?? [], fn($c) => ($c['label'] ?? '') === 'Real visitors'));
+it_check('§103 Status judges the phones fast and says so in one check',
+    ($perf103['groups']['sp']['tone'] ?? '') === 'fast' && (int) ($perf103['groups']['sp']['figs']['shown']['p75'] ?? 0) === 1700 && (int) ($perf103['groups']['sp']['views'] ?? 0) === 21
+        && count($chk103) === 1 && ($chk103[0]['status'] ?? '') === 'ok' && ($chk103[0]['category'] ?? '') === 'Website',
+    json_encode([$perf103['groups']['sp'] ?? null, $chk103]));
+$boInp103 = $perf103['groups']['bo']['figs']['inp'] ?? [];
+it_check('§103 …the back office with one opening is shown but not judged', ($perf103['groups']['bo']['tone'] ?? '') === 'few' && (int) ($boInp103['p75'] ?? 0) === 240 && array_key_exists('rate', $boInp103) && $boInp103['rate'] === null, json_encode($perf103['groups']['bo'] ?? null));
+it_check('§103 …and yesterday\'s figure is on the daily trace', ($perf103['trace']['sp']['shown'][$day1] ?? null) === [1700, 20], json_encode($perf103['trace'] ?? null));
+$now103 = (string) $rootDb->query('SELECT NOW()')->fetchColumn();
+for ($i = 0; $i < 25; $i++) {
+    $ins103->execute([$now103, 'v', 'p', 's', 5000, 2000, null]);
+}
+$st103 = http($adm83, 'POST', '/diagnostics.php', ['action' => 'run']);
+$chk103 = array_values(array_filter($st103['json']['checks'] ?? [], fn($c) => ($c['label'] ?? '') === 'Real visitors'));
+it_check('§103 a slow week is a warning that names the figure',
+    ($st103['json']['insights']['perf']['groups']['sp']['tone'] ?? '') === 'slow' && ($chk103[0]['status'] ?? '') === 'warn'
+        && strpos((string) ($chk103[0]['detail'] ?? ''), 'For visitors on phones, pages appeared in 5.0s') === 0,
+    json_encode($chk103));
+$rootDb->exec('DELETE FROM perf_samples');
+$st103 = http($adm83, 'POST', '/diagnostics.php', ['action' => 'run']);
+it_check('§103 a week with no visits claims nothing: no check, every group "too few"',
+    !array_filter($st103['json']['checks'] ?? [], fn($c) => ($c['label'] ?? '') === 'Real visitors') && ($st103['json']['insights']['perf']['groups']['sc']['tone'] ?? '') === 'few');
+$no103 = http($vis103, 'POST', '/diagnostics.php', ['action' => 'run']);
+it_check('§103 a visitor cannot read the figures', in_array($no103['code'], [401, 403], true) && empty($no103['json']['insights']), (string) $no103['code']);
+$rootDb->exec('DELETE FROM perf_day');
+$rootDb->exec('SET time_zone = ' . $rootDb->quote($tz103));
+
 echo "\n== Summary ==\n";
 if ($fail) {
     echo "  $fail CHECK(S) FAILED \xE2\x9D\x8C\n\n";
