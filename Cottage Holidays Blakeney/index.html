@@ -166,7 +166,7 @@
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="apple-mobile-web-app-title" content="CHB Stays">
-    <link rel="stylesheet" href="app.css?v=399">
+    <link rel="stylesheet" href="app.css?v=400">
     <!-- Fonts are SELF-HOSTED (fonts/ — latin-subset variable woff2, @font-face
          in app.css): no Google origins to connect to at all. Preload both so
          text renders in the real faces on first paint (display:swap covers the
@@ -178,11 +178,14 @@
     <!-- jsPDF (invoices/receipts, owner-only) is loaded ON DEMAND by ensureJsPdf()
          in app.js — never downloaded on a normal guest/page load. The cdnjs
          preconnect above keeps that on-demand fetch fast. -->
-    <!-- Apply the theme before first paint (no flash). Coastal-fresh LIGHT is the
-         default for guests; dark is opt-in and forced for admins (set later by JS). -->
-    <script>(function(){try{var p=localStorage.getItem('chb-theme');if(p!=='dark')document.documentElement.classList.add('theme-light-boot');}catch(e){document.documentElement.classList.add('theme-light-boot');}})();</script>
+    <!-- Before first paint: the theme, and THE PAGE BEFORE THE SCRIPT (CLAUDE.md): a page home.php
+         wrote is shown at once to a device that never signed in, taps held for app.js.
+         Hashed in the CSP (smoke-test gives the value). -->
+    <script>(function(){var d=document.documentElement;try{if(localStorage.getItem('chb-theme')!=='dark')d.classList.add('theme-light-boot');}catch(e){d.classList.add('theme-light-boot');}try{var L=localStorage;if(d.getAttribute('data-ssr')!=='home'||location.search||location.hash||L.getItem('chb-was-admin')||L.getItem('chb-owner')||L.getItem('chb-was-guest')||sessionStorage.getItem('chb-nav'))return;d.classList.add('chb-early');var W=window,timer=0,hold=function(t,e,m){e.preventDefault();e.stopImmediatePropagation();m=m||t;var o=W.__chbEarlyMark;if(o&&o!==m)o.removeAttribute('data-chb-wait');W.__chbEarlyTap=t;W.__chbEarlyMark=m;m.setAttribute('data-chb-wait','');if(!timer)timer=setTimeout(function(){if(!W.__chbTaken)d.classList.add('chb-stuck');},10000);},tap=function(e){var t=e.target;t=t&&t.closest?t.closest('a[href],button,[role=button],[role=link],[data-act]'):null;if(!t||W.__chbTaken)return;if(t.getAttribute('data-act')==='reload')return location.reload();if(t.tagName==='A'&&t.getAttribute('href')&&(t.pathname!==location.pathname||t.target==='_blank'))return;hold(t,e);},send=function(e){var f=e.target;if(W.__chbTaken||!f||!f.getAttribute||!f.getAttribute('data-act-submit'))return;hold(f,e,e.submitter);};document.addEventListener('click',tap,true);document.addEventListener('submit',send,true);W.__chbEarlyOff=function(){document.removeEventListener('click',tap,true);document.removeEventListener('submit',send,true);clearTimeout(timer);};}catch(e){}})();</script>
 </head>
 <body>
+    <!-- The light theme and the phone shell before first paint, as the scripts set them. Hashed in the CSP. -->
+    <script>(function(){var b=document.body;try{if(localStorage.getItem('chb-theme')!=='dark')b.classList.add('light-mode');}catch(e){b.classList.add('light-mode');}try{var m=window.matchMedia;if(navigator.standalone===true||(m&&(m('(display-mode: standalone)').matches||m('(max-width: 768px)').matches)))b.classList.add('guest-app');}catch(e){}})();</script>
 
     <!-- LOADING OVERLAY (covers the page until content is ready) -->
     <div id="loading-overlay">
@@ -343,9 +346,8 @@
             <div class="heritage-item" id="heritage-rating-item" style="display:none;"><span class="heritage-num" id="heritage-rating"></span><span class="heritage-label">Guest rating</span></div>
         </section>
 
-        <!-- OUR COTTAGES (homepage) — simplified cards, above the availability search.
-             renderHomeCottages() rebuilds #home-cottages-grid from the live list; these
-             static cards are the no-JS / first-paint fallback for the original three. -->
+        <!-- OUR COTTAGES (homepage). Between the ssr markers home.php writes the live cards;
+             the static three are the fallback when it could not. -->
         <section class="home-cottages reveal" id="home-cottages">
             <p class="section-kicker reveal">Stay with us</p>
             <h2 class="section-title text-center reveal">Our cottages</h2>
@@ -357,6 +359,7 @@
                  cottage has a decent gap in the next fortnight; empty otherwise. -->
             <div id="late-avail" aria-live="polite"></div>
             <div class="grid grid-3" id="home-cottages-grid" style="margin-top: 18px;">
+              <!--ssr:home-cards-->
               <a class="card glass-panel" data-prop="21a" href="/cottages/21a-westgate" data-act="cottageLink">
                 <div class="card-img-wrap">
                     <div class="card-img" data-edit-img="card1-img" role="img" aria-label="Photo of 21A Westgate" style="background-image: url('card-21a.jpg');"></div>
@@ -384,6 +387,7 @@
                     <div class="card-meta" data-edit-text="card3-meta">Sleeps 4 • Contemporary</div>
                 </div>
               </a>
+              <!--/ssr:home-cards-->
             </div>
         </section>
 
@@ -480,6 +484,7 @@
         <div class="cottages-split">
           <div class="cottages-list">
             <div class="grid grid-3" id="cottages" style="margin-top: 18px;">
+              <!--ssr:cards-->
               <a class="card glass-panel" data-prop="21a" href="/cottages/21a-westgate" data-act="cottageLink">
                 <div class="card-img-wrap">
                     <div class="card-img" data-edit-img="card1-img" role="img" aria-label="Photo of 21A Westgate" style="background-image: url('card-21a.jpg');"></div>
@@ -516,6 +521,7 @@
                 </div>
                 <div class="card-price" id="card-price-pimpernel"></div>
             </a>
+              <!--/ssr:cards-->
             </div>
           </div>
           <aside class="cottages-map-pane">
@@ -1400,9 +1406,11 @@
             <nav class="footer-links ft-grp" aria-label="Cottages">
                 <h2 class="ft-cap">Cottages</h2>
                 <span id="footer-cottage-links" style="display:contents">
+                    <!--ssr:footer-cottages-->
                     <a href="/cottages/21a-westgate" data-act="cottageLink">21A Westgate Street</a>
                     <a href="/cottages/jollyboat" data-act="cottageLink">Jollyboat</a>
                     <a href="/cottages/pimpernel" data-act="cottageLink">Pimpernel</a>
+                    <!--/ssr:footer-cottages-->
                 </span>
             </nav>
             <nav class="footer-links ft-grp" aria-label="Explore">
@@ -1441,11 +1449,10 @@
     <div id="changeover-toasts" class="toast-stack"></div>
 
     <!-- --- JAVASCRIPT --- -->
-    <script defer src="app.js?v=1233"></script>
-
-    <!-- App-style guest shell (bottom tab bar + install chip). External so the
-         single-page index.html stays reviewable; gated to guests via CSS. -->
+    <!-- The guest shell (gated to guests by CSS) first: both are deferred and run in order,
+         so the small one no longer waits for the large one. -->
     <script defer src="guest-app.js?v=42"></script>
+    <script defer src="app.js?v=1234"></script>
 
 </body>
 </html>

@@ -34,23 +34,28 @@ const path = require('path');
 // its pages (an init script), its own fixture dates (d(), now(), todayAt()) and the
 // server's time stamp (srv, nudged by the same amount) — and so cannot cross
 // midnight. DATE only: timers, performance.now and elapsed time are untouched.
+// AND ONE THAT STARTS BEFORE 03:00 RUNS THREE HOURS AHEAD: its fixtures look back across
+// midnight as late ones look forward (a device "seen 2 hours ago" at 00:20 was seen
+// yesterday, and the page rightly says so). Ahead, never back, so the page stays on the
+// server's calendar day, as the late shift does.
 // Decided ONCE, when the lib loads: re-reading the hour on every call made a run that
 // crossed real midnight drop the shift halfway, so pages opened before 00:00 and
-// fixtures built after it disagreed by a day. CHB_LATE_SHIFT=1 forces the shift at
-// any hour (to check a suite on the shifted clock without waiting), =0 forbids it.
-// realClock() opts a suite out (a suite that must read the real time).
-const LATE_AT_LOAD = (() => {
-    if (process.env.CHB_LATE_SHIFT === '1') return true;
-    if (process.env.CHB_LATE_SHIFT === '0') return false;
+// fixtures built after it disagreed by a day. CHB_LATE_SHIFT=1 forces the late shift at
+// any hour (to check a suite on the shifted clock without waiting), =early the early one,
+// =0 forbids both. realClock() opts a suite out (a suite that must read the real time).
+const SHIFT_AT_LOAD = (() => {
+    if (process.env.CHB_LATE_SHIFT === '1') return -3 * 3600e3;
+    if (process.env.CHB_LATE_SHIFT === 'early') return 3 * 3600e3;
+    if (process.env.CHB_LATE_SHIFT === '0') return 0;
     const h = Number(new Intl.DateTimeFormat('en-GB', { timeZone: 'Europe/London', hour: '2-digit', hourCycle: 'h23' }).format(new Date()));
-    return h >= 22;
+    return h >= 22 ? -3 * 3600e3 : h < 3 ? 3 * 3600e3 : 0;
 })();
 let realClockAsked = false;
 function realClock() {
     realClockAsked = true;
 }
 function lateShiftMs() {
-    return !realClockAsked && LATE_AT_LOAD ? -3 * 3600e3 : 0;
+    return realClockAsked ? 0 : SHIFT_AT_LOAD;
 }
 // The suite's own "now", on the same clock as its pages: build any fixture time from
 // this (or d() / todayAt()), never from a bare Date.now() or new Date().

@@ -9384,6 +9384,39 @@ body.light-mode .theme-switch .ts-i-sun {
 #loading-overlay.show-slow #loading-slow-msg {
   display: block;
 }
+/* THE PAGE BEFORE THE SCRIPT: the head script marks html.chb-early when home.php wrote the
+           first screen and this device has never signed in, so there is no cover to lift. A tap
+           is held until app.js takes over (pulsing, so it reads as heard); one held 10s with no
+           script brings the cover back with its Reload (chb-stuck). */
+html.chb-early #loading-overlay {
+  display: none;
+}
+html.chb-early.chb-stuck #loading-overlay {
+  display: flex;
+}
+html.chb-stuck #loading-slow-msg {
+  display: block;
+}
+/* The card photos wait for the script (chbEarlyTakeOver adds chb-taken): three photos below the
+           fold were sharing a slow connection with the script and the hero. */
+html.chb-early:not(.chb-taken) [data-ssr-keys] .card-img {
+  background-image: none !important;
+}
+[data-chb-wait] {
+  animation: chbWait 0.9s ease-in-out infinite alternate;
+  cursor: progress;
+}
+@keyframes chbWait {
+  to {
+    opacity: 0.55;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  [data-chb-wait] {
+    animation: none;
+    opacity: 0.7;
+  }
+}
 #loading-slow-msg p {
   color: rgba(255, 255, 255, 0.6);
   font-size: var(--fs-body);
@@ -11908,8 +11941,8 @@ body.light-mode .hb-field[aria-expanded="true"] {
 #hero-headline-panel p:last-child{color:rgb(255 255 255 / .92);text-transform:none;letter-spacing:0;font-size:var(--fs-headline);max-width:34ch;line-height:1.45}
 #hero-bar{width:calc(100% - 40px);max-width:1088px;margin:0 auto}
 #hero-headline-panel h1 .w{display:inline-block;vertical-align:top}
-/* HELD until hideLoadingOverlay() adds body.hero-go: the entrance used to run at parse, behind the opaque overlay. */
-body:not(.hero-go) #hero-headline-panel h1 .w>i,body:not(.hero-go) #hero-headline-panel .hero-kicker,body:not(.hero-go) #hero-headline-panel p:last-child,body:not(.hero-go) #hero-bar,body:not(.hero-go) #hero .hero-bg{animation-play-state:paused}
+/* HELD until hideLoadingOverlay() adds body.hero-go: the entrance used to run at parse, behind the opaque overlay. Not when the page was shown before the script (html.chb-early): there is no cover, so it plays at first paint. */
+html:not(.chb-early) body:not(.hero-go) #hero-headline-panel h1 .w>i,html:not(.chb-early) body:not(.hero-go) #hero-headline-panel .hero-kicker,html:not(.chb-early) body:not(.hero-go) #hero-headline-panel p:last-child,html:not(.chb-early) body:not(.hero-go) #hero-bar,html:not(.chb-early) body:not(.hero-go) #hero .hero-bg{animation-play-state:paused}
 #hero-headline-panel h1 .w>i,#hero-headline-panel .hero-kicker,#hero-headline-panel p:last-child,#hero-bar{will-change:transform,opacity}
 #loading-overlay{will-change:opacity}
 /* The photo's dimming is a plain black layer, not filter: brightness() on an element that is also scaling (heroDrift) - a filter re-rasterises every frame; a flat overlay composites. Same maths: brightness b == black at alpha 1-b. */

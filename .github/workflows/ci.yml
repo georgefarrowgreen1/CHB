@@ -305,6 +305,10 @@ jobs:
         working-directory: "Cottage Holidays Blakeney"
         run: php test-content-keys.php
 
+      - name: The home page written by the server (what the script would write, only public words, marked only when whole)
+        working-directory: "Cottage Holidays Blakeney"
+        run: php test-ssr.php
+
       # SQL statement splitter: a semicolon inside an inline comment must not
       # chop a migration in half (regression for the broken guest-registrations
       # migration — MySQL 1064 "near '' at line 8").
