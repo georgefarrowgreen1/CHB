@@ -2164,11 +2164,14 @@ let approveWill409 = false;
     `with Square off it never promises a card link (${noSq.slice(0, 110)})`);
   await page.evaluate(() => { /* eslint-disable-next-line no-global-assign */ squareAdminEnabled = true; });
   const dec = page.evaluate(() => declineEnquiry('e7'));
-  await page.waitForTimeout(500);
   // Declining now ASKS whether to write the guest a reply (they were promised one
   // by the end of the next day and nothing was ever sent). This section is about
   // where the decline LEAVES you, so answer "Not now" — resolving true opens the
-  // composer, which then sits over the page and blocks section L's clicks.
+  // composer, which then sits over the page and blocks section L's clicks. The ask
+  // comes after the decline's own reload, so the answer waits for it to be open: a
+  // fixed half-second answered nothing on a loaded machine and the suite waited out
+  // its five minutes on a question nobody answered.
+  await page.waitForFunction(() => !!document.querySelector('#glass-dialog.open'), null, { timeout: 15000 }).catch(() => {});
   await page.evaluate(() => glassDialogResolve(false));
   await dec;
   await page.waitForTimeout(700);

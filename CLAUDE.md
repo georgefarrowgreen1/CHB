@@ -1644,6 +1644,84 @@ visitors" block in admin.css.
   Status" with 10,500 samples on the five-year business. Break-tested 16 ways, each failing its own gate.
 - Budgets: app.js +1.1KB gzipped as shipped (every visitor pays it: the recorder), admin.js +1.2KB, admin.css +0.1KB.
 
+## The back office stops redoing five years of sums (third round, upgrade 2)
+
+Measured on the five-year business (1,387 bookings) at 4x CPU, the slow phone this round is aimed at: a refresh of
+Today was 5.0s of main-thread work and opening Payments 4.9s, most of it the same sums worked out again and the same
+list drawn again. Code: app.js `chbMoneyOf` beside `bookingDue` / `paymentSummary`; admin.js `damageHeld`, `chbNum`,
+`chbOwedCutoff`, `chbChaseInfo`, `chbDepositBackDue`, `pmLoad`, `pmRenderList`, `loadDepositReturns`,
+`openAccounts`; admin.css the two pulses.
+- **A BOOKING'S MONEY IS WORKED OUT ONCE PER LOAD** (`chbMoneyOf`). `paymentSummary`, `bookingDue` and `damageHeld`
+  keep their answer beside the booking, checked against the fields it was made from: the price snapshot, what was
+  paid, the payment state, the deposit's state and amount, the price override, the cottage, and for `damageHeld` the
+  returns recorded against it. Every surface asks them again: one Today refresh asked `bookingDue` 11,819 times and
+  `damageHeld` 11,096 times, and now works out 2,335 answers in all, one per booking per question. A booking WITHOUT
+  a snapshot is priced from today's rates and seasons, which the check cannot see, so it is worked out every time, as
+  before. Each caller gets a copy. Kept per booking RECORD, and a load maps every row afresh, so each load starts
+  again: carrying the answers across loads was measured and is not worth it (the sums are 4 to 11ms of a refresh now).
+  The only writes to a booking's money fields outside the mapper (`depositPctOverride` and the plan's dates) are
+  fields these three do not read; a new field they read must join the check.
+- **The cheap question first.** The duty list's chase asks the date cutoff (`chbOwedCutoff`, worked out once a day: a
+  stay that ended more than 14 days ago is a record, not a chore) before it prices anything, and the deposit-back
+  check asks whether they have left before what is held. Five years of finished stays are most of the bookings.
+- **A deposit row's figure comes from one formatter** (`chbNum`): `toLocaleString` with options builds a new
+  `Intl.NumberFormat` on every call, and the deposit duty asked it twice per held deposit per build of the list
+  (6,752 times in one refresh, most of a second at 4x).
+- **THE PULSES ARE LAYERS THE COMPOSITOR RUNS.** The "Staying" dot on Today's bookings and the activity log's
+  needs-a-look dot animated `box-shadow`, which restyles and repaints the page every frame: Today at rest restyled 120
+  times in two seconds for as long as anyone was staying. Each is now an `::after` that only scales and fades; at rest,
+  0. A new looping animation on the back office animates transform and opacity only.
+- **PAYMENTS DRAWS ITS ANSWERS ONCE** (`pmLoad`). The bank and split answers each drew the list as they landed and the
+  summary drew it again, so opening Payments drew it five to seven times, 422KB of rows each time on the five-year
+  business. The three are asked together, and the list is drawn once the summary (the page's own answer) is in, with
+  whatever else has landed by then or within `PM_BATCH_GRACE` (250ms); anything later draws itself (`pmBankLoad` and
+  `splitLoad` take a `heldBack` that is true until the batch has drawn; called on their own they draw as before). A
+  summary still out after `PM_BATCH_WAIT` (4s) does not hold the others back: they are drawn then, and the summary
+  draws itself when it lands. A caller that awaits `pmLoad` (the expense sheet's toast reads the new profit) still
+  gets the summary's answer.
+- **A LIST DRAWN THE SAME IS NOT DRAWN AGAIN** (`pmRenderList`, `__pmListEl` / `__pmListHtml`). Only this function
+  writes `#pm-list` and nothing inside the list keeps state of its own, so when the markup it builds is what it last
+  wrote, it writes nothing. A second visit with nothing changed rewrites nothing (it was a full draw, about a second at
+  4x). What a rewrite would have taken away goes all the same: a figure's settle mark from the last draw, so the same
+  figures never settle twice. Anything that later writes into the list by hand, or keeps state in it, must reset
+  `__pmListHtml`.
+- **ONE LOAD PER OPENING, AND A DRAW AGAIN ONLY FOR A CHANGE** (`openAccounts`). `accountsShowIndex` draws the page
+  from what is held and asks for its answers at once; once the bookings (on a cold open) and the returned deposits
+  have been read, it is drawn again only if either differs from what the page was DRAWN with (`chbSameReturns`
+  against the map held at the draw), and never asked again: a second refresh there asked for the summary, the
+  heaviest read in the back office, twice whenever the returns took longer than the refresh's 200ms to answer. The
+  battery's load found that, and then a second race: comparing with the map as it stood when the page's own read
+  answered missed a change that Today's refresh had read in between (the row kept the old deposit figure until the
+  summary landed). What counts is the copy on screen.
+- Measured after, at 4x CPU on the five-year business: a Today refresh 1.5 to 1.8s (was 5.0s); opening Payments 3.1
+  to 3.8s with two list writes (was 4.9s and five to seven); a second visit to Payments 2.0s with none, nearly all of
+  it laying out the 422 rows the page shows, which is the next upgrade's (a long list drawn a page at a time).
+- **Not done, said plainly**: Today's style pass over its ~2,500 elements still costs about 400ms at 4x per render.
+  Rules written with `:is(.a, .b, …)` in the rightmost place are tried against every element (the one-look block is
+  most of them); rewriting them is a styling change of its own, and splitting an `:is()` changes specificity unless
+  every argument has the same. The trip back to Today from another screen also pays its arrival animation's paints.
+- Gates: search-test **§48** (kept answers equal worked-out ones; asked five times, worked out once; an in-place
+  payment and a returned deposit make new answers; a copy each; a booking without a snapshot never kept and following
+  the rates; the cutoff agreeing with the old reckoning at 14 and 15 days; the deposit-back check unchanged by the
+  reorder; 40 deposits building no formatter; the label's words); **ui-test-moneydraws.js** (22 checks, every answer's
+  timing in the suite's hands: two writes on opening, none on a second visit, one summary asked for when the returns
+  answer slowly, a changed return drawn before the summary lands (also when Today's refresh read it first), a late bank
+  answer drawing itself, a slow summary not holding the others back while a waiting caller
+  still gets it, each booking worked out once in three renders and nothing in three more, Today at rest restyling
+  nothing, both pulses animating only transform and opacity); volume-test **"The back office on five years"** (the
+  money worked out in one refresh, duty-list builds, Payments' writes on opening and on a second visit, restyles at
+  rest, and the main thread's time for a refresh and an opening at 4x CPU, with time x3 and at least 2s of room: the
+  counts hold the line). Break-tested eight ways in the suite and three in volume-test, each failing its own check.
+  The per-answer drawing passes volume-test, which allows one write of room for a side answer landing after the
+  summary on a loaded machine; the suite's controlled timing fails it with four writes. Two older checks were
+  re-aimed, not loosened: ui-test-backoffice-motion read a figure's settle class after a second draw that, unchanged,
+  no longer replaces the element (it reads the class first and lets the settle finish, so an identical repaint that
+  started a new one still fails), and ui-test-hub answered the decline's "write a reply?" ask after a fixed half
+  second, which on the battery's load answered nothing and left the suite waiting out its five minutes (it waits for
+  the ask to be open).
+- Sizes as written (comments stripped at deploy): admin.js +1.6KB, app.js +0.5KB, admin.css +0.2KB gzipped, all
+  within budget.
+
 ## Automatic collection: finished plans, Square's silences, two passes at once (round 5)
 
 Found by the scheduled-jobs review and each reproduced against the real collector code.

@@ -310,12 +310,17 @@ const d = require('./ui-test-lib').d; // the harness's day (today, UK)
     pmRenderList();
     const f = document.querySelector('#pm-list [data-fig="owe"]');
     const a = f && f.getAnimations().find((x) => x.animationName === 'pmSettle');
+    const cls = f ? f.className : '';
     let mid = null;
     if (a) { a.pause(); a.currentTime = 180; mid = getComputedStyle(f).translate; } // 30% of 0.6s, the keyframe's one stop
+    // The settle runs its course, as it does on screen; a repaint with the same figures
+    // must not start another. (The list is not rewritten when its markup is unchanged,
+    // so the figure may be the same element: what is measured is a settle STARTED.)
+    if (a) a.finish();
     const after = f ? f.textContent : '';
     pmRenderList();                              // a repaint that changed nothing
     const g = document.querySelector('#pm-list [data-fig="owe"]');
-    return { cls: f ? f.className : '', name: a ? a.animationName : '', mid, after, again: g ? g.getAnimations().length + (g.classList.contains('is-changed') ? 1 : 0) : -1 };
+    return { cls, name: a ? a.animationName : '', mid, after, again: g ? g.getAnimations().length + (g.classList.contains('is-changed') ? 1 : 0) : -1 };
   });
   ok(settle.name === 'pmSettle' && /is-changed/.test(settle.cls), `the owed figure that changed settles (now ${settle.after})`);
   ok(/-3px/.test(settle.mid || ''), `a SETTLE: 3px and back, no scale (${settle.mid}) — the figure was already on screen`);
