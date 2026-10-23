@@ -892,11 +892,22 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
     };
     settingsOpen('guests');
     await new Promise((r) => setTimeout(r, 350));
+    // A guest's details (and their reset link) are drawn only while their row is open
+    // (CLAUDE.md "Long lists draw a page at a time"), so each row is opened in turn.
+    const resetFor = {};
+    for (const email of [...document.querySelectorAll('#guest-admin-list .acw-prow')].map((r) => r.getAttribute('data-gemail') || '')) {
+      gstToggle(email);
+      await new Promise((r) => setTimeout(r, 60));
+      resetFor[email] = document.querySelectorAll(`#guest-admin-list .acw-prow[data-gemail="${CSS.escape(email)}"] [data-act="gstResetAsk"]`).length;
+      gstToggle(email);
+      await new Promise((r) => setTimeout(r, 60));
+    }
+    const offered = Object.values(resetFor);
     const ga = {
       rows: document.querySelectorAll('#guest-admin-list .acw-prow').length,
       fig: /£2,840/.test((document.getElementById('guest-admin-list') || {}).textContent || ''),
       hooks: !!document.querySelector('#guest-admin-list .acw-prow[data-gemail="debbie@example.com"]'),
-      resetOnlyWithAccount: document.querySelectorAll('#guest-admin-list [data-act="gstResetAsk"]').length === 1,
+      resetOnlyWithAccount: offered.length === 2 && offered.filter((n) => n === 1).length === 1 && offered.filter((n) => n === 0).length === 1,
     };
     settingsOpen('reviews');
     await new Promise((r) => setTimeout(r, 350));

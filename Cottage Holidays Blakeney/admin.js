@@ -7446,8 +7446,11 @@ function cmdkPoll(find, done, tries) {
     })();
 }
 function cmdkRevealGuest(email) {
-    Promise.resolve(openArea()).then(() => settingsOpen('guests'));
     const key = (email || '').trim().toLowerCase();
+    // The Guest list draws a page at a time; the guest asked for is drawn whatever page
+    // they are on.
+    if (key) __gst.reveal = key;
+    Promise.resolve(openArea()).then(() => settingsOpen('guests')).then(() => { if (key && __gst.list.length) gstRender(); });
     if (!key) return;
     cmdkPoll(() => {
         const rows = document.querySelectorAll('#guest-admin-list [data-gemail]'); // person-rows are divs now, not <tr>
@@ -7710,6 +7713,12 @@ function paintTodayFilter() {
     const view = document.getElementById(__wsFilterView);
     if (!view) return 0;
     const q = __todayFilter;
+    // The bookings list draws a page at a time; the filter counts what is on screen, so
+    // the whole list is drawn for it first.
+    const P = __chbPaged.get('bk-list');
+    if (q && __wsFilterView === 'view-backoffice' && P && P.shown < P.items.length) {
+        try { renderBookingsBody(); } catch (e) { chbSwallow(e, 'filter-draw'); }
+    }
     let shown = 0;
     view.querySelectorAll('[data-search]').forEach((el) => {
         const match = !q || (el.getAttribute('data-search') || '').indexOf(q) > -1;
@@ -10814,6 +10823,90 @@ function bkListSwapped(list) {
     Array.from(list.children).slice(0, 10).forEach((r, k) => tdTag(r, k * 0.6, dir));
     return true;
 }
+// LONG LISTS DRAW A PAGE AT A TIME (CLAUDE.md "Long lists draw a page at a time"). On a
+// five-year business Today's Past list was 1,289 rows and 11,600 elements, the Guest list
+// 658 rows with every guest's details drawn and hidden (33,000 elements), Payments' Needs
+// you 424 rows: each drawn whole, styled and laid out before the first row could be read.
+// A paged list draws its first page and the next as its end comes near (or as its "Show
+// more" row is pressed: the keyboard's way, and a browser without IntersectionObserver).
+// The DATA is the whole list, so a search, a filter and a count still cover every row; only
+// the drawing waits. A list drawn again under the same key (the same filter and search)
+// keeps the pages it had, so a data refresh never takes the owner back to the top.
+const CHB_PAGE = 40;
+/** @typedef {{key: string, items: any[], render: (x: any, i: number) => string, step: number, shown: number, all: boolean, after: (() => void) | null}} ChbPaged */
+/** @type {Map<string, ChbPaged>} */
+const __chbPaged = new Map();
+/**
+ * The first pages of a list, and the row that draws the next. `id` names the place on
+ * screen (letters, digits and dashes); `key` which list it holds.
+ * @param {string} id
+ * @param {string} key
+ * @param {any[]} items
+ * @param {(x: any, i: number) => string} render
+ * @param {{step?: number, all?: boolean, upto?: number, after?: () => void}} [opts]
+ *   all: draw every row (a filter that dims rows must see them all); upto: an index
+ *   that must be drawn (the open or selected row); after: run when a page is added.
+ */
+function chbPagedHtml(id, key, items, render, opts) {
+    const o = opts || {};
+    const step = o.step || CHB_PAGE;
+    const was = __chbPaged.get(id);
+    let shown = was && was.key === key && !was.all ? Math.max(step, was.shown) : step;
+    if (o.all) shown = items.length;
+    if (typeof o.upto === 'number' && o.upto >= shown) shown = Math.ceil((o.upto + 1) / step) * step;
+    shown = Math.min(shown, items.length);
+    __chbPaged.set(id, { key, items, render, step, shown, all: !!o.all, after: o.after || null });
+    let html = '';
+    for (let i = 0; i < shown; i++) html += render(items[i], i);
+    return html + chbPagedMoreHtml(id);
+}
+function chbPagedMoreHtml(id) {
+    const P = __chbPaged.get(id);
+    if (!P || P.shown >= P.items.length) return '';
+    return `<button type="button" class="chb-more" data-paged="${id}" ${chbAttrs('chbPagedMore', id)}>Show more (${(P.items.length - P.shown).toLocaleString('en-GB')})</button>`;
+}
+// The next page, drawn where the row that asked for it was.
+function chbPagedMore(id) {
+    const P = __chbPaged.get(id);
+    const btn = document.querySelector(`.chb-more[data-paged="${id}"]`);
+    if (!P || !btn) return;
+    const from = P.shown;
+    P.shown = Math.min(P.items.length, P.shown + P.step);
+    let html = '';
+    for (let i = from; i < P.shown; i++) html += P.render(P.items[i], i);
+    btn.insertAdjacentHTML('beforebegin', html + chbPagedMoreHtml(id));
+    btn.remove();
+    if (P.after) {
+        try { P.after(); } catch (e) { chbSwallow(e, 'paged-after'); }
+    }
+    chbPagedWatch();
+}
+// The next page is drawn as the "Show more" row comes within 800px of the screen (a list
+// in a scroll box of its own, as Payments is beside its detail on a computer, draws when
+// the row is in that box's view).
+/** @type {IntersectionObserver|null} */
+let __chbPagedIO = null;
+/** @type {WeakSet<Element>} */
+const __chbPagedSeen = new WeakSet();
+function chbPagedWatch() {
+    if (typeof IntersectionObserver !== 'function') return;
+    if (!__chbPagedIO) {
+        __chbPagedIO = new IntersectionObserver((entries) => {
+            entries.forEach((e) => {
+                if (!e.isIntersecting || !__chbPagedIO) return;
+                __chbPagedIO.unobserve(e.target);
+                const id = e.target.getAttribute('data-paged');
+                if (id && e.target.isConnected) chbPagedMore(id);
+            });
+        }, { rootMargin: '800px 0px' });
+    }
+    const io = __chbPagedIO;
+    document.querySelectorAll('.chb-more[data-paged]').forEach((el) => {
+        if (__chbPagedSeen.has(el)) return;
+        __chbPagedSeen.add(el);
+        io.observe(el);
+    });
+}
 function renderBookings() {
     renderBookingsBody();
     todayFilterRepaint();
@@ -10913,7 +11006,16 @@ function renderBookingsBody() {
         if (bookingsSplitWide()) markBookingsSelection();
         return;
     }
-    list.innerHTML = rows.map(({ propKey, b }) => bookingListRow(propKey, b, today)).join('');
+    // A PAGE AT A TIME (chbPagedHtml): the Past list is every stay there has been. The
+    // board filter dims rows and counts the ones on screen, so while it is on every row
+    // is drawn; the booking open beside the list always has its row.
+    const sel = __hubBookingId && bookingsSplitWide() ? rows.findIndex(({ b }) => b.id === __hubBookingId) : -1;
+    list.innerHTML = chbPagedHtml('bk-list', f + '|' + q, rows, ({ propKey, b }) => bookingListRow(propKey, b, today), {
+        all: !!(__todayFilter && __wsFilterView === 'view-backoffice'),
+        upto: sel >= 0 ? sel : undefined,
+        after: () => { if (bookingsSplitWide()) markBookingsSelection(); todayFilterRepaint(); },
+    });
+    chbPagedWatch();
     bkListSwapped(list);
     if (!document.querySelector('#bookings-filters > .chb-pill')) bkSeatPill(true);
     // Wide split: keep the docked pane in sync — drop a selection whose booking
@@ -13028,7 +13130,7 @@ const ONE_LOOK_PRIMARY = /^(Save|Approve|Sync all|Turn gap fits on|Set weekends|
 const ONE_LOOK_DANGER = /^(Delete|Remove|Clear)\b/i;
 const ONE_LOOK_KINDS = ['u-btn1', 'u-btn2', 'u-btn3'];
 // Switchers, folds and the season strip's own controls are not buttons of this kind.
-const ONE_LOOK_NOT = '.pay-seg *, .ana-seg *, .al-tabs *, .rvi-chips *, .chb-switch *, .sg-sum, .bhub-fold-row, .sg-usesug, .sg-dbtn, .sg-date, .sg-dates, .u-addrow, .bhub-menu-btn, .bhub-next-btn, .bhub-next-alt, .bhub-sticky-btn';
+const ONE_LOOK_NOT = '.pay-seg *, .ana-seg *, .al-tabs *, .rvi-chips *, .chb-switch *, .sg-sum, .bhub-fold-row, .sg-usesug, .sg-dbtn, .sg-date, .sg-dates, .u-addrow, .bhub-menu-btn, .bhub-next-btn, .bhub-next-alt, .bhub-sticky-btn, .chb-more';
 function oneLookKind(label) {
     const t = String(label || '').replace(/\s+/g, ' ').trim().replace(/[›→]\s*$/, '').trim();
     return ONE_LOOK_DANGER.test(t) ? 'u-btn3' : ONE_LOOK_PRIMARY.test(t) || t === 'Done' ? 'u-btn1' : 'u-btn2';
@@ -16608,7 +16710,7 @@ async function runSync(key) {
 // The owner never sets a password: "Send a password reset link" emails the guest a
 // signed, single-use link (auth.php guest_send_reset). Rows keep `.acw-prow` +
 // `data-gemail` (the search reveal finds a guest by them).
-let __gst = { list: [], q: '', filter: null, open: '', mode: null, phase: null, iphase: null, sent: {}, cool: {}, invited: {}, invitedFresh: null };
+let __gst = { list: [], q: '', filter: null, open: '', reveal: '', mode: null, phase: null, iphase: null, sent: {}, cool: {}, invited: {}, invitedFresh: null };
 let __gstTick = 0;
 const GST_LAPSED_DAYS = 60;
 const GST_IC = {
@@ -16627,13 +16729,29 @@ function gstShort(iso) {
     return isNaN(+d) ? '' : d.getUTCDate() + ' ' + ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'][d.getUTCMonth()];
 }
 // One guest's facts, from the CRM row plus the bookings already loaded here.
-function gstFacts(g) {
+// Every booking by its guest's email, made once per drawing of the list: each guest's
+// facts used to walk every booking (658 guests by 1,387 bookings on five years, on every
+// keystroke in the search box).
+function gstStayIndex() {
+    /** @type {Map<string, {pk: string, b: any}[]>} */
+    const idx = new Map();
+    Object.keys(dbBookings || {}).forEach((pk) => (dbBookings[pk] || []).forEach((b) => {
+        const e = String(b.email || '').toLowerCase();
+        if (!e) return;
+        const l = idx.get(e);
+        if (l) l.push({ pk, b });
+        else idx.set(e, [{ pk, b }]);
+    }));
+    return idx;
+}
+/**
+ * @param {any} g
+ * @param {Map<string, {pk: string, b: any}[]>} [idx] gstStayIndex(), made once by the caller
+ */
+function gstFacts(g, idx) {
     const email = String(g.email || '').toLowerCase();
     const today = todayDashed();
-    const stays = [];
-    Object.keys(dbBookings || {}).forEach((pk) => (dbBookings[pk] || []).forEach((b) => {
-        if (String(b.email || '').toLowerCase() === email) stays.push({ pk, b });
-    }));
+    const stays = ((idx || gstStayIndex()).get(email) || []).slice();
     stays.sort((x, y) => String(y.b.checkIn).localeCompare(String(x.b.checkIn)));
     const next = stays.filter((s) => s.b.checkIn > today).pop() || null;
     const past = stays.filter((s) => s.b.checkIn <= today);
@@ -16696,7 +16814,8 @@ function gstRender() {
     const statsEl = document.getElementById('gst-stats');
     const body = document.getElementById('gst-body');
     if (!statsEl || !body) return;
-    const all = __gst.list.map((g) => Object.assign({ f: gstFacts(g) }, g));
+    const idx = gstStayIndex();
+    const all = __gst.list.map((g) => Object.assign({ f: gstFacts(g, idx) }, g));
     const total = all.reduce((n, g) => n + (Number(g.ltv) || 0), 0);
     const nBack = all.filter((g) => g.f.kind === 'back').length;
     const nInv = all.filter((g) => g.f.kind === 'invite' && !g.f.invitedAt).length;
@@ -16713,11 +16832,17 @@ function gstRender() {
         return;
     }
     const GROUPS = [['back', 'Coming back', ''], ['invite', 'Worth inviting back', 'no stay in 2+ months'], ['rest', 'Past guests', 'by spend']];
+    // Each group a page at a time (chbPagedHtml); the guest whose row is open, or whom
+    // search asked to show, is always drawn.
+    const want = __gst.open || __gst.reveal;
     body.innerHTML = chip + GROUPS.map(([k, cap, note]) => {
         const rows = shown.filter((g) => g.f.kind === k);
         if (!rows.length) return '';
-        return `<section class="gst-grp is-${k}"><h2 class="gst-cap"><span>${cap}</span><small>${note}</small></h2><div class="acr-well gst-well">${rows.map(gstRowHtml).join('')}</div></section>`;
+        const at = want ? rows.findIndex((g) => g.f.email === want) : -1;
+        const list = chbPagedHtml('gst-' + k, q + '|' + (__gst.filter || ''), rows, gstRowHtml, { upto: at >= 0 ? at : undefined });
+        return `<section class="gst-grp is-${k}"><h2 class="gst-cap"><span>${cap}</span><small>${note}</small></h2><div class="acr-well gst-well">${list}</div></section>`;
     }).join('');
+    chbPagedWatch();
     body.querySelectorAll('[data-gst-resend]').forEach((b) => gstResendPaint(b, b.getAttribute('data-gst-resend') || ''));
 }
 function gstRowHtml(g) {
@@ -16735,7 +16860,9 @@ function gstRowHtml(g) {
             <span class="gst-main"><b>${escapeHtml(g.name || email)}${g.username ? `<span class="gst-un">${escapeHtml(g.username)}</span>` : ''}</b><small class="is-${tone}">${escapeHtml(sub)}</small></span>
             <span class="gst-fig"><b>${gbp(Number(g.ltv) || 0).replace('.00', '')}</b>${f.stars ? `<small>★ ${f.stars}</small>` : ''}</span>
         </button>`;
-    return `<div class="acw-prow gst-item${open ? ' is-open' : ''}" data-gemail="${escapeHtml(email)}">${head}<div class="gst-more"${open ? '' : ' hidden'}>${gstDetailHtml(g, first)}</div></div>`;
+    // The details are drawn only for the row that is open: drawn for every guest and
+    // hidden, they were 30,000 elements on five years of guests.
+    return `<div class="acw-prow gst-item${open ? ' is-open' : ''}" data-gemail="${escapeHtml(email)}">${head}<div class="gst-more"${open ? '' : ' hidden'}>${open ? gstDetailHtml(g, first) : ''}</div></div>`;
 }
 function gstDetailHtml(g, first) {
     const f = g.f, email = f.email;
@@ -18225,18 +18352,22 @@ function pmNeedsHtml(rows) {
     }
     // An overdue guest is in the owed card above, with its capsule: said once.
     out.push(...pmPayRowsHtml());
-    pmDepsBack().forEach((d) => {
-        const id = escapeHtml(String(d.b.id));
-        out.push(`<div class="pm-needrow">
+    const bank = pmBankNeedHtml();
+    if (bank) out.push(bank);
+    // The deposits to return come last, a page at a time (chbPagedHtml): on a five-year
+    // business they were 424 rows, drawn before the books below them could be read.
+    const deps = pmDepsBack();
+    const depHtml = deps.length ? chbPagedHtml('pm-deps', pmView(), deps, pmDepRowHtml, { step: 20 }) : '';
+    return out.length || depHtml ? `<div class="pm-capline is-attn"><span>Needs you</span></div><div class="pm-rows">${out.join('')}${depHtml}</div>` : '';
+}
+function pmDepRowHtml(d) {
+    const id = escapeHtml(String(d.b.id));
+    return `<div class="pm-needrow">
             <span class="pm-mic out" aria-hidden="true">${PM_IC.shield}</span>
             <button type="button" class="pm-main pm-plain" data-pm="stay" data-arg="${id}"><span class="pm-t">${escapeHtml(d.b.name || 'Guest')}’s deposit</span><span class="pm-s">${pmDot(d.pk)}${escapeHtml(pmProp(d.pk))} · left ${pmDm(pmIso(d.b.checkOut))}</span></button>
             <span class="pm-v">${gbp(d.held)}</span>
             <div class="pm-acts-row"><button type="button" class="pm-btn second" data-pm="keep" data-arg="${id}">Keep it</button><button type="button" class="pm-btn primary" data-pm="return" data-arg="${id}">Return ${gbp(d.held)}</button></div>
-        </div>`);
-    });
-    const bank = pmBankNeedHtml();
-    if (bank) out.push(bank);
-    return out.length ? `<div class="pm-capline is-attn"><span>Needs you</span></div><div class="pm-rows">${out.join('')}</div>` : '';
+        </div>`;
 }
 // One movement as a row: what it is, who, and the figure.
 function pmKind(e) {
@@ -18528,6 +18659,7 @@ function pmRenderList() {
     __pmListEl = lp;
     __pmListHtml = html;
     lp.scrollTop = keep;
+    chbPagedWatch();
     // A figure that changed settles, so the owner sees what moved; the first paint stays still.
     const figs = {};
     lp.querySelectorAll('[data-fig]').forEach((el) => { figs[view + '|' + el.getAttribute('data-fig')] = el.textContent; });
@@ -20095,15 +20227,17 @@ const pmUpper = (s) => String(s || '').charAt(0).toUpperCase() + String(s || '')
 // One figure, what the guests still owe, and who.
 function pmOwedCardHtml(rows, cap, sub) {
     const total = rows.reduce((s, r) => s + r.dg.balance, 0);
-    const list = rows.map((r) => {
-        const p = pmPlan(r);
-        const name = r.b.name || 'Guest';
-        return `<button type="button" class="pm-orow" data-pm="stay" data-arg="${escapeHtml(String(r.b.id))}" aria-label="${escapeHtml(name)}, ${gbp(r.dg.balance)}, ${escapeHtml(p.cap)}">
-            <span class="pm-main"><span class="pm-t">${pmDot(r.pk)}${escapeHtml(name)}</span><span class="pm-s">${escapeHtml(pmProp(r.pk))} · ${pmStayDm(r.b.checkIn, r.b.checkOut)}</span><span class="pm-s">${escapeHtml(pmUpper(p.sub))}</span></span>
-            <span class="pm-r"><span class="pm-v">${gbp(r.dg.balance)}</span>${pmCap(p.tone, p.cap)}</span></button>`;
-    }).join('');
+    // A page at a time (chbPagedHtml): the total above still counts every guest.
+    const list = chbPagedHtml('pm-owed', pmView() + '|' + cap, rows, pmOwedRowHtml, { step: 20 });
     return `<section class="pm-owe" id="pm-coming" aria-label="${escapeHtml(cap)}">
         <div class="pm-owe-top"><span>${escapeHtml(cap)}</span><b data-fig="owe">${gbp(total)}</b><span class="pm-s">${escapeHtml(rows.length ? sub : 'Nobody owes anything')}</span></div>${list}</section>`;
+}
+function pmOwedRowHtml(r) {
+    const p = pmPlan(r);
+    const name = r.b.name || 'Guest';
+    return `<button type="button" class="pm-orow" data-pm="stay" data-arg="${escapeHtml(String(r.b.id))}" aria-label="${escapeHtml(name)}, ${gbp(r.dg.balance)}, ${escapeHtml(p.cap)}">
+            <span class="pm-main"><span class="pm-t">${pmDot(r.pk)}${escapeHtml(name)}</span><span class="pm-s">${escapeHtml(pmProp(r.pk))} · ${pmStayDm(r.b.checkIn, r.b.checkOut)}</span><span class="pm-s">${escapeHtml(pmUpper(p.sub))}</span></span>
+            <span class="pm-r"><span class="pm-v">${gbp(r.dg.balance)}</span>${pmCap(p.tone, p.cap)}</span></button>`;
 }
 // The holder's Needs-you row: a host's money that hasn't been passed on yet.
 function pmPayRowsHtml() {

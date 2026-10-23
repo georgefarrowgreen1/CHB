@@ -1722,6 +1722,44 @@ list drawn again. Code: app.js `chbMoneyOf` beside `bookingDue` / `paymentSummar
 - Sizes as written (comments stripped at deploy): admin.js +1.6KB, app.js +0.5KB, admin.css +0.2KB gzipped, all
   within budget.
 
+## Long lists draw a page at a time (third round, upgrade 3)
+
+On the five-year business three lists drew every row they had before the first could be read: Today's Past list
+(1,289 rows), the Guest list (658 guests, each with their details drawn and hidden), and Payments' deposits to return
+and guests still to pay. Code: admin.js `chbPagedHtml` / `chbPagedMore` / `chbPagedWatch` (beside `renderBookings`),
+`renderBookingsBody`, `paintTodayFilter`, `gstRender` / `gstRowHtml` / `gstStayIndex`, `cmdkRevealGuest`,
+`pmOwedCardHtml` / `pmOwedRowHtml`, `pmNeedsHtml` / `pmDepRowHtml`; admin.css `.chb-more`.
+- **THE DATA IS THE WHOLE LIST; ONLY THE DRAWING WAITS.** `chbPagedHtml(id, key, items, render, opts)` draws the first
+  page (`CHB_PAGE`, 40; 20 on Payments) and a "Show more (N)" row after it. That row is drawn as its next page when it
+  comes within 800px of the screen (`chbPagedWatch`, one IntersectionObserver) or when it is pressed (the keyboard's
+  way, and a browser without the observer). A search, a filter and every count still cover every row: the Past
+  list's "· 1,289 past", the Guest list's tiles, the owed card's total and its "45 guests" are of the whole list.
+- **A LIST DRAWN AGAIN UNDER THE SAME KEY KEEPS ITS PAGES** (the filter and search it shows): a data refresh never
+  takes the owner back to the top. Another filter or search starts at the first page.
+- **WHAT MUST BE ON SCREEN IS DRAWN, WHATEVER PAGE IT IS ON** (`upto`): the booking open beside the list on a
+  computer, the guest whose row is open, and the guest search's "show this guest" asked for (`__gst.reveal`).
+- **THE BOARD FILTER SEES EVERY ROW** (`all`): it dims the rows that do not match and counts the ones on screen, so
+  while it is on Today the bookings list is drawn whole, and `paintTodayFilter` draws it whole first when the filter
+  arrives after the list.
+- **A GUEST'S DETAILS ARE DRAWN ONLY WHEN THEIR ROW IS OPEN**; drawn for every guest and hidden they were most of the
+  Guest list's elements. Each guest's stays come from one index of the bookings by email (`gstStayIndex`), made once
+  per drawing of the list: each guest's facts walked every booking, on every keystroke in its search.
+- **Payments**: the owed card (`pm-owed`) and Needs you's deposits to return (`pm-deps`) a page at a time, the
+  deposits now after the other Needs-you rows (a failed payout, the bank's) so a long list of them never pushes those
+  out of sight. A list drawn again under the same view keeps its pages; `pmRenderList`'s no-change skip still holds,
+  because the pages drawn are part of the markup it compares.
+- **The Inbox is left as it is**: it already shows its waiting people and pages its Done folder by 60 ("Show older").
+- Measured on the five-year business, opened at the top: Today's Past list 361 elements (was 11,601), the Guest
+  list 1,148 (was 33,095), Payments 725 (was 6,177); Today itself 4,582 (was 5,103).
+- Gates: **ui-test-paging.js** (26 checks: the first page and its count, the next page on scrolling and on the
+  button, no row drawn twice, a redraw keeping its pages, another filter starting again, a search reaching an undrawn
+  row, the board filter seeing every row, the open booking drawn on a computer, the Guest list's pages and lazy
+  details and reveal, Payments' two lists), each of nine declarations break-tested; volume-test **"Long lists on five
+  years"** (the three element counts, +10% room), with Today's own element ceiling lowered to match; ui-test-manage's
+  reset-link check opens each guest row first, its details being drawn only when open. NB a suite that scrolls before
+  measuring a page's first draw must scroll at once (`behavior: 'instant'`): the page scrolls smoothly, so a plain
+  `scrollTo(0, 0)` is still far down when the list redraws, and its end is within reach of the observer.
+
 ## Automatic collection: finished plans, Square's silences, two passes at once (round 5)
 
 Found by the scheduled-jobs review and each reproduced against the real collector code.
