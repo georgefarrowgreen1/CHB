@@ -3683,7 +3683,10 @@ $rootDb->prepare('UPDATE admins SET email = ? WHERE id = ?')->execute([$ownConta
 // A reset link: a new password, and every other session ends.
 $rtok = str_repeat('7c', 24);
 $r = http($guest, 'POST', '/auth.php', ['action' => 'admin_reset_request', 'id' => 'sophiahart']);
-it_check('§51 asking for a reset answers the same whoever is asked about', $r['code'] === 200 && $r['raw'] === http($guest, 'POST', '/auth.php', ['action' => 'admin_reset_request', 'id' => 'nobody-here'])['raw'], $r['raw']);
+// The same answer, but for the server's clock (`srv`, in seconds): two requests either
+// side of a second boundary differ there and nowhere else.
+$noSrv = fn(string $raw) => json_encode(array_diff_key((array) json_decode($raw, true), ['srv' => 1]));
+it_check('§51 asking for a reset answers the same whoever is asked about', $r['code'] === 200 && $noSrv($r['raw']) === $noSrv(http($guest, 'POST', '/auth.php', ['action' => 'admin_reset_request', 'id' => 'nobody-here'])['raw']), $r['raw']);
 // On the APP's clock (Europe/London, as db.php sets the connection): this
 // connection's NOW() is the server's, which in BST is an hour behind.
 $rExp = (new DateTime('+30 minutes', new DateTimeZone('Europe/London')))->format('Y-m-d H:i:s');
@@ -8294,6 +8297,77 @@ $no103 = http($vis103, 'POST', '/diagnostics.php', ['action' => 'run']);
 it_check('§103 a visitor cannot read the figures', in_array($no103['code'], [401, 403], true) && empty($no103['json']['insights']), (string) $no103['code']);
 $rootDb->exec('DELETE FROM perf_day');
 $rootDb->exec('SET time_zone = ' . $rootDb->quote($tz103));
+
+// ── §104 Search stays instant at five years: the quick path reads full-text indexes ──
+// The palette's quick search ran LIKE '%…%' over every row of every source on each pause
+// in typing (33,000 rows for a word nobody wrote, on five years). It reads full-text
+// indexes now (migration-151): a word, or the start of one, from every source; a figure
+// through its own column. "Search everything" still matches inside a word.
+echo "\n== §104 the quick search reads full-text indexes ==\n";
+$w104 = 'zanzibarquill';
+$rootDb->prepare("INSERT INTO bookings (prop_key, name, email, phone, postcode, notes, check_in, check_out, adults, deposit_paid) VALUES ('jollyboat', 'Quillon Marchbank', 'quillon104@x.test', '07700 900456', 'NR25 7QQ', ?, ?, ?, 2, 0)")
+    ->execute(['Needs a ' . $w104 . ' cot', $dd(880), $dd(883)]);
+$bk104 = (int) $rootDb->lastInsertId();
+$rootDb->prepare("INSERT INTO chat_threads (guest_id, token, name, email) VALUES (NULL, ?, 'Thread One Hundred Four', 't104@x.test')")->execute(['t104-' . bin2hex(random_bytes(6))]);
+$th104 = (int) $rootDb->lastInsertId();
+$rootDb->prepare("INSERT INTO messages (thread_id, sender_role, body, read_by_admin, read_by_guest) VALUES (?, 'guest', ?, 1, 1)")->execute([$th104, 'Is the ' . $w104 . ' still in the garden shed?']);
+$rootDb->prepare("INSERT INTO mail_sent (to_email, subject, body) VALUES ('mail104@x.test', ?, 'Hello')")->execute(['About the ' . $w104]);
+$rootDb->prepare("INSERT INTO activity_log (actor, category, action, summary) VALUES ('owner', 'system', 'it104.note', ?)")->execute(['Moved the ' . $w104 . ' to the porch']);
+$rootDb->prepare("INSERT INTO enquiries (prop_key, name, email, check_in, check_out, adults, children, message) VALUES ('jollyboat', 'Enquirer Onefour', 'enq104@x.test', ?, ?, 2, 0, ?)")->execute([$dd(890), $dd(893), 'Do you have a ' . $w104 . '?']);
+$rootDb->prepare("INSERT INTO guest_reviews (guest_id, prop_key, stars, review_text, status) VALUES (910104, 'jollyboat', 5, ?, 'approved')")->execute(['Loved the ' . $w104 . ' by the fire']);
+$rootDb->prepare("INSERT INTO expenses (category, description, amount, expense_date) VALUES ('Repairs', ?, 12.50, ?)")->execute(['New ' . $w104 . ' hinge', $ukToday]);
+$rootDb->prepare("INSERT INTO waitlist (prop_key, name, email, note) VALUES ('jollyboat', 'Waiter Onefour', 'wait104@x.test', ?)")->execute(['Any ' . $w104 . ' weekend']);
+$rootDb->prepare("INSERT INTO payments (booking_id, kind, amount, status, square_payment_id) VALUES (?, 'deposit', 4321.09, 'COMPLETED', 'SQZQ104XYZ987')")->execute([$bk104]);
+// The owner signed in again for §83 (§80 ended the older sessions).
+$q104 = function (string $q, bool $deep = false) use (&$adm83) {
+    $r = http($adm83, 'POST', '/search.php', $deep ? ['q' => $q, 'deep' => 1] : ['q' => $q]);
+    return ['code' => $r['code'], 'rows' => is_array($r['json']['results'] ?? null) ? $r['json']['results'] : [], 'raw' => $r['raw']];
+};
+$types104 = fn(array $rows) => array_values(array_unique(array_map(fn($x) => (string) ($x['type'] ?? ''), $rows)));
+$want104 = ['booking', 'enquiry', 'message', 'review', 'email', 'activity', 'expense', 'waitlist'];
+$r104 = $q104($w104);
+it_check('§104 one word finds it in every source that holds it: ' . implode(', ', $want104),
+    $r104['code'] === 200 && !array_diff($want104, $types104($r104['rows'])), implode(',', $types104($r104['rows'])) . ' ' . substr($r104['raw'], 0, 200));
+$r104 = $q104('zanzib');
+it_check('§104 …and by the start of the word', !array_diff($want104, $types104($r104['rows'])), implode(',', $types104($r104['rows'])));
+$r104 = $q104('anzibarquill');
+$deep104 = $q104('anzibarquill', true);
+it_check('§104 the middle of a word is "search everything"\'s: the quick path finds none of it, the deep one still does',
+    !array_intersect($want104, $types104($r104['rows'])) && in_array('message', $types104($deep104['rows']), true),
+    implode(',', $types104($r104['rows'])) . ' / deep ' . implode(',', $types104($deep104['rows'])));
+$r104 = $q104('quillon marchbank');
+$r104b = $q104('quillon zzzzwrongword');
+it_check('§104 every word must match: two of the guest\'s own find the booking, one wrong word finds nothing',
+    in_array('booking', $types104($r104['rows']), true) && !in_array('booking', $types104($r104b['rows']), true));
+$r104 = $q104('the ' . $w104);
+$r104b = $q104('the');
+it_check('§104 a word the index never holds ("the") is left out, so it cannot make the rest match nothing',
+    in_array('message', $types104($r104['rows']), true) && $r104b['code'] === 200 && !in_array('message', $types104($r104b['rows']), true));
+$r104 = $q104('+' . $w104 . ' -"(');
+it_check('§104 the engine\'s own syntax never reaches it from the query', $r104['code'] === 200 && in_array('message', $types104($r104['rows']), true), substr($r104['raw'], 0, 200));
+$r104 = $q104('za');
+it_check('§104 a two-letter query answers, with nothing from the word indexes', $r104['code'] === 200 && !array_intersect(['message', 'email', 'activity', 'review'], $types104($r104['rows'])));
+$bkIds104 = fn(array $rows) => array_map(fn($x) => (int) ($x['id'] ?? 0), array_filter($rows, fn($x) => ($x['type'] ?? '') === 'booking'));
+it_check('§104 a figure finds the booking by its own column: the phone number, the postcode, the reference',
+    in_array($bk104, $bkIds104($q104('07700 900456')['rows']), true) && in_array($bk104, $bkIds104($q104('NR25 7QQ')['rows']), true)
+        && in_array($bk104, $bkIds104($q104('CHB-' . str_pad((string) $bk104, 6, '0', STR_PAD_LEFT))['rows']), true)
+        && in_array($bk104, $bkIds104($q104(str_pad((string) $bk104, 6, '0', STR_PAD_LEFT))['rows']), true));
+$pay104 = fn(string $q) => array_values(array_filter($q104($q)['rows'], fn($x) => ($x['type'] ?? '') === 'payment' && (int) ($x['booking_id'] ?? 0) === $bk104));
+it_check('§104 a payment is found by its exact amount ("£4,321.09") or the start of Square\'s reference',
+    count($pay104('£4,321.09')) === 1 && count($pay104('4321.09')) === 1 && count($pay104('SQZQ104X')) === 1);
+it_check('§104 …and never by a part of an amount ("432" found 4,321.09 and every other figure with those digits)', count($pay104('432')) === 0 && count($pay104('4321')) === 0);
+$ex104 = $rootDb->query("EXPLAIN SELECT m.thread_id FROM messages m WHERE MATCH(m.body) AGAINST('+zanzib*' IN BOOLEAN MODE) AND m.thread_id IS NOT NULL ORDER BY m.id DESC LIMIT 6")->fetch(PDO::FETCH_ASSOC);
+it_check('§104 the messages are read through their full-text index, not scanned', strtolower((string) ($ex104['type'] ?? '')) === 'fulltext', json_encode($ex104));
+$rootDb->exec("DELETE FROM payments WHERE booking_id = $bk104");
+$rootDb->exec("DELETE FROM bookings WHERE id = $bk104");
+$rootDb->exec("DELETE FROM messages WHERE thread_id = $th104");
+$rootDb->exec("DELETE FROM chat_threads WHERE id = $th104");
+$rootDb->exec("DELETE FROM mail_sent WHERE to_email = 'mail104@x.test'");
+$rootDb->exec("DELETE FROM activity_log WHERE action = 'it104.note'");
+$rootDb->exec("DELETE FROM enquiries WHERE email = 'enq104@x.test'");
+$rootDb->exec("DELETE FROM guest_reviews WHERE guest_id = 910104");
+$rootDb->exec("DELETE FROM expenses WHERE description LIKE '%zanzibarquill%'");
+$rootDb->exec("DELETE FROM waitlist WHERE email = 'wait104@x.test'");
 
 echo "\n== Summary ==\n";
 if ($fail) {

@@ -10,7 +10,7 @@
 //  6. Darkstar load → body flag + quiet purple ready logo
 //  7. cmdkBack / ⌘K toggle return to the workspace you came from
 //  8. leaving on an unanswered query files a search miss (teach loop)
-const { d, boot } = require('./ui-test-lib'); // pins TZ=Europe/London at require time
+const { d, boot, bootVerdict } = require('./ui-test-lib'); // pins TZ=Europe/London at require time
 let fails = 0;
 const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails++; };
 
@@ -28,6 +28,9 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
     return json({ ok: true, events: [], logs: {}, results: [], threads: [], enquiries: [], reviews: [], photos: [], value: null, corpus: [], content: {} });
   });
   await page.goto(`${base}/index.html`, { waitUntil: 'networkidle' });
+  // The boot's own session check lands first, or on a loaded run it undoes the owner-mode
+  // laid here (the lib's bootVerdict).
+  await bootVerdict(page);
   await page.evaluate(async () => { isAuthenticated = true; document.body.classList.add('owner-mode'); await window.loadAdminBundle(); });
   await page.evaluate(() => loadData()); await page.waitForTimeout(400);
   await page.evaluate(() => nav('view-backoffice')); await page.waitForTimeout(300);
@@ -1682,6 +1685,7 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
       return json({ ok: true, events: [], logs: {}, results: [], threads: [], enquiries: [], reviews: [], photos: [], value: null, corpus: [], content: {} });
     });
     await p2.goto(`${base}/index.html`, { waitUntil: 'networkidle' });
+    await bootVerdict(p2);
     await p2.evaluate(async () => { isAuthenticated = true; document.body.classList.add('owner-mode'); await window.loadAdminBundle(); });
     await p2.evaluate(() => loadData()); await p2.waitForTimeout(500);
     await p2.evaluate(() => nav('view-backoffice')); await p2.waitForTimeout(300);

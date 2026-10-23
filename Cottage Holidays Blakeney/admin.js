@@ -3040,7 +3040,14 @@ let __cmdkConvCtx = null; // { type: 'booking', id }
 //  scorer missed — "create a reservation" finds "Add a booking" with zero shared
 //  keywords. Purely additive: candidates append BELOW the keyword results.
 // ===================================================================
-const CHB_RANK = { idf: null, index: [], sig: '', cache: new Map(), min: 0.18, topK: 4 };
+// SPARSE, with the postings built once per change (CLAUDE.md "Search stays instant at five
+// years"). It held a dense 4,096-wide vector per item (64MB for 4,000 items on five years),
+// made the IDF in 4,096 passes over every item, and cleared its 2,000-entry cache whenever
+// the universe was bigger than that, so every rebuild re-read every item's text. Now: each
+// item's features once per text (kept while the text is in the universe), one pass for the
+// document counts, and per dimension the items that have it (CSR). The arithmetic is the
+// dense build's own, rounding included: the same items with the same scores in the same order.
+const CHB_RANK = { idf: null, keys: [], off: null, item: null, w: null, sig: '', cache: new Map(), min: 0.18, topK: 4 };
 // THE STAMP THAT REPLACES A REBUILD. chbRankIndex() called CHB_SEARCH.collect('')
 // — every item — purely to hash their keys and usually conclude nothing had
 // changed. It answers the same question without building anything: the data
@@ -3087,9 +3094,18 @@ function chbRankExpand(q) {
     for (const w of words) if (CMDK_SYN[w]) extra.push(CMDK_SYN[w]);
     return words.join(' ') + (extra.length ? ' ' + extra.join(' ') : '');
 }
-// (Re)build the vector index when the universe changes (cheap: raw vectors are
-// cached by text hash, so unchanged items cost a lookup; IDF is recomputed over
-// the current items so weights track the live collection).
+// A text's features, by dimension in ascending order, each value as a Float32Array holds it
+// (the rounding the dense vector applied).
+function chbRankEnc(txt) {
+    const e = chbNluSparse(txt);
+    const order = e.idx.map((d, i) => i).sort((a, b) => e.idx[a] - e.idx[b]);
+    const idx = new Int32Array(order.length);
+    const val = new Float32Array(order.length);
+    order.forEach((j, k) => { idx[k] = e.idx[j]; val[k] = e.val[j]; });
+    return { idx, val };
+}
+// (Re)build the index when the universe changes. A text already encoded costs a lookup; the
+// IDF is recomputed over the current items so the weights track the live collection.
 function chbRankIndex() {
     // Ask the stamp BEFORE building anything — the whole point of it.
     const stamp = chbRankStamp();
@@ -3105,54 +3121,69 @@ function chbRankIndex() {
         const txt = chbRankText(it);
         if (txt) rows.push({ k, txt });
     }
-    const sig = stamp;
     const D = CHB_NLU.dims;
+    // The texts of this universe only: a text that left is forgotten, one that stayed is kept.
+    /** @type {Map<string, {idx: Int32Array, val: Float32Array}>} */
+    const cache = new Map();
     const raw = rows.map((r) => {
-        let v = CHB_RANK.cache.get(r.txt);
-        if (!v) { v = chbNluVec(r.txt); CHB_RANK.cache.set(r.txt, v); }
-        return { k: r.k, v };
+        let e = cache.get(r.txt) || CHB_RANK.cache.get(r.txt);
+        if (!e) e = chbRankEnc(r.txt);
+        cache.set(r.txt, e);
+        return e;
     });
-    if (CHB_RANK.cache.size > 2000) CHB_RANK.cache.clear(); // universe churned — start fresh
+    CHB_RANK.cache = cache;
+    // How many items have each dimension, then where each dimension's items start.
+    const off = new Int32Array(D + 1);
+    for (const e of raw) for (let i = 0; i < e.idx.length; i++) off[e.idx[i] + 1]++;
     const idf = new Float32Array(D);
-    for (let i = 0; i < D; i++) {
-        let df = 0;
-        for (const r of raw) if (r.v[i] > 0) df++;
-        idf[i] = Math.log((raw.length + 1) / (df + 0.5));
+    for (let d = 0; d < D; d++) {
+        idf[d] = Math.log((raw.length + 1) / (off[d + 1] + 0.5));
+        off[d + 1] += off[d];
     }
-    CHB_RANK.idf = idf;
-    CHB_RANK.index = raw.map((r) => {
-        const w = new Float32Array(D);
+    const at = off.slice(0, D);
+    const item = new Int32Array(off[D]);
+    const w = new Float32Array(off[D]);
+    const wi = new Float32Array(D);
+    raw.forEach((e, j) => {
         let n = 0;
-        for (let i = 0; i < D; i++) { w[i] = r.v[i] * idf[i]; n += w[i] * w[i]; }
+        for (let i = 0; i < e.idx.length; i++) { wi[i] = e.val[i] * idf[e.idx[i]]; n += wi[i] * wi[i]; }
         n = Math.sqrt(n) || 1;
-        for (let i = 0; i < D; i++) w[i] /= n;
-        return { k: r.k, vec: w };
+        for (let i = 0; i < e.idx.length; i++) {
+            const p = at[e.idx[i]]++;
+            item[p] = j;
+            w[p] = wi[i] / n;
+        }
     });
-    CHB_RANK.sig = sig;
+    CHB_RANK.idf = idf;
+    CHB_RANK.keys = rows.map((r) => r.k);
+    CHB_RANK.off = off;
+    CHB_RANK.item = item;
+    CHB_RANK.w = w;
+    CHB_RANK.sig = stamp;
 }
-// Query the index: top-K item keys above the floor, best first.
+// Query the index: top-K item keys above the floor, best first. Only the query's own
+// dimensions are read, each with the items that have it.
 function chbRankQuery(q) {
     const ql = (q || '').trim();
     if (ql.length < 4) return [];
     try { chbRankIndex(); } catch (e) { return []; }
-    if (!CHB_RANK.idf) return [];
-    const D = CHB_NLU.dims;
-    const rawV = chbNluVec(chbRankExpand(ql));
-    const v = new Float32Array(D);
+    const R = CHB_RANK;
+    if (!R.idf || !R.off || !R.item || !R.w) return [];
+    const e = chbRankEnc(chbRankExpand(ql));
+    const v = new Float32Array(e.idx.length);
     let n = 0;
-    for (let i = 0; i < D; i++) { v[i] = rawV[i] * CHB_RANK.idf[i]; n += v[i] * v[i]; }
+    for (let i = 0; i < e.idx.length; i++) { v[i] = e.val[i] * R.idf[e.idx[i]]; n += v[i] * v[i]; }
     n = Math.sqrt(n) || 1;
-    const scored = [];
-    // Only the query's own dimensions (20–35 of 4,096) add to the dot.
-    const nz = [];
-    for (let i = 0; i < D; i++) if (v[i] !== 0) nz.push(i);
-    for (const e of CHB_RANK.index) {
-        let dot = 0;
-        for (let j = 0; j < nz.length; j++) { const i = nz[j]; dot += (v[i] / n) * e.vec[i]; }
-        if (dot >= CHB_RANK.min) scored.push({ k: e.k, s: dot });
+    const acc = new Float64Array(R.keys.length);
+    for (let i = 0; i < e.idx.length; i++) {
+        const d = e.idx[i];
+        const x = v[i] / n;
+        for (let p = R.off[d]; p < R.off[d + 1]; p++) acc[R.item[p]] += x * R.w[p];
     }
+    const scored = [];
+    for (let j = 0; j < acc.length; j++) if (acc[j] >= R.min) scored.push({ k: R.keys[j], s: acc[j] });
     scored.sort((a, b) => b.s - a.s);
-    return scored.slice(0, CHB_RANK.topK);
+    return scored.slice(0, R.topK);
 }
 function chbNluHashStr(s) {
     let h = 5381;

@@ -1760,6 +1760,48 @@ and guests still to pay. Code: admin.js `chbPagedHtml` / `chbPagedMore` / `chbPa
   measuring a page's first draw must scroll at once (`behavior: 'instant'`): the page scrolls smoothly, so a plain
   `scrollTo(0, 0)` is still far down when the list redraws, and its end is within reach of the observer.
 
+## Search stays instant at five years (third round, upgrade 4)
+
+Both halves of the search window read everything on the five-year business: the client's meaning index rebuilt a
+4,096-wide vector per item for every change of data, and the server's quick search read every row of every source with
+`LIKE '%…%'` on each pause in typing. Code: admin.js `CHB_RANK`, `chbRankEnc`, `chbRankIndex`, `chbRankQuery`;
+search.php `search_ft_terms` and the quick path; migration-151.
+- **THE MEANING INDEX IS SPARSE, WITH POSTINGS BUILT ONCE PER CHANGE.** It held a dense `Float32Array(4096)` per item
+  (64MB for 4,000 items), made the IDF in 4,096 passes over every item, and cleared its 2,000-entry cache whenever the
+  universe was bigger than that, so on five years every rebuild re-encoded every item's text. Now each text's features
+  are kept (sorted by dimension, as a `Float32Array` would hold them) while the text is in the universe, the document
+  counts are one pass, and each dimension lists the items that have it (CSR: `off`, `item`, `w`). A query reads only
+  its own dimensions' items. **The arithmetic is the dense build's own, rounding included**: the same items, the same
+  scores to the last bit, the same order. search-test §49 keeps the dense build as the reference and compares twelve
+  queries; break-tested three ways (weights kept in doubles, the cache not carried over, the counts off by one).
+- **THE QUICK SERVER SEARCH READS FULL-TEXT INDEXES** (migration-151: messages, sent mail, the activity log,
+  enquiries, reviews, bookings, guest accounts, expenses, the waitlist). `search_ft_terms($q)` turns the query into
+  required word starts (`+pemb* +sarah*`): words of three letters or digits or more (the shortest an index holds),
+  the engines' own three-letter-plus stopwords left out (never indexed, so a required one would match nothing), and
+  everything but letters and digits splits words, so no character of the query reaches the engine's own syntax.
+- **A FIGURE IS FOUND THROUGH ITS OWN COLUMN**: a phone number, a postcode or a reference (CHB-000123) by LIKE on the
+  bookings and guest accounts, only when the query holds a digit (a UNION beside the words, ordered once); a payment
+  by its exact amount (`idx_amount`) or the start of Square's reference (the unique index). A part of an amount found
+  145.00 and 312.45 for "45", reading every payment there has been.
+- **What changed for the owner, said plainly**: the quick search matches the START of a word ("pemb" finds Pemberton,
+  "mberton" does not), every word must match, and a payment by its exact amount. "Search everything" (`?deep`) still
+  matches anywhere inside a word, over everything. A query with no word of three letters (or "the") asks the word
+  indexes nothing; the client's own sources (every booking and guest it holds) still answer it.
+- Measured on the five-year business: a search for "smith" reads 405 rows (was 15,046), a word nothing has 90 (was
+  32,883: every row of nine tables); after a refresh the meaning index encodes 1 of its 2,114 records (was 2,112) and
+  is built again in 0.28s at a 4x CPU slowdown (was 2.2s), and a new booking encodes its own 2 texts (was 2,113).
+- Gates: search-test **§49**; test-integration **§104** (a word in every source, its start, the middle of a word only
+  for the deep path, every word required, a stopword left out, the syntax refused, a two-letter query, a phone number /
+  postcode / reference, an exact amount and Square's reference, never a part of an amount, the messages read through
+  their index), break-tested five ways (the messages back on LIKE, the stopwords kept, no figure branch, a part of an
+  amount again, the query split on spaces only); volume-test **"owner search, a word nothing has"** and **"Search on
+  five years"** (the texts encoded after a refresh and after one new booking, and the rebuild at 4x CPU), with the
+  common name's rows lowered to match. NB the reference never matched "CHB-000123" before: the hyphen stayed in the
+  column's CONCAT and was stripped from the query; it is `CONCAT('chb', LPAD(id, 6, '0'))` against the stripped core.
+- The battery found two load flakes, both test-side and both of a known shape: ui-test-searchpage laid owner-mode
+  before the boot's own session check had answered (it waits with `bootVerdict` now, as the other suites do), and
+  ui-test-overlays slept 450ms before asserting an exit had finished (it waits on the state now, up to 3s).
+
 ## Automatic collection: finished plans, Square's silences, two passes at once (round 5)
 
 Found by the scheduled-jobs review and each reproduced against the real collector code.
