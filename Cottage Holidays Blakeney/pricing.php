@@ -417,9 +417,16 @@ function square_deposit_pct()
     }
     $pct = 25.0;
     try {
-        $s = db()->prepare('SELECT item_value FROM content WHERE item_key = ?');
-        $s->execute(['square-deposit-pct']);
-        $r = $s->fetch();
+        // From the request's memo when one holds it (the owner's boot reads its settings
+        // together: db.php content_prefetch), else by itself.
+        $m = function_exists('content_memo_get') ? content_memo_get('square-deposit-pct') : null;
+        if ($m === null) {
+            $s = db()->prepare('SELECT item_value FROM content WHERE item_key = ?');
+            $s->execute(['square-deposit-pct']);
+            $r = $s->fetch();
+        } else {
+            $r = $m === false ? false : ['item_value' => $m];
+        }
         if ($r) {
             $v = (float) json_decode($r['item_value'], true);
             if ($v > 0 && $v <= 100) {

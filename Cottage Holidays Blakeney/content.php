@@ -33,8 +33,12 @@ const CONTENT_SERVER_ONLY = [
     'uptime-history', 'anniv-sent', 'weather-cache', 'mail-sent-days', 'self-repair-state',
     'conflict-audit-state', 'testcentre-staged', 'activity-seen', 'owner-ping', 'payload-memo',
     'mac-chat', 'mac-chat-memory', 'mac-chat-imports', 'mac-chat-sum', 'night-shift', 'chat-handoff',
+    'reviews-memo',
 ];
-const CONTENT_SERVER_ONLY_PREFIX = ['guest-ping-'];
+// A table's change stamp (stamps-lib.php) is server-only too. A visitor's one content read
+// still fetches the stamps and the review memo (they are not in the visitor skip lists):
+// the review figures are answered from them. Neither reaches the browser.
+const CONTENT_SERVER_ONLY_PREFIX = ['guest-ping-', 'stamp-'];
 
 function content_server_only($key): bool
 {

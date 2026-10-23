@@ -204,6 +204,7 @@ $REGISTRY = [
     'session-lib.php' => ['lib', [], 'the session lifetime + the daily sweep of the session folder; required by db.php (no entry)'],
     'devices-lib.php' => ['lib', [], 'every device a person is signed in on; required by db.php (no entry)'],
     'photo-lib.php' => ['lib', [], 'private photos and their signed links; required by db.php and photo.php (no entry)'],
+    'stamps-lib.php' => ['lib', [], 'a change stamp per table and the connection that moves them; required by db.php (no entry)'],
     'status-lib.php' => ['lib', [], 'status_week()/status_warn_kind() — the Status page\'s pure judgements'],
     'db.php' => ['lib', [], 'the bootstrap every endpoint includes (defines the auth helpers themselves)'],
     'enquiry-actions.php' => ['lib', [], 'shared approve/decline logic'],

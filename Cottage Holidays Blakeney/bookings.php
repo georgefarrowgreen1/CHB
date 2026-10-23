@@ -594,6 +594,54 @@ function bookings_admin_payload()
     return ['bookings' => $rows];
 }
 
+// THE OWNER'S EMAIL LOG: every booking's emails to its guest, keyed by booking id
+// (string). Reads the activity log: comms.* (confirmation / arrival / free-text message)
+// plus payment.request (the pay-link email). Made only from booking rows of the activity
+// log, so its fingerprint is that table's stamps (EMAIL_LOG_STAMPS): log_activity moves
+// 'activity_log.booking' when it records one, and any other write to the table moves
+// 'activity_log'. Integration §105 runs it under MySQL's statement log.
+const EMAIL_LOG_STAMPS = ['activity_log', 'activity_log.booking'];
+function email_log_payload(): array
+{
+    $rows = db()
+        ->query(
+            "SELECT entity_id, action, summary, meta, created_at
+               FROM activity_log
+              WHERE entity = 'booking'
+                AND (category = 'comms' OR action = 'payment.request')
+           ORDER BY created_at DESC, id DESC
+              LIMIT 3000",
+        )
+        ->fetchAll();
+    $map = [];
+    foreach ($rows as $r) {
+        $id = (string) ($r['entity_id'] ?? '');
+        if ($id === '') {
+            continue;
+        }
+        if (!isset($map[$id])) {
+            $map[$id] = [];
+        }
+        // Free-text messages carry the subject/body in meta (JSON); templated
+        // emails (confirmation/arrival/pay request) have none.
+        $meta = [];
+        if (!empty($r['meta'])) {
+            $decoded = json_decode((string) $r['meta'], true);
+            if (is_array($decoded)) {
+                $meta = $decoded;
+            }
+        }
+        $map[$id][] = [
+            'action' => $r['action'],
+            'summary' => $r['summary'],
+            'at' => $r['created_at'],
+            'subject' => isset($meta['subject']) ? (string) $meta['subject'] : '',
+            'body' => isset($meta['body']) ? (string) $meta['body'] : '',
+        ];
+    }
+    return ['logs' => $map];
+}
+
 // When admin-bootstrap.php includes this file for the payload helper, stop
 // before the HTTP routing — routes below run only when this file IS the request.
 if (basename($_SERVER['SCRIPT_NAME'] ?? '') !== 'bookings.php') {
@@ -2738,50 +2786,13 @@ if ($action === 'cancel') {
     ]));
 }
 
-// Per-booking log of emails sent to the guest (Bookings page → each booking).
-// Reads the activity log: comms.* (confirmation / arrival / free-text message)
-// plus payment.request (the pay-link email). Keyed by booking id (string).
+// Per-booking log of emails sent to the guest (email_log_payload). A page naming the copy
+// it holds hears "same" with nothing built while the stamps say nothing changed; a change
+// goes as its changed buckets of bookings when the page names the ones it holds.
 if ($action === 'email_logs') {
     require_admin();
     try {
-        $rows = db()
-            ->query(
-                "SELECT entity_id, action, summary, meta, created_at
-                   FROM activity_log
-                  WHERE entity = 'booking'
-                    AND (category = 'comms' OR action = 'payment.request')
-               ORDER BY created_at DESC, id DESC
-                  LIMIT 3000",
-            )
-            ->fetchAll();
-        $map = [];
-        foreach ($rows as $r) {
-            $id = (string) ($r['entity_id'] ?? '');
-            if ($id === '') {
-                continue;
-            }
-            if (!isset($map[$id])) {
-                $map[$id] = [];
-            }
-            // Free-text messages carry the subject/body in meta (JSON); templated
-            // emails (confirmation/arrival/pay request) have none.
-            $meta = [];
-            if (!empty($r['meta'])) {
-                $decoded = json_decode((string) $r['meta'], true);
-                if (is_array($decoded)) {
-                    $meta = $decoded;
-                }
-            }
-            $map[$id][] = [
-                'action' => $r['action'],
-                'summary' => $r['summary'],
-                'at' => $r['created_at'],
-                'subject' => isset($meta['subject']) ? (string) $meta['subject'] : '',
-                'body' => isset($meta['body']) ? (string) $meta['body'] : '',
-            ];
-        }
-        // Sent as its changed buckets of bookings when the page names the ones it holds.
-        json_out_held(['logs' => $map], $in['have'] ?? '', ['logs', null, $in['haveb'] ?? '']);
+        json_out_held_fp('emaillog', EMAIL_LOG_STAMPS, 'email_log_payload', $in['have'] ?? '', ['logs', null, $in['haveb'] ?? '']);
     } catch (\Throwable $e) {
         json_out(['logs' => []]);
     }

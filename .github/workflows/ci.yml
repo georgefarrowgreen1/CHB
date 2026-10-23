@@ -177,6 +177,10 @@ jobs:
         working-directory: "Cottage Holidays Blakeney"
         run: php test-photo.php
 
+      - name: Change stamps (what a statement moves, the app's one connection, log_activity's own stamp)
+        working-directory: "Cottage Holidays Blakeney"
+        run: php test-stamps.php
+
       - name: Status page judgements (warning verdicts, the week, the daily traces)
         working-directory: "Cottage Holidays Blakeney"
         run: php test-status.php
