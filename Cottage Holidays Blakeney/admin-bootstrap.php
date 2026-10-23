@@ -44,9 +44,20 @@ try {
 // Reduced to what a status line needs: the worst staleness across the feeds, and
 // which cottage it belongs to. ical-import.php still serves the full per-source
 // detail to the settings page that asks for it.
+// THE SETTINGS THIS ANSWER READS, IN ONE QUERY (db.php content_prefetch): each was a
+// query of its own, 12 of the 44 a "nothing new" refresh made on a five-year business. A
+// setting a part reads that is not named here is still read, by itself.
+$livePks = [];
+try {
+    $livePks = array_values(array_filter(array_map(fn($r) => (string) ($r['prop_key'] ?? ''), db()->query('SELECT prop_key FROM properties WHERE archived_at IS NULL')->fetchAll())));
+} catch (\Throwable $e) {
+    $livePks = [];
+}
+content_prefetch(array_merge(array_map(fn($pk) => 'ical-status-' . $pk, $livePks), ['square-payouts', 'mailbox-new', 'mailbox-seen', 'duty-dismissed', 'inbox-state', 'payload-memo', 'square-deposit-pct', 'sms-enabled', 'cron-last-run']));
+
 $feeds = [];
 try {
-    foreach (db()->query('SELECT prop_key FROM properties WHERE archived_at IS NULL')->fetchAll() as $row) {
+    foreach (array_map(fn($pk) => ['prop_key' => $pk], $livePks) as $row) {
         $pk = (string) ($row['prop_key'] ?? '');
         if ($pk === '') {
             continue;

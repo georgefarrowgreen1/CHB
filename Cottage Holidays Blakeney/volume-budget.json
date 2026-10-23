@@ -4,9 +4,9 @@
   "measuredOn": "2026-10-22",
   "visitor boot": {
     "bytes": 30120,
-    "gz": 8125,
-    "statements": 9,
-    "rowsRead": 1885,
+    "gz": 8120,
+    "statements": 6,
+    "rowsRead": 579,
     "ms": 1000
   },
   "visitor availability": {
@@ -33,14 +33,14 @@
   "owner boot": {
     "bytes": 2601750,
     "gz": 246534,
-    "statements": 54,
-    "rowsRead": 18989,
+    "statements": 23,
+    "rowsRead": 18988,
     "ms": 1000
   },
   "owner boot, parts held": {
-    "bytes": 952,
-    "gz": 476,
-    "statements": 46,
+    "bytes": 949,
+    "gz": 474,
+    "statements": 16,
     "rowsRead": 7178,
     "ms": 1000
   },
@@ -65,11 +65,32 @@
     "rowsRead": 19281,
     "ms": 1000
   },
+  "owner email log, nothing new": {
+    "bytes": 59,
+    "gz": 81,
+    "statements": 6,
+    "rowsRead": 25,
+    "ms": 1000
+  },
+  "owner chat list, nothing new": {
+    "bytes": 59,
+    "gz": 81,
+    "statements": 6,
+    "rowsRead": 27,
+    "ms": 1000
+  },
+  "owner archived chats, nothing new": {
+    "bytes": 59,
+    "gz": 81,
+    "statements": 6,
+    "rowsRead": 27,
+    "ms": 1000
+  },
   "owner Payments": {
     "bytes": 32514,
     "gz": 4755,
     "statements": 25,
-    "rowsRead": 32715,
+    "rowsRead": 36254,
     "ms": 1000
   },
   "owner analytics": {
@@ -128,10 +149,10 @@
     "restyledByRow": 40
   },
   "owner boot, one booking changed": {
-    "bytes": 60134,
-    "gz": 7791,
-    "statements": 54,
-    "rowsRead": 18989,
+    "bytes": 60128,
+    "gz": 7787,
+    "statements": 23,
+    "rowsRead": 18988,
     "ms": 1000
   },
   "owner email log, one email sent": {

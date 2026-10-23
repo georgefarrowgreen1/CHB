@@ -23,6 +23,8 @@ require_once __DIR__ . '/devices-lib.php';
 require_once __DIR__ . '/photo-lib.php';
 // The scheduled jobs' own key (cron_request_ok below).
 require_once __DIR__ . '/cron-lib.php';
+// A number per table that moves whenever a row in it changes (db() hands out a ChbPDO).
+require_once __DIR__ . '/stamps-lib.php';
 
 // Pin all server date/time logic to UK time (the business operates in the UK),
 // so PHP date() and MySQL NOW()/CURDATE() agree regardless of the server locale.
@@ -145,7 +147,7 @@ function db()
     if ($pdo === null) {
         $dsn = 'mysql:host=' . DB_HOST . ';dbname=' . DB_NAME . ';charset=' . DB_CHARSET;
         try {
-            $pdo = new PDO($dsn, DB_USER, DB_PASS, [
+            $pdo = new ChbPDO($dsn, DB_USER, DB_PASS, [
                 PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
                 PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
                 PDO::ATTR_EMULATE_PREPARES => false,
@@ -786,9 +788,9 @@ function payload_parts_diff(array $out, array $keys, string $haveRaw, array $kno
 // `$list` names an answer's one long list as [field, id key (null: a map keyed by id),
 // the caller's bucket claim], so a changed answer goes as its changed buckets
 // (held_list below).
-function json_out_held(array $out, $have, ?array $list = null): void
+function json_out_held(array $out, $have, ?array $list = null, ?string $h = null): void
 {
-    $h = payload_hash($out);
+    $h = $h ?? payload_hash($out);
     if ($h !== '') {
         if (is_string($have) && preg_match('/^[0-9a-f]{16}$/', $have) && hash_equals($h, $have)) {
             json_out(['same' => true, 'h' => $h]);
@@ -888,13 +890,22 @@ function held_list(array $answer, string $field, ?string $idKey, $haveRaw): arra
 // no fingerprint: the part is built, as before.
 const PAYLOAD_FP_TABLES = ['bookings', 'payments', 'properties', 'guest_registrations', 'guest_ratings', 'guests'];
 const PAYLOAD_FP_CONTENT = ['square-deposit-pct'];
-function payload_bookings_fingerprint(?int $now = null): string
+// The deployed code: each PHP file's name, time and size, once a request.
+function payload_code_fp(): string
 {
-    try {
+    static $fp = null;
+    if ($fp === null) {
         $code = [];
         foreach (glob(__DIR__ . '/*.php') ?: [] as $f) {
             $code[] = basename($f) . ':' . (int) @filemtime($f) . ':' . (int) @filesize($f);
         }
+        $fp = md5(implode('|', $code));
+    }
+    return $fp;
+}
+function payload_bookings_fingerprint(?int $now = null): string
+{
+    try {
         $sums = [];
         foreach (db()->query('CHECKSUM TABLE ' . implode(', ', PAYLOAD_FP_TABLES))->fetchAll() as $r) {
             if (!isset($r['Checksum'])) {
@@ -908,7 +919,7 @@ function payload_bookings_fingerprint(?int $now = null): string
         $s = db()->prepare('SELECT item_key, item_value FROM content WHERE item_key IN (' . implode(',', array_fill(0, count(PAYLOAD_FP_CONTENT), '?')) . ') ORDER BY item_key');
         $s->execute(PAYLOAD_FP_CONTENT);
         $settings = $s->fetchAll(PDO::FETCH_KEY_PAIR);
-        $json = json_encode([md5(implode('|', $code)), date('Y-m-d H', $now ?? time()), site_base_url(), $sums, $settings]);
+        $json = json_encode([payload_code_fp(), date('Y-m-d H', $now ?? time()), site_base_url(), $sums, $settings]);
         return $json === false ? '' : substr(hash('sha256', $json), 0, 32);
     } catch (\Throwable $e) {
         return '';
@@ -927,15 +938,102 @@ function payload_memo_put(string $part, string $fp, string $h): void
         return;
     }
     try {
-        $m = content_json('payload-memo', []);
-        $m = is_array($m) ? $m : [];
-        if (($m[$part]['fp'] ?? '') === $fp && ($m[$part]['h'] ?? '') === $h) {
+        $was = payload_memo_get($part);
+        if ($was['fp'] === $fp && $was['h'] === $h) {
             return;
         }
-        $m[$part] = ['fp' => $fp, 'h' => $h];
-        content_set_scalar('payload-memo', $m);
+        // One read-change-save at a time: the Inbox asks for the email log and both chat
+        // lists at once, and a save made from a copy read before another's landed would
+        // undo it, so each visit would rebuild what the last one remembered.
+        content_locked('payload-memo', function () use ($part, $fp, $h) {
+            $m = content_json('payload-memo', []);
+            $m = is_array($m) ? $m : [];
+            if (($m[$part]['fp'] ?? '') === $fp && ($m[$part]['h'] ?? '') === $h) {
+                return;
+            }
+            $m[$part] = ['fp' => $fp, 'h' => $h];
+            content_set_scalar('payload-memo', $m);
+        });
     } catch (\Throwable $e) {
     }
+}
+// A READ'S FINGERPRINT FROM THE STAMPS OF THE TABLES IT IS MADE FROM (stamps-lib.php), the
+// deployed code and the hour (a change made outside the app, in phpMyAdmin say, is seen
+// within the hour). '' when the stamps cannot be read: the answer is then built, as before.
+function held_fp(string $part, array $tables, array $extra = []): string
+{
+    $s = held_stamps($tables);
+    if ($s === null) {
+        return '';
+    }
+    $json = json_encode([$part, payload_code_fp(), date('Y-m-d H'), site_base_url(), $s, $extra]);
+    return $json === false ? '' : substr(hash('sha256', $json), 0, 32);
+}
+// Whether a kept answer is checked against a fresh build: the integration harness sets
+// CHB_PAYLOAD_FP_STRICT, so its sections test the fingerprints. A probe there may ask for the
+// path production takes ($GLOBALS['__chb_fp_lenient']); no request can set it.
+function chb_fp_strict(): bool
+{
+    return defined('CHB_PAYLOAD_FP_STRICT') && CHB_PAYLOAD_FP_STRICT && empty($GLOBALS['__chb_fp_lenient']);
+}
+// The named stamps as [name => number] (stamps-lib.php): from the request's content memo
+// when a read already holds them (a visitor's one content read does, and json_out_held_fp
+// asks for them with the remembered answers), else in one query. null when unreadable.
+function held_stamps(array $names): ?array
+{
+    $names = array_values(array_unique(array_map('strval', $names)));
+    $out = [];
+    $ask = [];
+    foreach ($names as $n) {
+        $v = chb_stamp_moved($n) ? null : content_memo_get(CHB_STAMP_KEY . $n);
+        if ($v === null) {
+            $ask[] = $n;
+        } else {
+            $out[$n] = $v === false ? 0 : (int) $v;
+        }
+    }
+    if ($ask) {
+        try {
+            $st = db()->prepare('SELECT item_key, item_value FROM content WHERE item_key IN (' . implode(',', array_fill(0, count($ask), '?')) . ')');
+            $st->execute(array_map(fn($n) => CHB_STAMP_KEY . $n, $ask));
+            $got = $st->fetchAll(PDO::FETCH_KEY_PAIR);
+        } catch (\Throwable $e) {
+            return null;
+        }
+        foreach ($ask as $n) {
+            $out[$n] = (int) ($got[CHB_STAMP_KEY . $n] ?? 0);
+        }
+    }
+    ksort($out);
+    return $out;
+}
+// json_out_held for a read with a fingerprint: a page naming the hash the remembered
+// fingerprint produced hears "same" with nothing built, for one query (the stamps and the
+// remembered answers, read together). Every build checks the fingerprint as
+// admin-bootstrap's does: a remembered one that comes back with a different answer missed
+// a change, which is said loudly and refused under CHB_PAYLOAD_FP_STRICT (the integration
+// harness), so every section that reads it after a change tests it.
+function json_out_held_fp(string $part, array $tables, callable $build, $have, ?array $list = null): void
+{
+    content_prefetch(array_merge(array_map(fn($t) => CHB_STAMP_KEY . $t, $tables), ['payload-memo']));
+    $fp = held_fp($part, $tables);
+    $memo = $fp !== '' ? payload_memo_get($part) : ['fp' => '', 'h' => ''];
+    if ($fp !== '' && $memo['h'] !== '' && hash_equals($memo['fp'], $fp) && is_string($have) && preg_match('/^[0-9a-f]{16}$/', $have) && hash_equals($memo['h'], $have)) {
+        json_out(['same' => true, 'h' => $memo['h']]);
+    }
+    $out = $build();
+    $h = payload_hash($out);
+    if ($fp !== '' && $h !== '') {
+        $stale = hash_equals($memo['fp'], $fp) && $memo['h'] !== '' && !hash_equals($memo['h'], $h);
+        payload_memo_put($part, $fp, $h);
+        if ($stale) {
+            chb_log_server_error('Held answer missed a change', $part . ': the answer changed under an unchanged fingerprint; a write went round the stamps (stamps-lib.php), or the answer reads a table its fingerprint leaves out', __FILE__, __LINE__);
+            if (chb_fp_strict()) {
+                json_out(['error' => 'The ' . $part . ' answer changed under an unchanged fingerprint', 'code' => 'fp_stale'], 500);
+            }
+        }
+    }
+    json_out_held($out, $have, $list, $h);
 }
 function body()
 {
@@ -2254,6 +2352,10 @@ function is_internal_content_key($key)
         return true; // the owner payload's fingerprint and the hash it produced
                      // (payload_memo_put) — server-only
     }
+    if (strpos($key, 'stamp-') === 0 || $key === 'reviews-memo') {
+        return true; // a table's change stamp (stamps-lib.php) and the review figures kept
+                     // beside the stamps they were made from (reviews.php) — server-only
+    }
     if ($key === 'monzo-link') {
         return true; // the Monzo Business live link's state (monzo-sync.php): which
                      // account, when it last synced, the balance — never public.
@@ -2462,8 +2564,36 @@ function content_memo_warm(array $raw, array $skipKeys = [], array $skipPrefixes
     $GLOBALS['__content_all'] = $raw;
     $GLOBALS['__content_skip'] = [array_flip($skipKeys), $skipPrefixes];
 }
+// A FEW NAMED SETTINGS READ IN ONE QUERY (CLAUDE.md '"Nothing new" costs almost nothing').
+// The owner's boot read a dozen, each with a query of its own (each cottage's calendar
+// state, the payout cache, the mailbox's new list, the duties dismissed, the Inbox's
+// record, ...); admin-bootstrap names them first and they are read together. A key not in
+// the table is held as not set, as fetchColumn() answers. Warmed by that one read-only
+// caller; a write to a key in the same request drops it, so a later read asks again.
+function content_prefetch(array $keys): void
+{
+    $keys = array_values(array_unique(array_filter(array_map('strval', $keys), fn($k) => $k !== '')));
+    if (!$keys) {
+        return;
+    }
+    try {
+        $s = db()->prepare('SELECT item_key, item_value FROM content WHERE item_key IN (' . implode(',', array_fill(0, count($keys), '?')) . ')');
+        $s->execute($keys);
+        $got = $s->fetchAll(PDO::FETCH_KEY_PAIR);
+    } catch (\Throwable $e) {
+        return; // each read asks for itself, as before
+    }
+    $pre = $GLOBALS['__content_pre'] ?? [];
+    foreach ($keys as $k) {
+        $pre[$k] = array_key_exists($k, $got) ? $got[$k] : false;
+    }
+    $GLOBALS['__content_pre'] = $pre;
+}
 function content_memo_get(string $key)
 {
+    if (isset($GLOBALS['__content_pre']) && array_key_exists($key, $GLOBALS['__content_pre'])) {
+        return $GLOBALS['__content_pre'][$key];
+    }
     if (!isset($GLOBALS['__content_all']) || !is_array($GLOBALS['__content_all'])) {
         return null; // not warmed — the caller falls back to its own SELECT
     }
@@ -2573,6 +2703,7 @@ function content_set_scalar($key, $val)
     if ($json === false) {
         throw new RuntimeException('content_set_scalar: ' . (string) $key . ' could not be encoded');
     }
+    unset($GLOBALS['__content_pre'][(string) $key]);
     db()
         ->prepare(
             'INSERT INTO content (item_key, item_value) VALUES (?, ?)
@@ -2598,7 +2729,7 @@ function content_locked($key, callable $fn, $wait = 5)
     }
     // The request memo (bootstrap's whole-table read) would answer the read
     // from before the lock was taken.
-    unset($GLOBALS['__content_all']);
+    unset($GLOBALS['__content_all'], $GLOBALS['__content_pre']);
     try {
         return $fn();
     } finally {
@@ -2620,6 +2751,7 @@ function content_set_secret($key, $val)
         throw new RuntimeException('content_set_secret: ' . (string) $key . ' could not be encoded');
     }
     $enc = encrypt_value($json);
+    unset($GLOBALS['__content_pre'][(string) $key]);
     db()
         ->prepare(
             'INSERT INTO content (item_key, item_value) VALUES (?, ?)
@@ -2722,10 +2854,12 @@ function log_activity($category, $action, $summary, $opts = [])
             isset($opts['meta']) ? mb_substr((string) json_encode($opts['meta']), 0, 4000) : null,
             $_SERVER['REMOTE_ADDR'] ?? null,
         ];
+        // The insert stamps itself (stamps-lib.php): by entity, so the email log hears
+        // "same" past a day of other actions being logged.
         try {
             db()
                 ->prepare(
-                    'INSERT INTO activity_log (actor, category, action, summary, prop_key, entity, entity_id, meta, ip, severity)
+                    CHB_STAMP_SELF . ' INSERT INTO activity_log (actor, category, action, summary, prop_key, entity, entity_id, meta, ip, severity)
                      VALUES (?,?,?,?,?,?,?,?,?,?)',
                 )
                 ->execute([...$vals, $sev]);
@@ -2733,10 +2867,14 @@ function log_activity($category, $action, $summary, $opts = [])
             // severity column not migrated yet — record without it so logging still works.
             db()
                 ->prepare(
-                    'INSERT INTO activity_log (actor, category, action, summary, prop_key, entity, entity_id, meta, ip)
+                    CHB_STAMP_SELF . ' INSERT INTO activity_log (actor, category, action, summary, prop_key, entity, entity_id, meta, ip)
                      VALUES (?,?,?,?,?,?,?,?,?)',
                 )
                 ->execute($vals);
+        }
+        $pdo = db();
+        if ($vals[5] !== null && in_array($vals[5], CHB_STAMPED_ENTITIES, true) && $pdo instanceof ChbPDO) {
+            $pdo->chbTouch(['activity_log.' . $vals[5]]);
         }
     } catch (\Throwable $e) {
     }

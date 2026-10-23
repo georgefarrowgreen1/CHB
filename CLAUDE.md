@@ -1802,6 +1802,110 @@ search.php `search_ft_terms` and the quick path; migration-151.
   before the boot's own session check had answered (it waits with `bootVerdict` now, as the other suites do), and
   ui-test-overlays slept 450ms before asserting an exit had finished (it waits on the state now, up to 3s).
 
+## "Nothing new" costs almost nothing (third round, upgrade 5)
+
+"Same" (`json_out_held`, "Four more reads answer same") saved the bytes, but the server still built the email log
+(17,510 rows read on five years), the chat list (7,630) and a visitor's review figures in full to find out nothing
+had changed. Now each of them is answered from a number per table that moves whenever a row in it changes. Code:
+stamps-lib.php; db.php `held_fp`, `held_stamps`, `json_out_held_fp`, `content_prefetch`; reviews.php
+`reviews_summary_held`.
+- **A STAMP PER TABLE, MOVED WHERE EVERY WRITE PASSES** (`CHB_STAMPED`: activity_log, chat_threads, direct_leads,
+  guest_reviews, guests, messages). `db()` hands out a `ChbPDO`, whose statements report each write: a statement that
+  names a stamped table and is not a read moves `content` row `stamp-<table>` by one. The rules:
+  - an INSERT, UPDATE, DELETE or REPLACE that changed no row moves nothing (reading a chat a second time);
+  - inside a transaction the stamps move when it ends, however it ends (a stamp moved for nothing costs a build;
+    one moved before the commit could be read before the write);
+  - a statement whose effect cannot be read from its text (EXECUTE, CALL, LOAD…) moves every stamp.
+
+  A stamp you have to remember to move is one the next writer forgets. A stamp is a content row (internal and
+  server-only: `is_internal_content_key`, `CONTENT_SERVER_ONLY_PREFIX`), so nothing waited on a migration.
+- **log_activity stamps its own insert, by entity** (`CHB_STAMP_SELF` marks the insert; it moves
+  `activity_log.<entity>` for `CHB_STAMPED_ENTITIES`, today `booking`). Every action is logged, and moving
+  `activity_log` for each would mean the email log never heard "same".
+- **THE WRITE'S OWN ID OUTLIVES ITS STAMP.** A stamp is an INSERT into content, which has no AUTO_INCREMENT, so after it
+  the connection's insert id read 0: every new guest, chat thread and message was filed under id 0. The integration
+  suite found it at once (a session minted for guest 0, a duplicate key on guest 0). `ChbPDO::lastInsertId()` answers
+  the id as it stood before the first stamp, until the next real statement, so it reads exactly as it would with no
+  stamp at all. Nothing in the app reads `ROW_COUNT()` or `FOUND_ROWS()`, which a stamp would also move.
+- **A READ'S FINGERPRINT** (`held_fp`): its tables' stamps, the deployed code (`payload_code_fp`, once a request), the
+  hour and the site's address. `json_out_held_fp` reads the stamps and the remembered answers (`payload-memo`) in ONE
+  query and answers "same" with nothing built when the page names the hash that fingerprint produced. Every build
+  checks it, as the owner boot's does: a remembered fingerprint that comes back with a different answer missed a
+  change, which is logged, and refused (500 `fp_stale`) under `CHB_PAYLOAD_FP_STRICT` (the integration harness).
+  `payload_memo_put` saves under `content_locked`, because the Inbox asks for three lists at once.
+- **A VISITOR'S REVIEW FIGURES ARE KEPT** (`reviews-memo` {fp, body}, internal and server-only) and ride the visitor's
+  one content read, so a kept answer reads no review at all. `reviews_kept_body` reads it back as built (the
+  per-cottage map decodes as an array, and an empty one would go out as `[]` where a build sends `{}`).
+- **The owner's boot reads its settings in one query** (`content_prefetch` names a dozen keys: each cottage's calendar
+  state, the payout cache, the mailbox's new list, the duties dismissed, the Inbox's record…), and the enquiries list
+  reads every enquirer's past stays in one query: a UNION of `email = ?` per address, so the index and the column's
+  collation decide case.
+- **A write the app does not make moves nothing** (phpMyAdmin, the mysql client); the hour in every fingerprint bounds
+  it. The standalone pages that open their own connection (cottage, experiences-page, home, review, sitemap, status)
+  write nothing, and the two public reporters write only activity rows with no entity, which no stamped reader lists:
+  test-stamps checks both, and fails on any new file that opens its own connection.
+- Measured on the five-year business, with settled statistics:
+
+  | | Before | After |
+  |---|---|---|
+  | Email log, nothing new | 4 statements, 17,510 rows | 4 statements, 4 rows |
+  | Chat list, nothing new | 4 statements, 7,630 rows | 4 statements, 6 rows |
+  | Archived chats, nothing new | a full build | 4 statements, 6 rows |
+  | Visitor boot | 7 statements, 1,695 rows | 4 statements, 508 rows |
+  | Owner boot (first visit) | 52 statements | 21 statements |
+  | Owner boot, parts held | 44 statements | 14 statements |
+
+  A full build of the email log or chat list costs one more statement than before (the stamps and memo).
+- Gates:
+  - **test-stamps.php** (52 checks, no database): the statement classifier case by case, every connection the app
+    opens, and the marker only in log_activity.
+  - test-integration **§105**:
+    - the ids;
+    - each list's tables read from MySQL's statement log, against its stamps;
+    - "same" with none of its tables read;
+    - every way the tables change moving its stamps, and two that must not;
+    - a transaction's stamp at commit and at rollback;
+    - the review figures after an approval, a renamed reviewer and the owner's own reviews;
+    - both `fp_stale` refusals;
+    - the round trip of kept figures;
+    - nothing reaching a browser;
+    - the past stays whatever the case.
+  - volume-test's three "nothing new" reads.
+
+  Twelve mutations were break-tested one at a time against setup plus §105, each failing its own named checks:
+  - no ChbPDO;
+  - no marker;
+  - no touch in log_activity;
+  - no transaction queue;
+  - no zero-row rule;
+  - guests left out of the review stamps;
+  - no strict compare;
+  - no props cast;
+  - the id not kept;
+  - the bump clearing the kept id;
+  - a case-sensitive address;
+  - the stamps made public.
+- **WHAT THE GATES TAUGHT.**
+  - "Same" alone cannot tell a stamp that held from one that moved over an unchanged answer: the rebuild hashes to
+    what the page holds and says "same" too. The first "moves nothing" checks passed with the zero-row rule and the
+    marker removed, so they read the stamps themselves now.
+  - MySQL's statement log is the server's: a second copy of the suite on the same server read as this app's
+    statements, so the window counts only connections opened on this run's database.
+  - A check placed after the fixture that uses its id is pre-empted by the crash (a message filed under thread 0
+    fails a foreign key), so each id is checked straight after its insert.
+  - **PHPStan analyses test-integration.php in ONE worker, and its top level as ONE scope.** Typing the harness's
+    connection as the user class `ChbPDO` took that file from 1.81GB to 2.34GB and 45s longer, over the battery's
+    2G (`run-checks.js` runs PHPStan with `memory_limit=2G`; it crashed there and passed with no limit). The
+    connection is a `ChbPDO` at runtime and declared `PDO` (`it_pdo`); the stamp calls narrow with `instanceof`,
+    and a check asserts the premise. §105 also runs in a closure (its locals at the top level cost 70MB). The file
+    measures 1.83GB now. A new section belongs in a closure too, and a type change on `$rootDb` needs measuring:
+    `php -d memory_limit=-1 phpstan.phar analyse --debug -vvv test-integration.php` prints "Used memory".
+- **The volume test analyzes its tables after seeding.** InnoDB recalculates statistics in the background after a
+  bulk change, so a figure moved with what ran before it: Payments read 29,722 rows on unsettled statistics and
+  32,940 on settled ones (the same 23 statements). Main read 32,940 too once analyzed, so its budget follows, and
+  guest stays came down 72 → 64. The volume test's own hand writes (through the mysql client, outside the app) move
+  the stamps they would have moved (`touch()`), or the page's merge after them heard "same".
+
 ## Automatic collection: finished plans, Square's silences, two passes at once (round 5)
 
 Found by the scheduled-jobs review and each reproduced against the real collector code.

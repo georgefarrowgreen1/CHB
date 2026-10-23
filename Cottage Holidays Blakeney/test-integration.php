@@ -80,17 +80,31 @@ function fatal_it($msg)
     exit(1);
 }
 
+/**
+ * The harness's own connection: a ChbPDO (stamps-lib.php), so a change it makes by hand moves
+ * the change stamps exactly as the app's would (§105). Declared PDO for the analyser: typed as
+ * the user class, PHPStan carried it through every one of this file's calls on $rootDb at a cost
+ * of 470MB and 45s, which took the file over the battery's 2G.
+ */
+function it_pdo(string $dsn, string $user, string $pass, array $opts): PDO
+{
+    return new ChbPDO($dsn, $user, $pass, $opts);
+}
+
 // migrate.php's pure helpers (split_sql for applying schema.sql); its request
 // bootstrap returns early because the running script isn't migrate.php.
 require __DIR__ . '/migrate.php';
 // The payment-schedule helpers, so §4 can assert the public payload against the
 // SERVER'S own answer rather than against a number written down twice.
 require_once __DIR__ . '/pricing.php';
+require_once __DIR__ . '/stamps-lib.php';
 
 // ---- 1. Fresh database --------------------------------------------------
 echo "== 1. Fresh database + schema.sql ==\n";
 try {
-    $rootDb = new PDO("mysql:host=$DB_HOST;port=$DB_PORT;charset=utf8mb4", $DB_USER, $DB_PASS, [
+    // A ChbPDO (it_pdo): a change this harness makes by hand moves the change stamps
+    // exactly as the app's would, so the "nothing new" answers see it (§105).
+    $rootDb = it_pdo("mysql:host=$DB_HOST;port=$DB_PORT;charset=utf8mb4", $DB_USER, $DB_PASS, [
         PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
         PDO::ATTR_TIMEOUT => 5,
     ]);
@@ -8368,6 +8382,308 @@ $rootDb->exec("DELETE FROM enquiries WHERE email = 'enq104@x.test'");
 $rootDb->exec("DELETE FROM guest_reviews WHERE guest_id = 910104");
 $rootDb->exec("DELETE FROM expenses WHERE description LIKE '%zanzibarquill%'");
 $rootDb->exec("DELETE FROM waitlist WHERE email = 'wait104@x.test'");
+
+// §105 "NOTHING NEW" COSTS ALMOST NOTHING (CLAUDE.md). The email log, the chat lists and a
+// visitor's review figures answer from the change stamps of the tables they are made from
+// (stamps-lib.php): "same" with nothing built while no stamp moved, and every way those
+// tables change moves one. The owner's enquiries read every enquirer's stays in one query.
+echo "\n== §105 nothing new costs almost nothing ==\n";
+// In a scope of its own: PHPStan analyses this file's top level as ONE scope, and every variable
+// a section leaves there is carried through every statement after it (§105's locals cost 70MB).
+(function () use ($rootDb, $work, $DB_NAME, $propKey, $ukPlus, &$adm83): void {
+    $stamp105 = function (string $name) use ($rootDb): int {
+        return (int) ($rootDb->query('SELECT item_value FROM content WHERE item_key = ' . $rootDb->quote('stamp-' . $name))->fetchColumn() ?: 0);
+    };
+    $g105 = 'stamps105@example.com';
+    $rootDb->prepare("INSERT INTO guests (name, email, phone, address, postcode, password_hash, email_verified_at) VALUES ('Stella Stamps', ?, '', '', '', '', NULL)")->execute([$g105]);
+    $gid105 = (int) $rootDb->lastInsertId();
+    // A stamp is an INSERT into content, which has no AUTO_INCREMENT, so the connection's own
+    // insert id reads 0 after it: the write before it must still answer its own id, or every
+    // new guest, chat and message is filed under id 0 (it was, until ChbPDO kept the id).
+    // Checked straight after each insert, before anything is filed under the id.
+    it_check('§105 an insert into a stamped table still answers its own id, the stamp after it notwithstanding',
+        $gid105 > 0 && $gid105 === (int) $rootDb->query('SELECT MAX(id) FROM guests')->fetchColumn(), "guest $gid105");
+    $rootDb->prepare('INSERT INTO chat_threads (guest_id, token, name, email) VALUES (?, ?, ?, ?)')->execute([$gid105, 'st105-' . bin2hex(random_bytes(6)), 'Stella Stamps', $g105]);
+    $tid105 = (int) $rootDb->lastInsertId();
+    it_check('§105 …a chat thread too', $tid105 > 0 && $tid105 === (int) $rootDb->query('SELECT MAX(id) FROM chat_threads')->fetchColumn(), "thread $tid105");
+    $rootDb->prepare("INSERT INTO messages (guest_id, thread_id, sender_role, body, read_by_admin) VALUES (?, ?, 'guest', 'Is the cot still there?', 0)")->execute([$gid105, $tid105]);
+    $note105 = $rootDb->prepare("INSERT INTO activity_log (actor, category, action, summary, entity, entity_id, meta) VALUES ('owner', 'comms', 'comms.message', ?, 'booking', '105105', ?)");
+    $note105->execute(['Your stay, 105', json_encode(['subject' => 'Your stay', 'body' => 'Hello'])]);
+
+    it_check('§105 the harness writes through the stamping connection, as the app does', $rootDb instanceof ChbPDO, get_class($rootDb));
+    $touch105 = function (array $names) use ($rootDb): void {
+        if ($rootDb instanceof ChbPDO) {
+            $rootDb->chbTouch($names);
+        }
+    };
+    $rootDb->prepare("INSERT INTO messages (guest_id, thread_id, sender_role, body, read_by_admin) VALUES (?, ?, 'guest', 'And a highchair?', 0)")->execute([$gid105, $tid105]);
+    $touch105(['messages']);
+    $msg1105 = (int) $rootDb->lastInsertId();
+    $rootDb->prepare("INSERT INTO messages (guest_id, thread_id, sender_role, body, read_by_admin) VALUES (?, ?, 'guest', 'Thanks!', 0)")->execute([$gid105, $tid105]);
+    $touch105(['messages']);
+    $msg2105 = (int) $rootDb->lastInsertId();
+    $msgMax105 = (int) $rootDb->query('SELECT MAX(id) FROM messages')->fetchColumn();
+    it_check('§105 …through a second stamp after it (log_activity moves its own), and the next write answers its own',
+        $msg1105 > 0 && $msg2105 > $msg1105 && $msg2105 === $msgMax105, "$msg1105 then $msg2105, latest $msgMax105");
+    $rootDb->prepare("INSERT INTO expenses (category, description, amount, expense_date) VALUES ('General', 'it105 id', 1, CURDATE())")->execute();
+    $exp105 = (int) $rootDb->lastInsertId();
+    it_check('§105 …and a write to a table with no stamp answers its own id after a stamped one',
+        $exp105 > 0 && $exp105 === (int) $rootDb->query('SELECT MAX(id) FROM expenses')->fetchColumn(), (string) $exp105);
+    $rootDb->exec('DELETE FROM expenses WHERE id = ' . $exp105);
+    $rootDb->beginTransaction();
+    $rootDb->prepare("INSERT INTO messages (guest_id, thread_id, sender_role, body, read_by_admin) VALUES (?, ?, 'guest', 'In a transaction', 0)")->execute([$gid105, $tid105]);
+    $txId105 = (int) $rootDb->lastInsertId();
+    $rootDb->commit();
+    it_check('§105 …and inside a transaction, whose stamp waits for its end',
+        $txId105 > 0 && $txId105 === (int) $rootDb->query("SELECT MAX(id) FROM messages WHERE body = 'In a transaction'")->fetchColumn(), (string) $txId105);
+    $rootDb->prepare("DELETE FROM messages WHERE thread_id = ? AND body <> 'Is the cot still there?'")->execute([$tid105]);
+
+    // What each answer is made from, read from MySQL's own statement log: a table it reads
+    // that its stamps leave out would be answered "same" after a change to it.
+    file_put_contents($work . '/it105-probe.php', '<?php
+    $_SERVER["SCRIPT_NAME"] = "/it105-probe.php"; $_SERVER["REQUEST_METHOD"] = "GET"; $_SERVER["HTTP_HOST"] = "127.0.0.1";
+    require __DIR__ . "/db.php"; require_once __DIR__ . "/bookings.php"; require_once __DIR__ . "/chat-lib.php"; require_once __DIR__ . "/content.php"; require_once __DIR__ . "/reviews.php";
+    $what = $argv[1] ?? "";
+    if ($what === "lists") { echo json_encode([EMAIL_LOG_STAMPS, CHAT_THREADS_STAMPS, REVIEWS_STAMPS]); exit; }
+    if ($what === "log") { log_activity("comms", "comms.message", "Logged, 105", ["entity" => $argv[2], "entity_id" => "105105"]); exit; }
+    if ($what === "roundtrip") {
+        // Kept figures are JSON in the content table: read back, they must encode as built, with
+        // no reviews (an empty per-cottage map) and with some.
+        $out = [];
+        foreach ([[], [["prop" => "it105", "stars" => 5, "text" => "A lovely week by the quay, thank you", "src" => "g"]]] as $all) {
+            $built = reviews_summary($all);
+            $out[] = json_encode(reviews_kept_body(json_decode((string) json_encode($built), true))) === json_encode($built);
+        }
+        echo json_encode($out);
+        exit;
+    }
+    if ($what === "hot") {
+        // The path production takes: a visitor whose figures are kept reads no review at all.
+        $GLOBALS["__chb_fp_lenient"] = true;
+        content_public_payload();
+        $a = reviews_public_payload();
+        content_public_payload();
+        $q = fn() => (int) db()->query("SHOW SESSION STATUS LIKE \'Questions\'")->fetch()["Value"];
+        $q0 = $q();
+        $b = reviews_public_payload();
+        $n = $q() - $q0 - 1;
+        echo json_encode([$n, json_encode($a) === json_encode($b), (int) ($b["n"] ?? -1)]);
+        exit;
+    }
+    fwrite(STDOUT, (int) db()->query("SELECT CONNECTION_ID()")->fetchColumn() . "\n");
+    fgets(STDIN);
+    if ($what === "email") { $n = count(email_log_payload()["logs"]); }
+    elseif ($what === "threads") { $n = count(chat_threads_payload(0)["threads"]); }
+    else { $n = (int) reviews_summary(reviews_merge(reviews_guest_list(), reviews_curated_list()))["n"]; }
+    fwrite(STDOUT, $n . "\n");
+    ');
+    [$emailStamps105, $threadStamps105, $reviewStamps105] = json_decode((string) shell_exec('php ' . escapeshellarg($work . '/it105-probe.php') . ' lists'), true) ?: [[], [], []];
+    $read105 = function (string $what) use ($rootDb, $work): array {
+        $logWas = $rootDb->query('SELECT @@GLOBAL.log_output o, @@GLOBAL.general_log g')->fetch();
+        $proc = proc_open('exec php ' . escapeshellarg($work . '/it105-probe.php') . ' ' . escapeshellarg($what), [0 => ['pipe', 'r'], 1 => ['pipe', 'w'], 2 => ['pipe', 'w']], $pp, $work);
+        $cid = (int) trim((string) fgets($pp[1]));
+        $rootDb->exec("SET GLOBAL log_output = 'TABLE'");
+        $rootDb->exec('SET GLOBAL general_log = 1');
+        fwrite($pp[0], "go\n");
+        $n = (int) trim((string) fgets($pp[1]));
+        $err = stream_get_contents($pp[2]);
+        proc_close($proc);
+        $rootDb->exec('SET GLOBAL general_log = ' . (int) $logWas['g']);
+        $rootDb->exec('SET GLOBAL log_output = ' . $rootDb->quote((string) $logWas['o']));
+        $stmts = $rootDb->query('SELECT CONVERT(argument USING utf8mb4) FROM mysql.general_log WHERE thread_id = ' . $cid . " AND command_type IN ('Query', 'Execute')")->fetchAll(PDO::FETCH_COLUMN);
+        $tables = [];
+        $keys = [];
+        foreach ($stmts as $sql) {
+            if (preg_match_all('/\b(?:FROM|JOIN)\s+`?([a-z_0-9]+)`?/i', (string) $sql, $m)) {
+                foreach ($m[1] as $t) {
+                    $tables[strtolower($t)] = true;
+                }
+            }
+            if (preg_match_all("/item_key\s*(?:=|IN\s*\()\s*'([^']*)'/i", (string) $sql, $m)) {
+                foreach ($m[1] as $k) {
+                    $keys[$k] = true;
+                }
+            }
+        }
+        return [$n, array_keys($tables), array_keys($keys), $err];
+    };
+    $base105 = fn(array $stamps) => array_values(array_unique(array_map(fn($s) => explode('.', $s)[0], $stamps)));
+    foreach (['email' => [$emailStamps105, 'the email log'], 'threads' => [$threadStamps105, 'the chat list'], 'reviews' => [$reviewStamps105, "a visitor's review figures"]] as $what => [$stamps, $label]) {
+        [$n, $tables, $keys, $err] = $read105($what);
+        $extra = array_values(array_diff($tables, $base105($stamps), $what === 'reviews' ? ['content'] : []));
+        it_check("§105 $label reads only the tables its stamps cover (" . implode(', ', $tables) . ')', ($what === 'reviews' || $n > 0) && $tables && !$extra, "n=$n extra=" . implode(',', $extra) . ' ' . $err);
+        if ($what === 'reviews') {
+            it_check('§105 …and of the settings, only the owner\'s own reviews (in its fingerprint)', array_diff($keys, ['reviews']) === [], implode(',', $keys));
+        }
+    }
+
+    // An unchanged answer is "same" with none of its tables read. The statement log is the
+    // server's, so only connections opened on this run's database count (each request opens
+    // its own): another copy of the suite on the same server must not read as this app's.
+    $served105 = function (callable $fn) use ($rootDb, $DB_NAME): array {
+        $me = (int) $rootDb->query('SELECT CONNECTION_ID()')->fetchColumn();
+        $logWas = $rootDb->query('SELECT @@GLOBAL.log_output o, @@GLOBAL.general_log g')->fetch();
+        $t0 = (string) $rootDb->query('SELECT NOW(6)')->fetchColumn();
+        $rootDb->exec("SET GLOBAL log_output = 'TABLE'");
+        $rootDb->exec('SET GLOBAL general_log = 1');
+        $r = $fn();
+        $rootDb->exec('SET GLOBAL general_log = ' . (int) $logWas['g']);
+        $rootDb->exec('SET GLOBAL log_output = ' . $rootDb->quote((string) $logWas['o']));
+        $st = $rootDb->prepare("SELECT CONVERT(argument USING utf8mb4) FROM mysql.general_log
+            WHERE event_time >= ? AND thread_id <> ? AND command_type IN ('Query', 'Execute')
+              AND thread_id IN (SELECT thread_id FROM mysql.general_log WHERE event_time >= ? AND command_type = 'Connect' AND CONVERT(argument USING utf8mb4) LIKE ?)");
+        $st->execute([$t0, $me, $t0, '% on ' . $DB_NAME . ' %']);
+        return [$r, $st->fetchAll(PDO::FETCH_COLUMN)];
+    };
+    $h105 = function (string $path, array $body) use (&$adm83): string {
+        return (string) (http($adm83, 'POST', $path, $body)['json']['h'] ?? '');
+    };
+    $lists105 = [
+        'the email log' => ['/bookings.php', ['action' => 'email_logs'], '/\bactivity_log\b/i'],
+        'the chat list' => ['/messages.php', ['action' => 'threads'], '/\b(messages|chat_threads)\b/i'],
+        'the archived chat list' => ['/messages.php', ['action' => 'threads', 'archived' => 1], '/\b(messages|chat_threads)\b/i'],
+    ];
+    foreach ($lists105 as $label => [$path, $body, $tableRe]) {
+        for ($try = 0; $try < 2; $try++) { // once more if the hour (in every fingerprint) turned
+            $h = $h105($path, $body);
+            [$r, $stmts] = $served105(fn() => http($adm83, 'POST', $path, $body + ['have' => $h]));
+            $touched = array_values(array_filter($stmts, fn($q) => preg_match($tableRe, (string) $q) && !preg_match('/stamp-/', (string) $q)));
+            if (!$touched) {
+                break;
+            }
+        }
+        // At least one statement: the request's own read of its stamps (none seen means the
+        // log was not read, not that nothing was asked).
+        it_check("§105 $label, nothing new: \"same\", with none of its tables read (" . count($stmts) . ' statements)',
+            ($r['json']['same'] ?? null) === true && $h !== '' && !$touched && count($stmts) >= 1 && count($stmts) <= 8, substr($r['raw'], 0, 100) . ' ' . implode(' | ', array_map(fn($q) => substr((string) $q, 0, 80), $touched)));
+    }
+    $hot105 = json_decode((string) shell_exec('php ' . escapeshellarg($work . '/it105-probe.php') . ' hot'), true);
+    it_check("§105 a visitor whose review figures are kept reads nothing for them, and gets what a build gives (" . json_encode($hot105) . ')',
+        is_array($hot105) && $hot105[0] === 0 && $hot105[1] === true && $hot105[2] >= 0, json_encode($hot105));
+    $rt105 = json_decode((string) shell_exec('php ' . escapeshellarg($work . '/it105-probe.php') . ' roundtrip'), true);
+    it_check('§105 …and kept figures read back as built, with no reviews ({} stays {}) and with some', $rt105 === [true, true], json_encode($rt105));
+
+    // Every way the tables change moves a stamp, and the next ask is answered in full.
+    $probe105 = fn(string $entity) => shell_exec('php ' . escapeshellarg($work . '/it105-probe.php') . ' log ' . escapeshellarg($entity));
+    $moves105 = [
+        ['the email log', 'a booking email logged by log_activity', fn() => $probe105('booking'), true],
+        ['the email log', 'another kind of activity logged', fn() => $probe105('enquiry'), false],
+        ['the email log', 'a row written by hand', fn() => $note105->execute(['By hand, 105', null]), true],
+        ['the email log', "an email's words cleared", fn() => $rootDb->exec("UPDATE activity_log SET meta = NULL WHERE entity = 'booking' AND entity_id = '105105'"), true],
+        ['the email log', 'a row pruned', fn() => $rootDb->exec("DELETE FROM activity_log WHERE entity = 'booking' AND entity_id = '105105' AND summary = 'By hand, 105'"), true],
+        ['the chat list', 'a new message', fn() => $rootDb->prepare("INSERT INTO messages (guest_id, thread_id, sender_role, body, read_by_admin) VALUES (?, ?, 'guest', 'And a high chair?', 0)")->execute([$gid105, $tid105]), true],
+        ['the chat list', 'the conversation read', fn() => $rootDb->prepare('UPDATE messages SET read_by_admin = 1 WHERE thread_id = ?')->execute([$tid105]), true],
+        ['the chat list', 'read again, changing nothing', fn() => $rootDb->prepare('UPDATE messages SET read_by_admin = 1 WHERE thread_id = ?')->execute([$tid105]), false],
+        ['the chat list', 'the guest proving their address', fn() => $rootDb->prepare('UPDATE guests SET email_verified_at = NOW() WHERE id = ?')->execute([$gid105]), true],
+        ['the chat list', 'the conversation archived', fn() => $rootDb->prepare('UPDATE chat_threads SET archived = 1 WHERE id = ?')->execute([$tid105]), true],
+        ['the archived chat list', 'the conversation brought back', fn() => $rootDb->prepare('UPDATE chat_threads SET archived = 0 WHERE id = ?')->execute([$tid105]), true],
+    ];
+    // "Same" alone cannot tell a stamp that held from one that moved over an unchanged answer
+    // (the rebuild hashes to what the page holds and says "same" too), so the stamps are read.
+    $stampSets105 = ['the email log' => $emailStamps105, 'the chat list' => $threadStamps105, 'the archived chat list' => $threadStamps105];
+    foreach ($moves105 as [$label, $what, $move, $moves]) {
+        [$path, $body] = $lists105[$label];
+        $h = $h105($path, $body);
+        $before = array_map($stamp105, $stampSets105[$label]);
+        $move();
+        $after = array_map($stamp105, $stampSets105[$label]);
+        $r = http($adm83, 'POST', $path, $body + ['have' => $h]);
+        $same = ($r['json']['same'] ?? null) === true;
+        it_check($moves ? "§105 $label: $what moves its stamps and is answered in full" : "§105 $label: $what moves no stamp and still hears \"same\"",
+            $r['code'] === 200 && $h !== '' && $stampSets105[$label] && $same === !$moves && ($before !== $after) === $moves && ($moves ? ($r['json']['h'] ?? '') !== $h : true),
+            json_encode([$before, $after]) . ' ' . substr($r['raw'], 0, 120));
+    }
+
+    // A transaction's writes move their stamps when it ends, however it ends.
+    $m0 = $stamp105('messages');
+    $rootDb->beginTransaction();
+    $rootDb->prepare('UPDATE messages SET read_by_admin = 0 WHERE thread_id = ?')->execute([$tid105]);
+    $m1 = $stamp105('messages');
+    $rootDb->commit();
+    $m2 = $stamp105('messages');
+    $rootDb->beginTransaction();
+    $rootDb->prepare('UPDATE messages SET read_by_admin = 1 WHERE thread_id = ?')->execute([$tid105]);
+    $rootDb->rollBack();
+    $m3 = $stamp105('messages');
+    it_check("§105 a transaction's write moves its stamp at commit, not before ($m0 → $m1 → $m2)", $m1 === $m0 && $m2 > $m1, "$m0 $m1 $m2");
+    it_check('§105 …and at a rollback too: a stamp moved for nothing costs a build, never a wrong "same"', $m3 > $m2, "$m2 $m3");
+
+    // A visitor's review figures follow the reviews, the reviewers and the owner's own.
+    $vis105 = [];
+    $rootDb->prepare("INSERT INTO guest_reviews (guest_id, prop_key, stars, review_text, status) VALUES (?, ?, 4, 'A lovely week by the quay, the cot was ready.', 'pending')")->execute([$gid105, $propKey]);
+    $rid105 = (int) $rootDb->lastInsertId();
+    $rv105 = fn() => http($vis105, 'GET', '/bootstrap.php')['json']['reviews'] ?? [];
+    $memo105 = fn() => json_decode((string) $rootDb->query("SELECT item_value FROM content WHERE item_key = 'reviews-memo'")->fetchColumn(), true) ?: [];
+    $a105 = $rv105();
+    $fpA = (string) ($memo105()['fp'] ?? '');
+    $rootDb->prepare("UPDATE guest_reviews SET status = 'approved' WHERE id = ?")->execute([$rid105]);
+    $b105 = $rv105();
+    $fpB = (string) ($memo105()['fp'] ?? '');
+    it_check('§105 a review approved moves the figures\' fingerprint, and the visitor is told of it', $fpA !== '' && $fpB !== $fpA && (int) ($b105['n'] ?? 0) === (int) ($a105['n'] ?? 0) + 1, json_encode([$a105['n'] ?? null, $b105['n'] ?? null]));
+    $rootDb->prepare("UPDATE guests SET name = 'Stella Renamed' WHERE id = ?")->execute([$gid105]);
+    $c105 = $rv105();
+    it_check("§105 …the reviewer's name changed, the figures carry the new name", strpos((string) json_encode($c105['list'] ?? []), 'Stella Renamed') !== false && (string) ($memo105()['fp'] ?? '') !== $fpB, '');
+    $fpC = (string) ($memo105()['fp'] ?? '');
+    http($adm83, 'POST', '/content.php', ['action' => 'set', 'key' => 'reviews', 'value' => [['name' => 'Owner Kept', 'stars' => 5, 'text' => 'Kept by the owner, 105.', 'prop' => $propKey]]]);
+    $d105 = $rv105();
+    it_check("§105 …and the owner's own reviews changed, so did they", (string) ($memo105()['fp'] ?? '') !== $fpC && strpos((string) json_encode($d105['list'] ?? []), 'Kept by the owner, 105.') !== false, '');
+
+    // A kept answer that differs from what a build gives is refused here, never served as current.
+    for ($try = 0; $try < 2; $try++) { // once more if the hour turned between the two asks
+        $h = $h105('/messages.php', ['action' => 'threads']);
+        $pm105 = json_decode((string) $rootDb->query("SELECT item_value FROM content WHERE item_key = 'payload-memo'")->fetchColumn(), true) ?: [];
+        $fp105 = (string) ($pm105['threads0']['fp'] ?? '');
+        $pm105['threads0'] = ['fp' => $fp105, 'h' => str_repeat('0', 16)];
+        $rootDb->prepare("UPDATE content SET item_value = ? WHERE item_key = 'payload-memo'")->execute([json_encode($pm105)]);
+        $r = http($adm83, 'POST', '/messages.php', ['action' => 'threads']);
+        if ($r['code'] === 500) {
+            break;
+        }
+    }
+    it_check('§105 a chat list that changed under an unchanged fingerprint is refused (fp_stale)', $fp105 !== '' && $r['code'] === 500 && ($r['json']['code'] ?? '') === 'fp_stale', $r['code'] . ' ' . substr($r['raw'], 0, 120));
+    $r = http($adm83, 'POST', '/messages.php', ['action' => 'threads']);
+    it_check('§105 …and the next ask is whole again', $r['code'] === 200 && isset($r['json']['threads']), $r['code'] . ' ' . substr($r['raw'], 0, 80));
+    for ($try = 0; $try < 2; $try++) { // once more if the hour turned
+        $rv105();
+        $rm105 = $memo105();
+        $rm105['body']['n'] = 9999;
+        $rootDb->prepare("UPDATE content SET item_value = ? WHERE item_key = 'reviews-memo'")->execute([json_encode($rm105)]);
+        $r = http($vis105, 'GET', '/bootstrap.php');
+        if ($r['code'] === 500) {
+            break;
+        }
+    }
+    it_check('§105 kept review figures that differ from a build are refused (fp_stale)', $r['code'] === 500 && ($r['json']['code'] ?? '') === 'fp_stale', $r['code'] . ' ' . substr($r['raw'], 0, 120));
+    it_check('§105 the stamps and the kept figures never reach a browser', !array_filter(array_keys((array) (http($adm83, 'POST', '/content.php', ['action' => 'get_all'])['json']['content'] ?? [])), fn($k) => strpos((string) $k, 'stamp-') === 0 || $k === 'reviews-memo')
+        && !array_filter(array_keys((array) (http($vis105, 'GET', '/content.php')['json']['content'] ?? [])), fn($k) => strpos((string) $k, 'stamp-') === 0 || $k === 'reviews-memo'), '');
+    $rootDb->exec("DELETE FROM content WHERE item_key IN ('reviews-memo', 'reviews')");
+
+    // The owner's enquiries: every enquirer's completed stays in one query, matched by the
+    // address column's own equality, as a query per address did.
+    $p105 = $rootDb->prepare("INSERT INTO bookings (prop_key, name, email, check_in, check_out, adults, children, payment, deposit_paid, agreed_total, agreed_nightly, agreed_txn_fee, agreed_nights) VALUES (?, 'Prior Stayer', ?, ?, ?, 2, 0, 'paid', 300, 300, 300, 0, 3)");
+    $p105->execute([$propKey, 'Prior105@Example.com', '2024-03-01', '2024-03-04']);
+    $p105->execute([$propKey, 'prior105@example.com', '2025-05-02', '2025-05-05']);
+    $e105 = $rootDb->prepare("INSERT INTO enquiries (prop_key, name, email, check_in, check_out, adults, children, message) VALUES (?, ?, ?, ?, ?, 2, 0, 'Again?')");
+    foreach ([['Prior Again', 'PRIOR105@example.com'], ['New Here', 'new105@example.com']] as [$n105, $em105]) {
+        $e105->execute([$propKey, $n105, $em105, $ukPlus(60), $ukPlus(63)]);
+    }
+    $en105 = [];
+    foreach ((array) (http($adm83, 'GET', '/enquiries.php')['json']['enquiries'] ?? []) as $e) {
+        $en105[(string) ($e['email'] ?? '')] = $e;
+    }
+    $pa105 = $en105['PRIOR105@example.com'] ?? [];
+    it_check("§105 an enquirer's completed stays are counted whatever the address's case, the latest named", (int) ($pa105['prior_stays'] ?? -1) === 2 && ($pa105['last_stay_end'] ?? '') === '2025-05-05', json_encode($pa105));
+    it_check('§105 …and a first-time enquirer has none', (int) (($en105['new105@example.com'] ?? [])['prior_stays'] ?? -1) === 0, json_encode($en105['new105@example.com'] ?? null));
+
+    unlink($work . '/it105-probe.php');
+    $rootDb->exec("DELETE FROM enquiries WHERE email IN ('PRIOR105@example.com', 'new105@example.com')");
+    $rootDb->exec("DELETE FROM bookings WHERE email = 'prior105@example.com'");
+    $rootDb->prepare('DELETE FROM guest_reviews WHERE id = ?')->execute([$rid105]);
+    $rootDb->exec("DELETE FROM activity_log WHERE entity_id = '105105'");
+    $rootDb->prepare('DELETE FROM messages WHERE thread_id = ?')->execute([$tid105]);
+    $rootDb->prepare('DELETE FROM chat_threads WHERE id = ?')->execute([$tid105]);
+    $rootDb->prepare('DELETE FROM guests WHERE id = ?')->execute([$gid105]);
+})();
 
 echo "\n== Summary ==\n";
 if ($fail) {

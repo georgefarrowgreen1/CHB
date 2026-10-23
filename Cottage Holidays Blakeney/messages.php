@@ -750,67 +750,12 @@ if ($isAdmin && empty($in['token'])) {
                 ->fetchColumn();
             json_out(['ok' => true, 'count' => $c]);
         }
-        // default: list threads (only those with at least one message).
-        // Active by default; pass archived:1 to list the archived ones instead.
+        // default: list threads (only those with at least one message), chat-lib.php
+        // chat_threads_payload. Active by default; archived:1 lists the archived ones. A
+        // page naming the copy it holds hears "same" with nothing built while the stamps
+        // of the tables it is made from say nothing changed.
         $showArchived = !empty($in['archived']) ? 1 : 0;
-        $hasArch = true;
-        try {
-            $q = db()->prepare("SELECT t.id tid, t.guest_id, t.name, t.email, t.source, t.location, t.archived,
-                    (SELECT g.email_verified_at FROM guests g WHERE g.id = t.guest_id) proven_at,
-                    COALESCE(MAX(m.created_at), t.created_at) last_at,
-                    SUM(m.sender_role = 'guest' AND m.read_by_admin = 0) unread,
-                    (SELECT body FROM messages mm WHERE mm.thread_id = t.id ORDER BY mm.id DESC LIMIT 1) last_body,
-                    (SELECT sender_role FROM messages mr WHERE mr.thread_id = t.id ORDER BY mr.id DESC LIMIT 1) last_role
-                FROM chat_threads t JOIN messages m ON m.thread_id = t.id
-                WHERE t.archived = ?
-                GROUP BY t.id, t.guest_id, t.name, t.email, t.source, t.location, t.archived
-                ORDER BY last_at DESC, t.id DESC");
-            $q->execute([$showArchived]);
-            $rows = $q->fetchAll();
-        } catch (\Throwable $e2) {
-            // archived column not migrated yet — there are no archived threads.
-            if ($showArchived) {
-                json_out(['ok' => true, 'threads' => []]);
-            }
-            $hasArch = false;
-            $rows = db()
-                ->query(
-                    "SELECT t.id tid, t.guest_id, t.name, t.email, t.source, t.location,
-                    (SELECT g.email_verified_at FROM guests g WHERE g.id = t.guest_id) proven_at,
-                    COALESCE(MAX(m.created_at), t.created_at) last_at,
-                    SUM(m.sender_role = 'guest' AND m.read_by_admin = 0) unread,
-                    (SELECT body FROM messages mm WHERE mm.thread_id = t.id ORDER BY mm.id DESC LIMIT 1) last_body,
-                    (SELECT sender_role FROM messages mr WHERE mr.thread_id = t.id ORDER BY mr.id DESC LIMIT 1) last_role
-                FROM chat_threads t JOIN messages m ON m.thread_id = t.id
-                GROUP BY t.id, t.guest_id, t.name, t.email, t.source, t.location
-                ORDER BY last_at DESC, t.id DESC",
-                )
-                ->fetchAll();
-        }
-        // In a fixed order (ties by thread), so an unchanged list hashes the same.
-        json_out_held([
-            'ok' => true,
-            'threads' => array_map(
-                fn($r) => [
-                    'thread_id' => (int) $r['tid'],
-                    'name' => $r['name'],
-                    'email' => $r['email'],
-                    'source' => $r['source'],
-                    'location' => $r['location'],
-                    'is_guest' => !empty($r['guest_id']),
-                    // Whether the address is the guest's own (see chat_thread_verified).
-                    'verified' => !empty($r['guest_id']) && !empty($r['proven_at']),
-                    'archived' => $hasArch ? (int) ($r['archived'] ?? 0) : 0,
-                    'last_at' => $r['last_at'],
-                    'unread' => (int) $r['unread'],
-                    'last_body' => mb_substr((string) $r['last_body'], 0, 120),
-                    // Whose message is last — drives the "Needs reply" flag/filter
-                    // in the owner inbox (a guest message left unanswered).
-                    'last_role' => $r['last_role'] ?? '',
-                ],
-                $rows,
-            ),
-        ], $in['have'] ?? '', ['threads', 'thread_id', $in['haveb'] ?? '']);
+        json_out_held_fp('threads' . $showArchived, CHAT_THREADS_STAMPS, fn() => chat_threads_payload($showArchived), $in['have'] ?? '', ['threads', 'thread_id', $in['haveb'] ?? '']);
     } catch (\Throwable $e) {
         json_out(['error' => 'Messages not ready — has migration-chat-threads.sql been run?'], 500);
     }

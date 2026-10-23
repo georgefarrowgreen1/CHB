@@ -43,7 +43,55 @@ function reviews_public_payload()
     if (!empty($_SESSION['admin_id'])) {
         return ['reviews' => reviews_guest_list()];
     }
-    return reviews_summary(reviews_all());
+    return reviews_summary_held();
+}
+// THE FIGURES A VISITOR IS SENT ARE KEPT (CLAUDE.md, '"Nothing new" costs almost nothing').
+// Every visitor's 30-second check built them from every approved review's words. They are
+// kept beside the fingerprint of what they are made from (the stamps of the reviews and of
+// the reviewers, whose names they show; the owner's own reviews; the code and the hour) and
+// built again only when it moves. The copy rides the visitor's one content read, so a
+// check that finds it current reads no review at all. Under CHB_PAYLOAD_FP_STRICT (the
+// integration harness) every check builds, and a kept copy that differs is refused, so
+// every section that reads the reviews after a change tests the fingerprint.
+const REVIEWS_STAMPS = ['direct_leads', 'guest_reviews', 'guests'];
+// The figures as kept (JSON in the content table) read back as they were built: the
+// per-cottage map decodes as an array, and an empty one would go out as [] where a build
+// sends {}.
+function reviews_kept_body(array $body): array
+{
+    $body['props'] = (object) ($body['props'] ?? []);
+    return $body;
+}
+function reviews_summary_held(): array
+{
+    $curated = reviews_curated_list();
+    $fp = held_fp('reviews', REVIEWS_STAMPS, [payload_hash($curated)]);
+    $kept = null;
+    if ($fp !== '') {
+        $m = content_json('reviews-memo', []);
+        if (is_array($m) && ($m['fp'] ?? '') === $fp && is_array($m['body'] ?? null)) {
+            $kept = reviews_kept_body($m['body']);
+        }
+    }
+    $strict = chb_fp_strict();
+    if ($kept !== null && !$strict) {
+        return $kept;
+    }
+    $built = reviews_summary(reviews_merge(reviews_guest_list(), $curated));
+    if ($kept !== null) {
+        if (payload_hash($kept) !== payload_hash($built)) {
+            chb_log_server_error('Held answer missed a change', 'reviews: the figures changed under an unchanged fingerprint; a write went round the stamps (stamps-lib.php), or they read a table their fingerprint leaves out', __FILE__, __LINE__);
+            json_out(['error' => 'The review figures changed under an unchanged fingerprint', 'code' => 'fp_stale'], 500);
+        }
+        return $built;
+    }
+    if ($fp !== '') {
+        try {
+            content_set_scalar('reviews-memo', ['fp' => $fp, 'body' => $built]);
+        } catch (\Throwable $e) {
+        }
+    }
+    return $built;
 }
 
 // When bootstrap.php includes this file for the payload helper, stop before the

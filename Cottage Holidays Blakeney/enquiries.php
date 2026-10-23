@@ -27,42 +27,63 @@ function enquiries_admin_payload()
     }
     // Repeat-guest recognition: tag each enquiry with how many COMPLETED stays the
     // same email has already had (matched case-insensitively), plus when/where the
-    // most recent one ended. Lets the inbox badge returning guests. Cached per email
-    // so duplicate emails across enquiries don't re-query.
+    // most recent one ended. Lets the inbox badge returning guests.
     try {
-        // Plain equality is already case-insensitive under the table's *_ci collation,
-        // and (unlike LOWER(email)=...) it can use idx_email.
-        $histStmt = db()->prepare(
-            'SELECT check_out, prop_key FROM bookings
-             WHERE email = ? AND email <> \'\' AND check_out < CURDATE()
-             ORDER BY check_out DESC',
-        );
-        $cache = [];
+        $hist = enquiries_prior_stays($rows);
         foreach ($rows as &$r) {
             $email = trim((string) ($r['email'] ?? ''));
             if ($email === '') {
                 $r['prior_stays'] = 0;
                 continue;
             }
-            $key = strtolower($email);
-            if (!array_key_exists($key, $cache)) {
-                $histStmt->execute([$email]);
-                $past = $histStmt->fetchAll();
-                $cache[$key] = [
-                    'prior_stays' => count($past),
-                    'last_stay_end' => $past ? $past[0]['check_out'] : null,
-                    'last_stay_prop' => $past ? $past[0]['prop_key'] : null,
-                ];
-            }
-            $r['prior_stays'] = $cache[$key]['prior_stays'];
-            $r['last_stay_end'] = $cache[$key]['last_stay_end'];
-            $r['last_stay_prop'] = $cache[$key]['last_stay_prop'];
+            $h = $hist[mb_strtolower($email)] ?? ['prior_stays' => 0, 'last_stay_end' => null, 'last_stay_prop' => null];
+            $r['prior_stays'] = $h['prior_stays'];
+            $r['last_stay_end'] = $h['last_stay_end'];
+            $r['last_stay_prop'] = $h['last_stay_prop'];
         }
         unset($r);
     } catch (\Throwable $e) {
         /* history is a nicety; never block the enquiry list over it */
     }
     return ['enquiries' => $rows];
+}
+/**
+ * Every enquirer's completed stays in ONE read (CLAUDE.md '"Nothing new" costs almost
+ * nothing'): it was a query per address, 20 on a five-year business on every refresh of
+ * the owner's boot. Each address is still its own `email = ?` (a UNION ALL of them), so a
+ * stay matches by the column's own equality as before (case-insensitive under the table's
+ * *_ci collation, and able to use idx_email: the migration-112 rule). Joined against a
+ * table of the addresses instead, a server whose own collation differs from the column's
+ * refuses the comparison, and the badge would quietly read no stays for anyone.
+ * @return array<string, array{prior_stays:int, last_stay_end:?string, last_stay_prop:?string}> by lower-cased address
+ */
+function enquiries_prior_stays(array $rows): array
+{
+    $emails = [];
+    foreach ($rows as $r) {
+        $e = trim((string) ($r['email'] ?? ''));
+        if ($e !== '') {
+            $emails[mb_strtolower($e)] = $e;
+        }
+    }
+    $out = [];
+    foreach (array_chunk($emails, 200, true) as $chunk) {
+        $keys = array_keys($chunk);
+        $parts = [];
+        foreach ($keys as $i => $k) {
+            $parts[] = '(SELECT ' . (int) $i . " AS i, check_out, prop_key FROM bookings WHERE email = ? AND email <> '' AND check_out < CURDATE())";
+        }
+        $st = db()->prepare(implode(' UNION ALL ', $parts) . ' ORDER BY i, check_out DESC');
+        $st->execute(array_values($chunk));
+        foreach ($st->fetchAll() as $b) {
+            $k = $keys[(int) $b['i']];
+            if (!isset($out[$k])) {
+                $out[$k] = ['prior_stays' => 0, 'last_stay_end' => $b['check_out'], 'last_stay_prop' => $b['prop_key']];
+            }
+            $out[$k]['prior_stays']++;
+        }
+    }
+    return $out;
 }
 
 // When admin-bootstrap.php includes this file for the payload helper, stop

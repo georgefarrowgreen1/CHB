@@ -179,6 +179,14 @@ const freePort = () => new Promise((resolve) => {
     const c = seeded.counts;
     console.log(`== A five-year business: ${c.bookings} bookings, ${c.payments} payments, ${c.activity_log} activity rows, ${c.messages} chat messages, ${c.enquiries} enquiries, ${c.bank_lines} bank lines, ${c.pageviews} page views (seeded from ${seeded.today}) ==`);
     ok(c.bookings > 1000 && c.activity_log > 30000 && c.pageviews > 40000, 'the seed made a business of the size it says (vacuity guard)');
+    // THE PLANS A LIVE DATABASE WOULD USE: InnoDB recalculates a table's statistics in the
+    // background after a bulk change, so a read measured soon after the seed could run on
+    // the plans of an empty table (Payments read 29,722 rows before they settled and 32,940
+    // after, with the same statements) and a figure moved with what ran before it.
+    {
+        const ts = sql(`SELECT table_name AS t FROM information_schema.tables WHERE table_schema = '${NAME}' AND table_type = 'BASE TABLE'`).map((x) => '`' + NAME + '`.`' + x.t + '`');
+        sql('ANALYZE TABLE ' + ts.join(', '));
+    }
 
     // 4. Counting one database user's work.
     let counter;
@@ -237,6 +245,15 @@ const freePort = () => new Promise((resolve) => {
     // naming the parts it holds (what every later visit sends).
     const boot = await call('owner', 'GET', '/admin-bootstrap.php');
     const have = Object.entries((boot.json && boot.json.hashes) || {}).map(([k, h]) => `${k}.${h}`).join(',');
+    // "Nothing new": each list asked naming the copy the page holds, as the Inbox asks on
+    // every visit (CLAUDE.md '"Nothing new" costs almost nothing').
+    const heldOf = async (url, body) => ((await call('owner', 'POST', url, body)).json || {}).h || '';
+    const hLog = await heldOf('/bookings.php', { action: 'email_logs' });
+    const hThreads = await heldOf('/messages.php', { action: 'threads' });
+    const hArch = await heldOf('/messages.php', { action: 'threads', archived: 1 });
+    // A visitor's review figures are kept beside their fingerprint: the first of the three
+    // visitor boots below builds them, the next two are answered from what was kept.
+    sql(`DELETE FROM \`${NAME}\`.content WHERE item_key = 'reviews-memo'`);
     const READS = [
         ['visitor boot', 'visitor', 'GET', '/bootstrap.php'],
         ['visitor availability', 'visitor', 'GET', '/availability.php?all=1'],
@@ -249,6 +266,9 @@ const freePort = () => new Promise((resolve) => {
         ['owner settings', 'owner', 'POST', '/content.php', { action: 'get_all' }],
         ['owner chat list', 'owner', 'POST', '/messages.php', { action: 'threads' }],
         ['owner email log', 'owner', 'POST', '/bookings.php', { action: 'email_logs' }],
+        ['owner email log, nothing new', 'owner', 'POST', '/bookings.php', { action: 'email_logs', have: hLog }],
+        ['owner chat list, nothing new', 'owner', 'POST', '/messages.php', { action: 'threads', have: hThreads }],
+        ['owner archived chats, nothing new', 'owner', 'POST', '/messages.php', { action: 'threads', archived: 1, have: hArch }],
         ['owner Payments', 'owner', 'POST', '/money.php', { action: 'summary' }],
         ['owner analytics', 'owner', 'GET', '/track.php?action=summary&days=30'],
         ['owner activity log', 'owner', 'POST', '/activity-log.php', { action: 'list', category: 'all', q: '', limit: 150 }],
@@ -273,6 +293,8 @@ const freePort = () => new Promise((resolve) => {
         }
         const last = runs[runs.length - 1];
         if (last.status !== 200) { ok(false, `${label}: answered ${last.status} ${last.buf.toString().slice(0, 120)}`); continue; }
+        if (/, nothing new$/.test(label)) ok(!!(last.json && last.json.same === true), `${label}: answered "same" (${last.buf.toString().slice(0, 60)})`);
+        if (label === 'visitor boot') ok(runs.every((x) => x.buf.equals(runs[0].buf)), 'visitor boot: the figures kept are the figures built, byte for byte');
         measured[label] = {
             bytes: last.buf.length,
             gz: zlib.gzipSync(last.buf, { level: 6 }).length,
@@ -292,6 +314,9 @@ const freePort = () => new Promise((resolve) => {
     const someThread = Number(sql(`SELECT t.id FROM ${db}.chat_threads t WHERE t.archived = 0 AND EXISTS (SELECT 1 FROM ${db}.messages m WHERE m.thread_id = t.id) ORDER BY t.id LIMIT 1 OFFSET 100`)[0].id);
     const claimOf = (j) => (j && j.bh && j.bs ? `${j.bs}:${Object.keys(j.bh).map((k) => `${k}.${j.bh[k]}`).join(',')}` : '');
     const noteFor = (id) => `INSERT INTO ${db}.activity_log (actor, category, action, summary, entity, entity_id, meta, created_at) VALUES ('owner', 'comms', 'comms.message', 'Volume note', 'booking', '${id}', '{"subject":"Volume","body":"Hello"}', NOW())`;
+    // A change made here goes round the app, so it moves the change stamps itself, as
+    // stamps-lib.php does for every write the app makes.
+    const touch = (...names) => `INSERT INTO ${db}.content (item_key, item_value) VALUES ${names.map((n) => `('stamp-${n}', '1')`).join(', ')} ON DUPLICATE KEY UPDATE item_value = CAST(item_value AS UNSIGNED) + 1`;
     const CHANGED = [
         ['owner boot, one booking changed', async () => {
             const j = (await call('owner', 'GET', '/admin-bootstrap.php')).json || {};
@@ -302,12 +327,12 @@ const freePort = () => new Promise((resolve) => {
         }],
         ['owner email log, one email sent', async () => {
             const j = (await call('owner', 'POST', '/bookings.php', { action: 'email_logs' })).json || {};
-            sql(noteFor(someBooking));
+            sql(noteFor(someBooking) + ';\n' + touch('activity_log'));
             return ['POST', '/bookings.php', { action: 'email_logs', have: j.h, haveb: claimOf(j) }, (r) => !!(r.json && r.json.delta === true)];
         }],
         ['owner chat list, one message', async () => {
             const j = (await call('owner', 'POST', '/messages.php', { action: 'threads' })).json || {};
-            sql(`INSERT INTO ${db}.messages (thread_id, sender_role, body, read_by_admin, read_by_guest, created_at) VALUES (${someThread}, 'guest', 'One more question', 0, 0, NOW())`);
+            sql(`INSERT INTO ${db}.messages (thread_id, sender_role, body, read_by_admin, read_by_guest, created_at) VALUES (${someThread}, 'guest', 'One more question', 0, 0, NOW())` + ';\n' + touch('messages'));
             return ['POST', '/messages.php', { action: 'threads', have: j.h, haveb: claimOf(j) }, (r) => !!(r.json && r.json.delta === true)];
         }],
     ];
@@ -552,8 +577,8 @@ const freePort = () => new Promise((resolve) => {
         page.on('response', onResp);
         await page.evaluate(() => Promise.all([apiPostHeld('email_logs', 'bookings.php', { action: 'email_logs' }), apiPostHeld('threads:0', 'messages.php', { action: 'threads', archived: 0 })]));
         sql(`UPDATE ${db}.bookings SET notes = CONCAT(COALESCE(notes, ''), ' ..') WHERE id = ${someBooking - 3}`);
-        sql(noteFor(someBooking - 3));
-        sql(`INSERT INTO ${db}.messages (thread_id, sender_role, body, read_by_admin, read_by_guest, created_at) VALUES (${someThread}, 'guest', 'And another', 0, 0, NOW())`);
+        sql(noteFor(someBooking - 3) + ';\n' + touch('activity_log'));
+        sql(`INSERT INTO ${db}.messages (thread_id, sender_role, body, read_by_admin, read_by_guest, created_at) VALUES (${someThread}, 'guest', 'And another', 0, 0, NOW())` + ';\n' + touch('messages'));
         const merged = await page.evaluate(async () => {
             const ab = await abFetch();
             const full = await apiGet('admin-bootstrap.php');
