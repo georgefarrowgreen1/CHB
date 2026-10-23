@@ -199,6 +199,10 @@ const check = (cond, label) => {
         gcAddQ();
     });
     await page.waitForSelector('#gdf-chip');
+    // The dialog focuses its first field on a 60ms timer, and on a loaded machine that can land
+    // in the middle of a fill and send the text into the wrong box (ui-test-guestaccount's
+    // lesson; this step timed out once in a battery run). Type only once the dialog has focused.
+    await page.waitForFunction(() => !!document.activeElement && !!document.activeElement.closest('#glass-dialog-fields'), null, { timeout: 3000 }).catch(() => {});
     await page.fill('#gdf-chip', 'Hot tub?');
     await page.fill('#gdf-a', 'No hot tub, sorry — but the sea is free.');
     await page.click('#glass-dialog-ok');

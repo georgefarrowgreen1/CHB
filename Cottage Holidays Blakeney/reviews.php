@@ -13,52 +13,7 @@
 require_once __DIR__ . '/db.php';
 require_once __DIR__ . '/mailer.php';
 require_once __DIR__ . '/shell-etag.php';
-
-// Approved reviews from guests: on-site submissions, then the ones left through a
-// review link, each newest first.
-function reviews_guest_list(): array
-{
-    $out = [];
-    // Registered-guest reviews (guest_reviews, keyed to an account).
-    try {
-        $rows = db()
-            ->query(
-                "SELECT r.prop_key, r.stars, r.review_text, g.name
-             FROM guest_reviews r JOIN guests g ON g.id = r.guest_id
-             WHERE r.status = 'approved' ORDER BY r.created_at DESC",
-            )
-            ->fetchAll();
-        foreach ($rows as $r) {
-            $out[] = [
-                'name' => $r['name'],
-                'stars' => (int) $r['stars'],
-                'text' => $r['review_text'],
-                'prop' => $r['prop_key'],
-            ];
-        }
-    } catch (\Throwable $e) {
-    } // table missing — no reviews yet
-    // External-guest reviews left via the /review/<slug> links (direct_leads),
-    // once the owner has approved them. Same public shape as above.
-    try {
-        $rows = db()
-            ->query(
-                "SELECT prop_key, stars, review_text, name
-             FROM direct_leads WHERE status = 'approved' ORDER BY created_at DESC",
-            )
-            ->fetchAll();
-        foreach ($rows as $r) {
-            $out[] = [
-                'name' => $r['name'],
-                'stars' => (int) $r['stars'],
-                'text' => $r['review_text'],
-                'prop' => $r['prop_key'],
-            ];
-        }
-    } catch (\Throwable $e) {
-    } // table missing (pre-migration) — skip
-    return $out;
-}
+require_once __DIR__ . '/reviews-lib.php';
 
 // THE REVIEWS A VISITOR IS SENT ARE THE ONES THE PAGE SHOWS (see CLAUDE.md). Every review
 // rode every visitor's first load: on a five-year business 211KB of the 233KB boot, for a
@@ -66,80 +21,19 @@ function reviews_guest_list(): array
 // the counts and star sums the page states (overall, per cottage, and the guest-only
 // figures the search-result markup uses) and only the reviews on screen; "Read all" asks
 // ?all=1. The order is the site's: guests' newest first, then the owner's own in editor
-// order (allReviews in app.js). The owner keeps the whole list, editor and all.
-const REVIEWS_PER_COTTAGE = 4;   // the cottage page's cards
-const REVIEWS_ROTATION = 12;     // the homepage's rotating quotes
-const REVIEWS_LD = 12;           // the search-result markup's reviews
-
-// The owner's own reviews (the `reviews` content key): those with words, as stored.
+// order (allReviews in app.js). The owner keeps the whole list, editor and all. The rules
+// are reviews-lib.php's, which home.php shares to write the first screen.
+function reviews_guest_list(): array
+{
+    return reviews_guest_rows(db());
+}
 function reviews_curated_list(): array
 {
-    $out = [];
-    $v = content_json('reviews', []);
-    foreach (is_array($v) ? $v : [] as $r) {
-        if (is_array($r) && trim((string) ($r['text'] ?? '')) !== '') {
-            $out[] = $r;
-        }
-    }
-    return $out;
+    return reviews_curated_from(content_json('reviews', []));
 }
-// One review's stars as every figure on the site counts them: 1 to 5, a missing one 5.
-function review_star(array $r): int
-{
-    return max(1, min(5, (int) ($r['stars'] ?? 0) ?: 5));
-}
-// Every review the site shows, in its order, each marked with where it came from.
 function reviews_all(): array
 {
-    $all = [];
-    foreach (reviews_guest_list() as $r) {
-        $all[] = $r + ['src' => 'g'];
-    }
-    foreach (reviews_curated_list() as $r) {
-        $all[] = $r + ['src' => 'c'];
-    }
-    return $all;
-}
-// The figures and the reviews on screen. A list is [count, star sum].
-function reviews_summary(array $all): array
-{
-    $sum = 0;
-    $props = [];
-    $ld = [0, 0];
-    $pick = [];
-    $per = [];
-    $rot = 0;
-    $ldShown = 0;
-    foreach ($all as $i => $r) {
-        $star = review_star($r);
-        $sum += $star;
-        $p = (string) ($r['prop'] ?? '');
-        $props[$p] = [($props[$p][0] ?? 0) + 1, ($props[$p][1] ?? 0) + $star];
-        if (($per[$p] ?? 0) < REVIEWS_PER_COTTAGE) {
-            $pick[$i] = true;
-            $per[$p] = ($per[$p] ?? 0) + 1;
-        }
-        $text = trim((string) ($r['text'] ?? ''));
-        // Bytes, so every quote the page's own count (UTF-16) would take is among them.
-        if ($rot < REVIEWS_ROTATION && strlen($text) > 20) {
-            $pick[$i] = true;
-            $rot++;
-        }
-        if (($r['src'] ?? '') === 'g' && $text !== '') {
-            $ld = [$ld[0] + 1, $ld[1] + $star];
-            if ($ldShown < REVIEWS_LD) {
-                $pick[$i] = true;
-                $ldShown++;
-            }
-        }
-    }
-    $list = [];
-    foreach ($all as $i => $r) {
-        if (isset($pick[$i])) {
-            $list[] = $r;
-        }
-    }
-    return ['v' => 2, 'list' => $list, 'n' => count($all), 'sum' => $sum, 'props' => (object) $props, 'ld' => $ld];
+    return reviews_merge(reviews_guest_list(), reviews_curated_list());
 }
 // The public payload, as a function so bootstrap.php serves the SAME data in its combined
 // first-paint response. The owner's shape is the one it always was (the guests' reviews;

@@ -23,6 +23,13 @@
     "rowsRead": 1335,
     "ms": 1000
   },
+  "visitor home page": {
+    "bytes": 137359,
+    "gz": 31443,
+    "statements": 7,
+    "rowsRead": 1346,
+    "ms": 1000
+  },
   "owner boot": {
     "bytes": 2601750,
     "gz": 246534,

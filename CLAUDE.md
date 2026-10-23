@@ -1416,7 +1416,8 @@ so every battery runs it (about 25s).
 - **What it shows today** (the reads upgrade 3 is for): the owner's first boot is 2.3MB (219KB gzipped), the email log
   481KB, the chat list 147KB, the settings 127KB; a boot naming the parts it holds is 36KB.
 - **Not budgeted here, said plainly**: what a first visit fetches before the page shows. It moved with timing from one
-  run to the next (21 or 23 requests, 255ms or 3.3s), so it is measured where it is the subject (upgrade 5). The seed
+  run to the next (21 or 23 requests, 255ms or 3.3s), so it is measured where it is the subject (upgrade 5, "The page
+  before the script"); this gate budgets home.php's read and checks the page is shown before the script. The seed
   answers 404 on the web, and the deploy strips `test-*.php`, `*-test.js` and `*-budget.json`. `CHB_VOLUME_DB` names
   the database, so two runs can sit side by side (their roll-ups then take turns).
 
@@ -1515,6 +1516,82 @@ leaves the owner's `reviews` key out of a visitor's content.
   counted from the list, no ask stamp, no ask, no held list, the markup's rating from the list, the owner asking.
   The suite's first fixture averaged 4.2 on screen and overall, so the homepage rating check could not fail; the
   vacuity guard now requires the averages to differ as well as the counts.
+
+## The page before the script (second round, upgrade 5)
+
+A first visit waited for app.js behind the cover: on Slow 4G with the CPU slowed four times, a crown on black until
+4.3s, though the hero photo had painted under it at 2.5s. home.php now writes the first screen itself, so the page
+is on screen at 1.4s, and the script takes over at 3.3s (was 4.3s) without redrawing what the visitor is reading.
+Medians of five runs; 881KB downloaded against 903KB. Code: `ssr-lib.php` (pure), home.php
+`home_ssr_data`, index.html's two inline scripts, app.js `chbSsrGridKeep` / `chbEarlyTakeOver` / `heroPhotoUrl`, and
+the THE PAGE BEFORE THE SCRIPT block in app.css.
+- **WHAT THE SERVER WRITES**: both cottage grids (the home cards and the Cottages list, both in the one shell), the
+  footer's cottage links and the headline's word spans, from the rows and content keys the script reads
+  (`home_ssr_data`: the cottages in their sort order, the content keys the page names, the card keys,
+  `occupancy-<k>`, `reviews`). Prices and ratings are the script's own arithmetic: `ssr_to_fixed` is JavaScript's
+  `toFixed` (exact-decimal, half up), `ssr_gbp` its money format, and `reviews_summary` (reviews-lib.php, shared with
+  reviews.php) the figures. So the script writes the same words over them. An unlisted cottage, a private key and a
+  value the page does not name never reach it.
+- **MARKED ONLY WHEN WHOLE**: `<html data-ssr="home">`, and `data-ssr-keys` on each grid, go on only when both grids
+  and the headline were written. Anything less leaves the page as it always was: the cover, then the script.
+- **WHO SEES IT** is the head script's call (one line, after the theme boot): a marked page, no query or hash, and a
+  device that has never signed in and has no remembered screen (`chb-was-admin`, `chb-owner`, `chb-was-guest`,
+  sessionStorage `chb-nav`). It adds `html.chb-early`, which hides the cover. Everyone else gets the cover as before:
+  an owner or a returning guest would otherwise watch the anonymous page go by before their own. The cottage pages
+  and /experiences are not written by the server and keep the cover.
+- **A TAP BEFORE THE SCRIPT** (decided here, not asked): a link to another page navigates, so a cottage card works
+  at once. A tap on anything only the script can answer (a button, `[role=button]`, `[role=link]`, `[data-act]`, a
+  `data-act-submit` form) is held: the control pulses (`[data-chb-wait]`), only the last tap is kept, and the script
+  replays it when it takes over, counting the landing first so the analytics read in the same order. Ten seconds after
+  a held tap with no script, the cover comes back with its Reload (`chb-stuck`); Reload works without the script.
+- **THE BODY SCRIPT** puts on `light-mode` (73 rules key on it) and `guest-app` before the first paint, so the page
+  before the script is the page the script would show. guest-app.js now loads before app.js (both deferred), and every
+  call it makes into app.js is guarded.
+- **THE SCRIPT ADOPTS THE SERVER'S CARDS**: the first render of a written grid keeps them when they say what it would
+  write (`chbSsrGridKeep`: the same keys, then each card's link, photo, label, name and sleeps line). The photo is
+  compared as CSS reads it (`style.backgroundImage`), because applyContentOverrides re-serialises the style
+  attribute. Until the content has loaded (`__contentLoaded`) it answers `'wait'`: the boot renders the grids once
+  from the rates alone, and judging that render would rebuild every card with the default words. Cards that differ
+  are rebuilt. Every price and rating already on screen is added to `__priceShown`, so none settles in as if new.
+- **THE CARD PHOTOS WAIT FOR THE SCRIPT** (`html.chb-early:not(.chb-taken)`): three photos below the fold were taking
+  the connection from app.js and the hero. Holding them brought the takeover from 5.1s to 3.3s and the largest paint
+  from 3.9s to 2.5s. `chbEarlyTakeOver` lets them through and they fade in as the script's cards always have.
+- **ONE HERO SIZE RULE** (hero-shell.php): an upload goes through img.php at 1200 wide below 900px and 1600 from
+  there, as a `<style id="hero-photo">` rule with a preload per size, so the browser fetches one copy; app.js's
+  `heroPhotoUrl` asks for the same two. The script used to put the full-size original in its place after boot: a
+  second download of the largest image, with the hero empty until it arrived. Any other path is used as it is. NB the
+  rule inside `<style>` carries a bare `&` (style text is not HTML-decoded) where the preloads' attributes carry
+  `&amp;`; both reach the browser as the same address.
+- **The hero's entrance plays at the first paint** on the early page (`html:not(.chb-early)` on the hold): there is no
+  cover for it to wait behind. A reveal already on screen is shown at once instead of being armed.
+- **THE TWO INLINE SCRIPTS ARE HASHED IN THE CSP.** Edit either and put its new hash in htaccess.txt's script-src
+  (smoke-test §6a-ii-b names it), then `php test-csp-report.php --update`.
+- **A SUITE THAT HOLDS app.js CANNOT WAIT FOR DOMContentLoaded**: deferred scripts run before it fires, so `goto`'s
+  default wait never returns. ui-test-earlypaint goes to `commit` and waits for `readyState !== 'loading'`.
+- **AND IT TAPS AND MEASURES ONLY A STILL PAGE.** The entrance plays at the first paint (the hero bar rises for
+  1.9s) and the page scrolls smoothly (app.css), so the suite waits for every animation that ends to have ended
+  (`settle`) and scrolls with `behavior: 'instant'`. Under the battery's load a scroll still moving when the
+  script marked what was on screen failed the reveal check (3 sections measured mid-scroll; 4 once it is still).
+  The stuck cover's ten seconds are not waited for, and no fake clock runs them: the page keeps the timer the head
+  script asks for, the suite checks it asked for 10000ms and fires it (a fake clock let the step miss once in six
+  runs under load, and never in 48 runs of that step alone).
+- Gates:
+  - **test-ssr.php** (42 checks, counter `ssc()`): the rounding against JavaScript's, a fixture business through the
+    whole page, no mark without both grids and the headline, the hero rule, only public words;
+  - test-integration **§102**: the real home.php on the real database (the mark and keys, prices against the boot
+    payload's rates, ratings against the boot's reviews, a saved guest limit, the count, the escaped headline, no
+    private value, no unlisted cottage, the 304 and a new page after a price change);
+  - **ui-test-earlypaint.js** (six sections with app.js held back): the page before the script, a held tap replayed,
+    nothing redrawn, what keeps the cover, the cover coming back, cards that differ rebuilt;
+  - volume-test: home.php on the five-year business (122KB, 28KB gzipped, 5 statements) and a first visit in a
+    browser, shown before the script with its cards kept;
+  - smoke-test: every inline script's hash in the CSP.
+
+  Break-tested 22 ways, each failing its own named check (the unlisted cottage against §102 as well); the 14
+  browser ones again after the suite's still-page rework, and it passed 12 runs of 12, six at a time.
+- **AND §77b FAILED AFTER MIDNIGHT UK TIME**: it compared a date the app wrote on its UK clock with the root
+  connection's UTC `CURDATE()`. It reads `$ukToday`, as the top of test-integration says.
+- Budgets: index.html +105 bytes gzipped for the two scripts. **Not run**: WebKit (none on this machine).
 
 ## Automatic collection: finished plans, Square's silences, two passes at once (round 5)
 
@@ -5787,6 +5864,8 @@ three pages `host` / `notify` / `security`. Code: the OWNER'S ACCOUNT block afte
   3 times in 42; waiting for the dialog's focus first, 0 in 42). That was ui-test-guestaccount §3's flake, present
   on main at the same rate (2 in 12 runs under CPU contention). Both suites now wait for the dialog's own focus
   before typing into a multi-field form. No person types within 60ms of a dialog appearing, so the app is fine.
+  ui-test-guestchat §6 (adding a question: the button's words and the answer) had no wait at all and timed out
+  once in a battery run; it waits now. ui-test-hub waits 350ms after opening its plan dialog, which also clears it.
 
 ## Permissions: two roles and 23 switches (approved demo v7, built and pushed to main without CI or tests)
 
@@ -10131,7 +10210,15 @@ deleting — both now FIXED, and they are worth keeping here as the pattern to e
   from the lib's `now()` / `d()` / `todayAt()` (never a bare `Date.now()` or `new Date()` on the
   node side), the shifted `Date`'s statics are non-enumerable, and `realClock()` opts a suite
   out. A helper that runs IN THE PAGE (inside `page.evaluate`) stays a plain `new Date()`.
-  `CHB_LATE_SHIFT=1` forces the shift at any hour (`=0` forbids it). The lib also keeps the
+  **AND A SUITE THAT STARTS BEFORE 03:00 RUNS THREE HOURS AHEAD.** Fixtures look back across
+  midnight as well as forward: the battery ran ui-test-devices at 00:20 and a device "seen 2
+  hours ago" had been seen yesterday, so the page rightly said "Last active yesterday" and the
+  check failed. Ahead, never back, so the page stays on the server's calendar day as the late
+  shift does. A page three hours ahead reads a real server's own time stamp as three hours old,
+  so a suite built on one opts out with `realClock()`: ui-test-publicstatus, whose "Checked just
+  now" compares status.php's `data-at` with the page's clock, is the one the first run on the
+  early shift found. `CHB_LATE_SHIFT=1` forces the late shift at any hour, `=early` the early one,
+  `=0` forbids both. The lib also keeps the
   calendar's own auto-sync quiet (`nn-ical-last-sync` seeded a year ahead when absent): a
   catch-all stub's `{ok:true}` read as news and reloaded the bookings over a suite's fixture.
   ui-test-yourstay is the
@@ -10758,7 +10845,9 @@ enabled cases, the duty guard and the reveal guard each break-tested in isolatio
   `restoreGuestSession`, cleared by `guestLogout`, and deliberately NOT touched in the
   catch — a dropped request is not "signed out", the same rule the admin hint follows.
   §10 drives it with **auth.php HANGING**, which is the whole question: if the reveal
-  still waited on the session, a hung one would never reveal at all.
+  still waited on the session, a hung one would never reveal at all. On the home page
+  the same visitor now sees no cover at all: home.php writes the first screen (see "The
+  page before the script").
 - **THE FONTS ARE PINNED BY THEIR OWN CONTENT HASH.** htaccess serves woff2
   `immutable, max-age=31536000` under a comment claiming "CSS/JS/fonts are cache-busted
   with ?v=…" — and the two font URLs carried **no pin at all**, so a re-subset or a

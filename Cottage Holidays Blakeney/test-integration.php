@@ -5545,7 +5545,10 @@ it_check('§77b the Inbox lists the guest\'s late reply and sets yours aside', $
 $R77 = $poll77();
 it_check('§77b the next poll sends no second note', $expRows77() === $expBefore77 + 1 && ($R77['handled'] ?? -1) === 0, (string) $expRows77());
 // An UNDATED code (sent before the change) lives the same 30 days from the change day.
-it_check('§77b (fixture) the migration recorded the change day, as the app reads it', $mailProbe('echo "\n" . json_encode(["d" => content_value("reply-dated-since")]);')['d'] === (string) $rootDb->query('SELECT CURDATE()')->fetchColumn(), json_encode($mailProbe('echo "\n" . json_encode(["d" => content_value("reply-dated-since")]);')));
+// The app's connection runs on UK time (db.php sets it), so the day the migration wrote is the
+// UK day: the suite's own root connection is UTC, and between 23:00 and midnight under BST
+// its CURDATE() is yesterday (the $ukToday rule, above).
+it_check('§77b (fixture) the migration recorded the change day, as the app reads it', $mailProbe('echo "\n" . json_encode(["d" => content_value("reply-dated-since")]);')['d'] === $ukToday, json_encode($mailProbe('echo "\n" . json_encode(["d" => content_value("reply-dated-since")]);')) . ' against ' . $ukToday);
 $rootDb->exec("UPDATE content SET item_value = CONCAT('\"', DATE_FORMAT(CURDATE() - INTERVAL 40 DAY, '%Y-%m-%d'), '\"') WHERE item_key = 'reply-dated-since'");
 $eml77('it77-14-legacy-old', ['From' => "George <$owner77>", 'To' => $own77, 'Subject' => "Re: New message from Wren Ashby [#$legacy77]"] + $plain77, 'IT77-LEGACY-OLD An undated code, past its 30 days.');
 $R77 = $poll77();
@@ -8070,6 +8073,99 @@ if ($keepReviews101 === false) {
 $rootDb->exec("DELETE FROM activity_log WHERE entity = 'booking' AND entity_id IN ('93200', '93201', '96400', '99600')");
 $rootDb->exec('DELETE FROM messages WHERE thread_id IN (93300, 96500, 99700)');
 $rootDb->exec('DELETE FROM chat_threads WHERE id IN (93300, 96500, 99700)');
+
+// §102 THE PAGE BEFORE THE SCRIPT (home.php + ssr-lib.php). home.php writes the home page's
+// first screen so a first visit can be shown before app.js arrives. Driven through the real
+// route on the real database, and held to what the boot payload says, because the script
+// keeps the server's cards only while they say what it would write: the cottages and their
+// order, each price, each "Sleeps" line (a saved limit winning), each rating, the count.
+// And only public words reach the page: a private value and a cottage the public cannot see
+// are never in it.
+echo "\n== §102 the page before the script ==\n";
+require_once __DIR__ . '/ssr-lib.php';
+$noJar102 = [];
+$keep102 = [];
+foreach (['hero-title', 'bacs-details'] as $k) {
+    $keep102[$k] = $rootDb->query("SELECT item_value FROM content WHERE item_key = " . $rootDb->quote($k))->fetchColumn();
+}
+$live102 = $rootDb->query('SELECT prop_key, name, couple_rate FROM properties WHERE archived_at IS NULL AND unlisted = 0 ORDER BY sort_order, name')->fetchAll(PDO::FETCH_ASSOC);
+$hide102 = (string) $live102[count($live102) - 1]['prop_key'];
+$hideName102 = (string) $live102[count($live102) - 1]['name'];
+$occKey102 = 'occupancy-' . $live102[0]['prop_key'];
+$keep102[$occKey102] = $rootDb->query("SELECT item_value FROM content WHERE item_key = " . $rootDb->quote($occKey102))->fetchColumn();
+$set102 = $rootDb->prepare('INSERT INTO content (item_key, item_value) VALUES (?, ?) ON DUPLICATE KEY UPDATE item_value = VALUES(item_value)');
+$set102->execute(['hero-title', json_encode('IT102 cottages &amp; <b>quays</b>')]);
+$set102->execute(['bacs-details', json_encode('IT102 PRIVATE SORT 40-11-22')]);
+$set102->execute([$occKey102, json_encode(['maxAdults' => 3, 'maxChildren' => 1, 'maxTotal' => 7])]);
+$rootDb->prepare('UPDATE properties SET unlisted = 1 WHERE prop_key = ?')->execute([$hide102]);
+$page102 = $shellGet('/home.php');
+$h102 = $page102['raw'];
+$boot102 = http($noJar102, 'GET', '/bootstrap.php');
+$bj102 = $boot102['json'] ?? [];
+$liveNow102 = array_values(array_filter(array_map(fn($p) => (string) $p['prop_key'], $live102), fn($k) => $k !== $hide102));
+it_check('§102 the page is marked for the head script, and says which cottages it wrote: the live list in the rates\' order',
+    preg_match('#<html\b[^>]*\bdata-ssr="home"#', $h102) === 1 && strpos($h102, 'id="home-cottages-grid" data-ssr-keys="' . implode(',', $liveNow102) . '"') !== false
+        && array_map(fn($p) => (string) $p['prop_key'], array_values(array_filter($bj102['rates']['properties'] ?? [], fn($p) => empty($p['archived']) && empty($p['unlisted'])))) === $liveNow102,
+    implode(',', $liveNow102));
+// Each card, read back by its ids, against the boot payload the script will hold.
+$cards102 = [];
+foreach ($liveNow102 as $k) {
+    preg_match('#id="home-card-price-' . preg_quote($k, '#') . '">(.*?)</div>#s', $h102, $pm);
+    preg_match('#id="home-card-rating-' . preg_quote($k, '#') . '">(.*?)</div>#s', $h102, $rm);
+    $cards102[$k] = ['price' => trim(strip_tags($pm[1] ?? '')), 'rating' => trim(preg_replace('/\s+/', ' ', html_entity_decode(strip_tags($rm[1] ?? ''))))];
+}
+$rateOf102 = [];
+foreach ($bj102['rates']['properties'] ?? [] as $p) {
+    $rateOf102[(string) $p['prop_key']] = (float) $p['couple_rate'];
+}
+$priceBad102 = [];
+$ratingBad102 = [];
+foreach ($cards102 as $k => $c) {
+    if ($c['price'] !== 'from £' . number_format($rateOf102[$k] ?? -1, 2) . ' / night (couple)') {
+        $priceBad102[] = "$k: {$c['price']}";
+    }
+    $f = $bj102['reviews']['props'][$k] ?? [0, 0];
+    $want = $f[0] > 0 ? '★ ' . ssr_to_fixed($f[1] / $f[0], 1) . ' · ' . $f[0] . ' review' . ($f[0] === 1 ? '' : 's') : 'New · no reviews yet';
+    if ($c['rating'] !== $want) {
+        $ratingBad102[] = "$k: {$c['rating']} (want $want)";
+    }
+}
+it_check('§102 each card\'s price is the boot payload\'s rate', !$priceBad102 && count($cards102) === count($liveNow102), implode('; ', $priceBad102));
+it_check('§102 …and each rating is the reviews figures the script will hold', !$ratingBad102, implode('; ', $ratingBad102));
+$k0 = (string) $live102[0]['prop_key'];
+// The card's own line: the owner's words when set, else the limit (a saved one winning).
+$metaKey102 = ssr_card_keys($k0)['meta'];
+$metaSet102 = $rootDb->query("SELECT item_value FROM content WHERE item_key = " . $rootDb->quote($metaKey102))->fetchColumn();
+$metaWant102 = $metaSet102 !== false && is_string(json_decode((string) $metaSet102, true)) && json_decode((string) $metaSet102, true) !== '' ? json_decode((string) $metaSet102, true) : 'Sleeps 7';
+preg_match('#<a class="card glass-panel" data-prop="' . preg_quote($k0, '#') . '".*?data-edit-text="' . preg_quote($metaKey102, '#') . '">([^<]*)</div>#s', (string) substr($h102, (int) strpos($h102, '<!--ssr:home-cards-->')), $mm102);
+it_check('§102 a saved guest limit wins on the card, as it does in the rates the script reads',
+    (int) ($bj102['rates']['occupancy'][$k0]['maxTotal'] ?? 0) === 7 && html_entity_decode($mm102[1] ?? '') === $metaWant102,
+    ($mm102[1] ?? '(no card line)') . ' / want ' . $metaWant102);
+it_check('§102 the cottage count is the live list', strpos($h102, '<span class="heritage-num" id="heritage-count">' . count($liveNow102) . '</span>') !== false);
+it_check('§102 the owner\'s headline is text, decoded once and escaped once, in its word spans',
+    strpos($h102, 'aria-label="IT102 cottages &amp; &lt;b&gt;quays&lt;/b&gt;"') !== false && strpos($h102, '<b>quays') === false && strpos($h102, '&amp;amp;') === false,
+    substr((string) strstr($h102, 'data-edit-text="hero-title"'), 0, 200));
+it_check('§102 a private value never reaches the page (it reads only the keys the page names)', strpos($h102, 'IT102 PRIVATE') === false);
+it_check('§102 a cottage the public cannot see is in neither grid nor the footer',
+    strpos($h102, 'data-prop="' . $hide102 . '"') === false && strpos(substr($h102, (int) strpos($h102, '<!--ssr:home-cards-->')), '>' . htmlspecialchars($hideName102) . '<') === false,
+    $hide102);
+// The shell's own conditional GET still answers, and a change on the page is a new page.
+$again102 = $shellGet('/home.php', $page102['etag']);
+$rootDb->prepare('UPDATE properties SET couple_rate = couple_rate + 1 WHERE prop_key = ?')->execute([$k0]);
+$moved102 = $shellGet('/home.php', $page102['etag']);
+$rootDb->prepare('UPDATE properties SET couple_rate = couple_rate - 1 WHERE prop_key = ?')->execute([$k0]);
+it_check('§102 an unchanged page is a 304; a price change is a new page with the new price',
+    $page102['etag'] !== '' && $again102['code'] === 304 && $moved102['code'] === 200 && $moved102['etag'] !== $page102['etag']
+        && strpos($moved102['raw'], 'id="home-card-price-' . $k0 . '">from £' . number_format(((float) $live102[0]['couple_rate']) + 1, 2)) !== false,
+    "{$again102['code']} / {$moved102['code']}");
+$rootDb->prepare('UPDATE properties SET unlisted = 0 WHERE prop_key = ?')->execute([$hide102]);
+foreach ($keep102 as $k => $v) {
+    if ($v === false) {
+        $rootDb->prepare('DELETE FROM content WHERE item_key = ?')->execute([$k]);
+    } else {
+        $set102->execute([$k, $v]);
+    }
+}
 
 echo "\n== Summary ==\n";
 if ($fail) {

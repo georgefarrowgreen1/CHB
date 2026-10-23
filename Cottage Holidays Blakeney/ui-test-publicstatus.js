@@ -1,7 +1,10 @@
 // /status — the PUBLIC status page (the approved redesign), driven against the
 // REAL server response. There is no database in the harness, so this is the
 // DEGRADED state: the one nobody looks at, and the one that has to be honest.
-const { bootBrowser } = require('./ui-test-lib'); // pins TZ=Europe/London at require time
+const { bootBrowser, realClock } = require('./ui-test-lib'); // pins TZ=Europe/London at require time
+// The real clock: "Checked just now" compares the server's own time stamp (data-at) with the
+// page's, so a page on the lib's shifted clock read it as three hours old.
+realClock();
 let fails = 0;
 const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails++; };
 

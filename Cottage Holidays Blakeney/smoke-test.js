@@ -748,14 +748,15 @@ try {
     const csp = (ht.match(/Content-Security-Policy "([^"]*)"/) || [])[1] || '';
     const scriptSrc = (csp.match(/script-src[^;]*/) || [''])[0];
     check("CSP script-src has dropped 'unsafe-inline'" + (scriptSrc.includes("'unsafe-inline'") ? ' (still present!)' : ''), scriptSrc !== '' && !scriptSrc.includes("'unsafe-inline'"));
-    // The ONE allowed inline <script> (the anti-FOUC theme boot) is whitelisted by
-    // a sha256 hash in script-src. If its body is edited without re-hashing, it'd be
-    // silently BLOCKED under CSP — so assert the live hash is in the policy.
-    const boot = (html.match(/<script>([\s\S]*?)<\/script>/) || [])[1];
-    if (boot) {
-        const h = "'sha256-" + require('crypto').createHash('sha256').update(boot, 'utf8').digest('base64') + "'";
-        check('inline theme-boot script hash is whitelisted in the CSP' + (scriptSrc.includes(h) ? '' : ' (expected ' + h + ')'), scriptSrc.includes(h));
-    }
+    // The inline <script>s (the head's theme + early-page script, the body's two classes) are
+    // whitelisted by sha256 hashes in script-src. One edited without re-hashing would be
+    // silently BLOCKED under CSP, so every one's live hash must be in the policy.
+    const inlines = [...html.matchAll(/<script>([\s\S]*?)<\/script>/g)].map((m) => m[1]);
+    check('(vacuity) the inline scripts are found', inlines.length >= 2, String(inlines.length));
+    inlines.forEach((src, i) => {
+        const h = "'sha256-" + require('crypto').createHash('sha256').update(src, 'utf8').digest('base64') + "'";
+        check(`inline script ${i + 1} of ${inlines.length} is whitelisted in the CSP`, scriptSrc.includes(h), 'expected ' + h);
+    });
     // The Square SDK loads its card-field typeface from its own CloudFront
     // distribution (NOT squarecdn) — without this exact host in font-src every
     // guest on the pay page fires a "CSP blocked font-src" report.
@@ -1284,10 +1285,13 @@ console.log('\n== 10. Design-system & recent-fix contracts ==');
         const heroShell = fs.readFileSync(path.join(__dirname, 'hero-shell.php'), 'utf8');
         const cottageSrc = fs.readFileSync(path.join(__dirname, 'cottage.php'), 'utf8');
         const expSrc = fs.readFileSync(path.join(__dirname, 'experiences-page.php'), 'utf8');
-        check('the hero preload is served through img.php, not the full-size upload',
-            /\$sized\s*=\s*'img\.php\?src='/.test(heroShell) && /href="'\s*\.\s*\$sized/.test(heroShell));
-        check('…and the hero element asks for the SAME sized URL (or the photo downloads twice)',
-            (heroShell.match(/img\.php\?src=/g) || []).length >= 2);
+        // ONE LIST OF SIZES feeds the preloads and the stylesheet rule (test-ssr §4 reads the
+        // output), and app.js asks for the same two, or the photo downloads twice.
+        check('the hero is served through img.php, not the full-size upload',
+            /\$src\s*=\s*'img\.php\?src='\s*\.\s*rawurlencode\(\$hero\)/.test(heroShell) && /foreach \(\$sizes as/.test(heroShell));
+        check('…and app.js asks for the same sizes at the same width (heroPhotoUrl)',
+            /function heroPhotoUrl[\s\S]{0,500}\(min-width: 900px\)[\s\S]{0,200}1600 : 1200/.test(appScript)
+            && /min-width:900px/.test(heroShell) && /w=1600/.test(heroShell));
         check('…at a width the phone can use (1200, not the 900 default that upscales)',
             /w=1200/.test(heroShell) && !/&amp;w=900/.test(heroShell));
         check('social previews keep the full-size original',

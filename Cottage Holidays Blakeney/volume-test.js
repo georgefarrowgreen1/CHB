@@ -239,6 +239,9 @@ const freePort = () => new Promise((resolve) => {
         ['visitor boot', 'visitor', 'GET', '/bootstrap.php'],
         ['visitor availability', 'visitor', 'GET', '/availability.php?all=1'],
         ['visitor all reviews', 'visitor', 'GET', '/reviews.php?all=1'],
+        // The page itself: home.php writes the first screen from the live list, the content it
+        // names and every review's figures (CLAUDE.md, "The page before the script").
+        ['visitor home page', 'visitor', 'GET', '/home.php'],
         ['owner boot', 'owner', 'GET', '/admin-bootstrap.php'],
         ['owner boot, parts held', 'owner', 'GET', '/admin-bootstrap.php?have=' + encodeURIComponent(have)],
         ['owner settings', 'owner', 'POST', '/content.php', { action: 'get_all' }],
@@ -461,6 +464,23 @@ const freePort = () => new Promise((resolve) => {
             : -1;
         ok(!!pk && shown === byProp[pk][0], `…and "Read all" on ${pk} shows every one of its ${pk ? byProp[pk][0] : 0} (${shown})`);
         await vctx.close();
+
+        // THE PAGE BEFORE THE SCRIPT, end to end: a first visit to the real home.php on five
+        // years of data. The script keeps the server's cards only while they are what it would
+        // write itself, so this is the server's page and the script's agreeing on real data.
+        const hctx = await browser.newContext({ viewport: { width: 390, height: 844 } });
+        await hctx.addInitScript(() => { if (navigator.serviceWorker) navigator.serviceWorker.register = () => new Promise(() => {}); });
+        const hpage = await hctx.newPage();
+        await hpage.goto(base + '/home.php');
+        await hpage.waitForFunction(() => window.__chbTaken === true && typeof __contentLoaded !== 'undefined' && __contentLoaded === true, null, { timeout: 60000 });
+        const kept = await hpage.evaluate(() => {
+            const g = document.getElementById('home-cottages-grid');
+            const first = g.firstElementChild;
+            renderHomeCottages();
+            return { early: document.documentElement.classList.contains('chb-early'), keys: g.getAttribute('data-ssr-keys'), live: liveCottageKeys().join(','), kept: first === g.firstElementChild && typeof g.__chbCards === 'string' };
+        });
+        ok(kept.early && kept.keys === kept.live && kept.kept, `a first visit to home.php is shown before the script, and the script keeps the server's cards as its own (${JSON.stringify(kept)})`);
+        await hctx.close();
     } finally {
         await browser.close();
     }

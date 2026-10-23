@@ -2425,6 +2425,15 @@ function initScrollReveal() {
     try {
         if (!('IntersectionObserver' in window)) return;
         if (matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+        // A page shown before the script (html.chb-early) is already being read: what is on
+        // screen stays as it is, and only what is below waits to rise into view.
+        if (document.documentElement.classList.contains('chb-early')) {
+            const h = window.innerHeight || 0;
+            document.querySelectorAll('.reveal').forEach((el) => {
+                const r = el.getBoundingClientRect();
+                if (r.width && r.height && r.bottom > 0 && r.top < h) el.classList.add('in-view');
+            });
+        }
         document.documentElement.classList.add('js-reveal');
         __revealIO = new IntersectionObserver(
             (entries) => {
@@ -9941,6 +9950,9 @@ function autofillGuestEnquiry() {
 
 // Cache of all content fetched from the backend.
 let siteContent = {};
+// True once a content answer has landed: until then a server-written grid is kept as it is
+// (renderCottageGrid), because the cards would be built from no content at all.
+let __contentLoaded = false;
 
 // Load shared content (text edits, image swaps, galleries) from the backend
 // and apply it, so every visitor sees the owner's edits — not just the editor.
@@ -9949,6 +9961,7 @@ async function loadContent(pre) {
         // `pre` = this endpoint's payload already fetched via bootstrap.php.
         const res = pre || (await apiGet('content.php'));
         siteContent = res.content || {};
+        __contentLoaded = true;
     } catch (e) {
         return;
     } // keep last-good content on a transient failure (e.g. background poll)
@@ -10026,6 +10039,17 @@ function heroWordsRise() {
         h.appendChild(o);
     });
 }
+// The hero photo at the size the screen needs: the rule home.php writes into the page
+// (hero-shell.php), 1200 wide below 900px and 1600 from there. The same address as that
+// stylesheet, so the script never swaps the photo on screen for another copy of it (it used to
+// put the full-size original there, and the hero stood empty until that arrived).
+function heroPhotoUrl(clean) {
+    let wide = false;
+    try {
+        wide = matchMedia('(min-width: 900px)').matches;
+    } catch (e) {}
+    return resizedUrl(clean, wide ? 1600 : 1200);
+}
 // Only when it changes what shows: rewriting the hero's h1 every live tick threw away
 // its word spans and the headline rose again. A no-break space still counts.
 function chbTextSquash(t) { return String(t).replace(/[ \t\n\r\f]+/g, ' ').trim(); }
@@ -10046,9 +10070,13 @@ function applyContentOverrides(root) {
         if (typeof v === 'string' && v) {
             const clean = v.replace(/['"\\)]/g, '');
             // Cottage cards are thumbnails — serve a right-sized WebP via img.php
-            // (uploads/ only; other values pass through). The hero stays full-res:
-            // it's the LCP image.
-            const url = el.classList.contains('card-img') ? resizedUrl(clean, 800) : clean;
+            // (uploads/ only; other values pass through). The hero takes the size home.php's
+            // stylesheet already asked for (heroPhotoUrl), never the full original.
+            const url = el.classList.contains('card-img')
+                ? resizedUrl(clean, 800)
+                : el.getAttribute('data-edit-img') === 'hero-bg'
+                  ? heroPhotoUrl(clean)
+                  : clean;
             el.style.backgroundImage = `url('${chbCssUrl(url)}')`;
         }
     });
@@ -10321,7 +10349,8 @@ window.addEventListener('DOMContentLoaded', async () => {
         // Count this initial landing (whatever view is active after boot).
         try {
             const av = document.querySelector('.page-view.active');
-            trackView(av ? av.id : 'view-main', activeFrontProperty);
+            // A tap held on the page before the script already counted the landing.
+            if (!__chbLandCounted) trackView(av ? av.id : 'view-main', activeFrontProperty);
         } catch (e) {}
         try {
             startLiveUpdates();
@@ -10430,10 +10459,48 @@ function heroPhotoReady() {
         }
     });
 }
+// THE PAGE BEFORE THE SCRIPT (CLAUDE.md): index.html's head script showed home.php's page with
+// no cover and held any tap on it (pulsing, data-chb-wait). From the reveal the script answers:
+// the card photos are let through, and the last tap held is replayed, the landing counted
+// first, as if the visitor had waited.
+let __chbLandCounted = false;
+function chbEarlyTakeOver() {
+    const d = document.documentElement;
+    const w = /** @type {any} */ (window);
+    if (w.__chbTaken || !d.classList.contains('chb-early')) return;
+    w.__chbTaken = true;
+    try {
+        if (typeof w.__chbEarlyOff === 'function') w.__chbEarlyOff();
+    } catch (e) {}
+    d.classList.remove('chb-stuck');
+    // The card photos were held back (app.css) so this script and the hero had the connection to
+    // themselves: measured on Slow 4G, the script took over 1.8s sooner and the hero 1.5s sooner.
+    // They load now and settle in as the script's own cards always have (fadeInCardImages).
+    try {
+        const grids = document.querySelectorAll('[data-ssr-keys]');
+        grids.forEach((g) => g.querySelectorAll('.card-img.img-fade').forEach((el) => el.classList.remove('img-fade', 'img-in')));
+        d.classList.add('chb-taken');
+        grids.forEach((g) => fadeInCardImages(g));
+    } catch (e) {}
+    const t = w.__chbEarlyTap;
+    const m = w.__chbEarlyMark;
+    w.__chbEarlyTap = w.__chbEarlyMark = null;
+    if (m && m.removeAttribute) m.removeAttribute('data-chb-wait');
+    if (!t || !t.isConnected) return;
+    try {
+        trackView('view-main', '');
+        __chbLandCounted = true;
+    } catch (e) {}
+    try {
+        if (t.tagName !== 'FORM') t.click();
+        else if (typeof t.requestSubmit === 'function') t.requestSubmit(m && m !== t ? m : undefined);
+    } catch (e) {}
+}
 function hideLoadingOverlay() {
     clearTimeout(window.__slowLoadTimer);
     if (__revealed) return;
     __revealed = true;
+    chbEarlyTakeOver();
     // The hero entrance is HELD (CSS: body:not(.hero-go)) until now. It used to start at CSS
     // parse, behind the opaque overlay, so the visitor met it mid-flight while the main thread
     // was still busy. Fade and entrance now begin in the same frame, once the photo is decoded.
@@ -15909,6 +15976,29 @@ function cottageCardHtml(k, idPrefix, withFav) {
                     </div>
                 </a>`;
 }
+// THE CARDS HOME.PHP WROTE ARE KEPT (CLAUDE.md, "The page before the script"). A grid carrying
+// data-ssr-keys holds the server's cards, which the visitor may already be reading. They stay
+// while they are the cards this would write: 'wait' until a content answer has landed (the
+// boot's first render runs on none, so its cards would differ for that reason alone), then a
+// match on each card's address, photo, name and line. Any difference rebuilds, as before.
+let __ssrSeeded = false;
+function chbSsrGridKeep(grid, keys, html) {
+    if (grid.getAttribute('data-ssr-keys') !== keys.join(',')) return false;
+    if (!__contentLoaded) return 'wait';
+    const t = document.createElement('template');
+    t.innerHTML = html;
+    const want = t.content.querySelectorAll('a.card');
+    const have = grid.querySelectorAll(':scope > a.card');
+    if (want.length !== have.length) return false;
+    // The photo as CSS reads it: applyContentOverrides re-serialises the style attribute.
+    const facts = (/** @type {Element} */ a) => {
+        const img = /** @type {HTMLElement | null} */ (a.querySelector('.card-img'));
+        const tx = (/** @type {string} */ sel) => (a.querySelector(sel) || {}).textContent;
+        return [a.getAttribute('href'), img && img.style.backgroundImage, img && img.getAttribute('aria-label'), tx('.card-title'), tx('.card-meta')].join('\n');
+    };
+    for (let i = 0; i < want.length; i++) if (facts(want[i]) !== facts(have[i])) return false;
+    return true;
+}
 function renderCottageGrid(gridId, idPrefix, withFav) {
     const grid = document.getElementById(gridId);
     if (!grid) return;
@@ -15917,9 +16007,21 @@ function renderCottageGrid(gridId, idPrefix, withFav) {
     // Rebuilt only when the cards change (each live tick dropped focus and the map
     // hover); price, rating and availability are written by id either way.
     const html = keys.map((k) => cottageCardHtml(k, idPrefix, withFav)).join('');
-    if (/** @type {any} */ (grid).__chbCards !== html) {
-        grid.innerHTML = html;
-        /** @type {any} */ (grid).__chbCards = html;
+    const g = /** @type {any} */ (grid);
+    // Every price and rating the server wrote is already on screen: no settle when the script
+    // writes the same words over them (each render fills both grids, so all are seeded at once).
+    if (!__ssrSeeded) {
+        __ssrSeeded = true;
+        document.querySelectorAll('[data-ssr-keys] .card-price[id], [data-ssr-keys] .card-rating[id]').forEach((el) => __priceShown.add(el.id));
+    }
+    if (g.__chbCards !== html) {
+        const keep = g.__chbCards === undefined && chbSsrGridKeep(grid, keys, html);
+        if (keep) {
+            if (keep === true) g.__chbCards = html;
+        } else {
+            grid.innerHTML = html;
+            g.__chbCards = html;
+        }
     }
     try {
         renderCardPrices();
@@ -22409,7 +22511,7 @@ const CHB_SK_CARD = '<div class="card glass-panel sk-card"><div class="skeleton 
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'reviewsum1';
+    const BUILD = 'earlypage1';
     /** @type {any} */ (window).__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;

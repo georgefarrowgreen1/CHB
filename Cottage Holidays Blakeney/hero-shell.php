@@ -43,30 +43,55 @@ function inject_live_hero($out, $hero, $origin, $preload = true)
     // for. 1200 not 900: the hero box is 390×517 CSS px at DPR3, so 900 would
     // upscale a full-bleed photo. The og:image/JSON-LD replacement above keeps the
     // 1920px ORIGINAL — social platforms want that one.
+    // ONE SIZE RULE, STATED WHERE THE BROWSER CAN READ IT: 1200 wide below 900px, 1600
+    // from there (a computer's wide hero would soften at 1200). The rule is a stylesheet,
+    // so the browser fetches one copy; app.js's applyContentOverrides asks for the same
+    // two (heroPhotoUrl), so the script never swaps the photo the visitor is looking at
+    // for another — it used to put the full-size original in its place after boot, a
+    // second download of the largest image on the site, and the hero stood empty until
+    // that arrived (measured on Slow 4G: grey from 4.2s to about 8s).
     // NB img.php's own fallback (no GD, or an unwritable cache dir) streams the
     // ORIGINAL, which does NOT go through the .htaccess WebP rewrite — so a broken
     // cache degrades to the 909KB JPEG, worse than today. Worth knowing before
     // assuming the degrade is free.
+    // Only an upload goes through img.php (its own rule, and resizedUrl's); any other path the
+    // check above lets through is used as it is, by this and by the script alike.
+    // NB a <style> element's text is not HTML-decoded, so the rule carries a bare & where the
+    // preloads' attributes carry &amp; — both reach the browser as the same address.
+    if (preg_match('#^uploads/[A-Za-z0-9._-]+\.(jpe?g|png|webp)$#i', $hero)) {
+        $src = 'img.php?src=' . rawurlencode($hero);
+        $sizes = [[$src . '&w=1200', '(max-width: 899px)'], [$src . '&w=1600', '(min-width: 900px)']];
+    } else {
+        $sizes = [[$hero, '']];
+    }
+    $rule = '<style id="hero-photo">';
+    $links = '';
+    foreach ($sizes as [$url, $media]) {
+        $decl = '#hero .hero-bg{background-image:url(\'' . $url . '\')}';
+        $rule .= $media === '(min-width: 900px)' ? '@media (min-width:900px){' . $decl . '}' : $decl;
+        $links .= '<link rel="preload" as="image" href="' . htmlspecialchars($url, ENT_QUOTES) . '" fetchpriority="high"' . ($media !== '' ? ' media="' . $media . '"' : '') . '>';
+    }
+    $rule .= '</style>';
     $preloadTag = '<link rel="preload" as="image" href="hero.jpg" fetchpriority="high">';
     if ($preload) {
-        $sized = 'img.php?src=' . rawurlencode($hero) . '&amp;w=1200';
         $out = str_replace(
             $preloadTag,
-            '<link rel="preload" as="image" href="' . $sized . '" fetchpriority="high">',
+            $links . $rule,
             $out,
         );
     } else {
-        // This route never paints the hero — drop the tag entirely rather than
-        // rewrite it. (Leaving it pointed at hero.jpg would be worse still: that
-        // file does not exist on the live host and 404s.)
-        $out = str_replace($preloadTag, '', $out);
+        // This route never paints the hero first — no preload (it would pull the largest
+        // asset on the site for an element the route leaves display:none; hero.jpg itself
+        // 404s on the live host). The rule still goes in, so the hero is right when the
+        // visitor reaches the homepage.
+        $out = str_replace($preloadTag, $rule, $out);
     }
-    // The hero element itself (no flash of a missing image before JS runs). Same
-    // sized source as the preload, so the warmed entry is the one CSS asks for —
-    // pointing them at different URLs would download the photo twice.
+    // The hero element itself: no inline photo, so the rule above places it at the size the
+    // screen needs. The placeholder's absence is also what tells the scene's CSS a photo is
+    // set (.hero-bg[style*="hero.jpg"] is the no-photo state).
     $out = str_replace(
         'data-edit-img="hero-bg" style="background-image: url(\'hero.jpg\');"',
-        'data-edit-img="hero-bg" style="background-image: url(\'img.php?src=' . rawurlencode($hero) . '&amp;w=1200\');"',
+        'data-edit-img="hero-bg"',
         $out,
     );
     // The static og:image:width/height (1200×630) no longer match: the live hero is

@@ -51,9 +51,50 @@ try {
         // og/twitter/JSON-LD image URLs. Shared with cottage.php / experiences.
         require_once __DIR__ . '/hero-shell.php';
         $out = inject_live_hero($out, $hero, 'https://cottageholidaysblakeney.co.uk');
+
+        // THE PAGE BEFORE THE SCRIPT (ssr-lib.php; see CLAUDE.md): the first screen written
+        // with the owner's own words, prices and reviews, so a first visit can be shown before
+        // the script arrives. Its own catch: a failure leaves the page as the hero step made
+        // it, without the mark the head script reads, and the cover hides it as it always did.
+        try {
+            require_once __DIR__ . '/ssr-lib.php';
+            require_once __DIR__ . '/reviews-lib.php';
+            $out = ssr_home($out, home_ssr_data($pdo, $html));
+        } catch (\Throwable $e) {
+        }
     }
 } catch (\Throwable $e) {
     $out = $html; // any hiccup → the untouched shell, exactly as before this file existed
+}
+
+// What the first screen needs, in four reads: the cottages (in the rates' order), the
+// content the page names (its own [data-edit-*] keys, each cottage's card keys and saved
+// limits, the owner's reviews) and the guests' reviews. Only keys the page itself names are
+// read, so nothing private or internal can reach this HTML (test-ssr checks the page's keys).
+function home_ssr_data(PDO $pdo, string $shell): array
+{
+    $props = $pdo->query('SELECT * FROM properties ORDER BY sort_order, name')->fetchAll();
+    preg_match_all('#data-edit-(?:text|img)="([a-z0-9_-]+)"#', $shell, $m);
+    $keys = array_fill_keys($m[1], true);
+    foreach ($props as $p) {
+        $k = (string) ($p['prop_key'] ?? '');
+        foreach (ssr_card_keys($k) as $ck) {
+            $keys[$ck] = true;
+        }
+        $keys['occupancy-' . $k] = true;
+    }
+    $keys['reviews'] = true;
+    $names = array_keys($keys);
+    $q = $pdo->prepare('SELECT item_key, item_value FROM content WHERE item_key IN (' . implode(',', array_fill(0, count($names), '?')) . ')');
+    $q->execute($names);
+    $content = [];
+    foreach ($q->fetchAll() as $r) {
+        // As content.php decodes a value: JSON, or the stored text when it is not JSON.
+        $d = json_decode((string) $r['item_value'], true);
+        $content[$r['item_key']] = $d === null && $r['item_value'] !== 'null' ? $r['item_value'] : $d;
+    }
+    $reviews = reviews_summary(reviews_merge(reviews_guest_rows($pdo), reviews_curated_from($content['reviews'] ?? [])));
+    return ['content' => $content, 'props' => $props, 'reviews' => $reviews, 'base' => '/'];
 }
 
 // Conditional GET, so an installed PWA's launch costs a ~0-byte 304 instead of
