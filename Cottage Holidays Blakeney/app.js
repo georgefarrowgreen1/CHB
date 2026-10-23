@@ -7,11 +7,11 @@
 // the window properties when the bundle loads. Deploy checklist: bump ADMIN_V
 // whenever admin.js changes (it is the ?v= cache-buster).
 // ============================================================
-const ADMIN_BUNDLE_V = 803;
+const ADMIN_BUNDLE_V = 804;
 // admin.css is the owner-only stylesheet, split out of app.css so guests never
 // download it. Injected here (not a static <link>) and version-stamped on its
 // own — bump when admin.css changes. Kept OUT of the sw.js CORE precache.
-const ADMIN_CSS_V = 417;
+const ADMIN_CSS_V = 418;
 function ensureAdminCss() {
     if (document.getElementById('admin-css')) return Promise.resolve();
     return new Promise((resolve) => {
@@ -2401,6 +2401,90 @@ document.addEventListener('visibilitychange', () => {
     else if (__viewKey) __viewAt = Date.now();
 });
 window.addEventListener('pagehide', flushDwell);
+// HOW FAST THIS PAGE WAS, AS THE VISITOR'S OWN BROWSER MEASURED IT (perf.php, perf-lib.php).
+// Sent when the page is first put away; each later visible stretch sends only its taps and
+// layout (an installed app's page lives for days). Times are milliseconds from the start of
+// the load, layout shift x1000. Nothing personal: the server reads whose page it was from the
+// session; the place is home, a cottage or other. A figure that happened after the page was
+// first hidden is not sent (a background tab's paint says nothing about speed).
+const __perf = { sent: false, hid: Infinity, fcp: null, lcp: null, shown: null, ready: null, lcpDone: false, cls: { max: 0, win: 0, a: 0, b: 0 }, ints: new Map(), ok: {} };
+function chbPerfMark(k) {
+    if (__perf[k] == null) __perf[k] = Math.round(performance.now());
+}
+(function chbPerfWatch() {
+    try {
+        if (document.visibilityState === 'hidden') __perf.hid = 0;
+        const types = (window.PerformanceObserver && PerformanceObserver.supportedEntryTypes) || [];
+        const watch = (type, fn, extra) => {
+            if (!types.includes(type)) return;
+            __perf.ok[type] = true;
+            new PerformanceObserver((l) => l.getEntries().forEach(fn)).observe(Object.assign({ type, buffered: true }, extra || {}));
+        };
+        watch('paint', (e) => {
+            if (e.name === 'first-contentful-paint') __perf.fcp = Math.round(e.startTime);
+        });
+        watch('largest-contentful-paint', (e) => {
+            if (!__perf.lcpDone) __perf.lcp = Math.round(e.startTime);
+        });
+        // A layout shift counts in windows (1s apart at most, 5s long at most); the largest is the figure.
+        watch('layout-shift', (e) => {
+            const c = __perf.cls;
+            if (e.hadRecentInput) return;
+            if (c.win && e.startTime - c.b < 1000 && e.startTime - c.a < 5000) c.win += e.value;
+            else (c.win = e.value), (c.a = e.startTime);
+            c.b = e.startTime;
+            c.max = Math.max(c.max, c.win);
+        });
+        // A tap's figure is its slowest event; the stretch's is the worst tap, or 1 in 50 past fifty.
+        watch('event', (e) => {
+            if (!e.interactionId) return;
+            __perf.ints.set(e.interactionId, Math.max(__perf.ints.get(e.interactionId) || 0, e.duration));
+        }, { durationThreshold: 16 });
+        const stop = () => (__perf.lcpDone = true);
+        addEventListener('pointerdown', stop, { once: true, capture: true, passive: true });
+        addEventListener('keydown', stop, { once: true, capture: true, passive: true });
+    } catch (e) {}
+})();
+function chbPerfSend() {
+    const P = __perf;
+    try {
+        if (PREVIEW_MODE || !navigator.sendBeacon) return;
+        const out = {};
+        let any = false;
+        const put = (k, v, max) => {
+            if (v != null && v >= 0 && v <= max) (out[k] = v), (any = true);
+        };
+        if (!P.sent) {
+            const before = (t) => (t != null && t < P.hid ? t : null);
+            const nav = /** @type {any} */ (performance.getEntriesByType('navigation')[0]);
+            const early = document.documentElement.classList.contains('chb-early');
+            put('ttfb', nav && nav.responseStart > 0 ? Math.round(nav.responseStart) : null, 60000);
+            put('fcp', before(P.fcp), 60000);
+            put('lcp', before(P.lcp), 60000);
+            put('shown', before(early ? P.fcp : P.shown), 60000);
+            put('ready', before(P.ready), 120000);
+            if (P.ok['layout-shift']) put('cls', Math.round(P.cls.max * 1000), 10000);
+            out.land = location.pathname === '/' ? 'h' : /^\/cottages\//.test(location.pathname) ? 'c' : 'o';
+            out.early = early;
+            out.pwa = !!(/** @type {any} */ (navigator).standalone || matchMedia('(display-mode: standalone)').matches);
+        } else if (P.cls.max > 0) put('cls', Math.round(P.cls.max * 1000), 10000);
+        if (P.ints.size) {
+            const d = [...P.ints.values()].sort((a, b) => b - a);
+            put('inp', Math.round(d[Math.min(d.length - 1, Math.floor(d.length / 50))]), 60000);
+        }
+        P.sent = true;
+        P.lcpDone = true;
+        P.ints.clear();
+        P.cls = { max: 0, win: 0, a: 0, b: 0 };
+        if (any) navigator.sendBeacon(API_BASE + 'perf.php', new Blob([JSON.stringify(out)], { type: 'application/json' }));
+    } catch (e) {}
+}
+document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState !== 'hidden') return;
+    __perf.hid = Math.min(__perf.hid, Math.round(performance.now()));
+    chbPerfSend();
+});
+window.addEventListener('pagehide', chbPerfSend);
 // A named intent event — builds the in-page conversion funnel.
 // Known events: book_click, enquiry_open, enquiry_submit, pay_start.
 function trackEvent(name, prop) {
@@ -10500,12 +10584,14 @@ function hideLoadingOverlay() {
     clearTimeout(window.__slowLoadTimer);
     if (__revealed) return;
     __revealed = true;
+    chbPerfMark('ready');
     chbEarlyTakeOver();
     // The hero entrance is HELD (CSS: body:not(.hero-go)) until now. It used to start at CSS
     // parse, behind the opaque overlay, so the visitor met it mid-flight while the main thread
     // was still busy. Fade and entrance now begin in the same frame, once the photo is decoded.
     const go = () => {
         document.body.classList.add('hero-go');
+        chbPerfMark('shown');
         const o = document.getElementById('loading-overlay');
         if (!o) return;
         o.classList.add('fade-out');
@@ -22511,7 +22597,7 @@ const CHB_SK_CARD = '<div class="card glass-panel sk-card"><div class="skeleton 
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'earlypage1';
+    const BUILD = 'r3perfa';
     /** @type {any} */ (window).__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;

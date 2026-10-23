@@ -251,6 +251,8 @@ const freePort = () => new Promise((resolve) => {
         ['owner analytics', 'owner', 'GET', '/track.php?action=summary&days=30'],
         ['owner activity log', 'owner', 'POST', '/activity-log.php', { action: 'list', category: 'all', q: '', limit: 150 }],
         ['owner activity week', 'owner', 'POST', '/activity-log.php', { action: 'summary' }],
+        // Manage → Status, which now reads the week of real visitors' figures (perf-lib.php).
+        ['owner Status', 'owner', 'POST', '/diagnostics.php', { action: 'run' }],
         ['owner guest list', 'owner', 'POST', '/auth.php', { action: 'guest_crm' }],
         ['owner search', 'owner', 'POST', '/search.php', { q: 'smith' }],
         ['guest stays', 'guest', 'GET', '/my-bookings.php'],

@@ -149,6 +149,10 @@ jobs:
         working-directory: "Cottage Holidays Blakeney"
         run: php test-newsletter.php
 
+      - name: Real visitors' speed (a sample, the percentiles, the judgement, the wiring)
+        working-directory: "Cottage Holidays Blakeney"
+        run: php test-perf.php
+
       - name: Watcher rules (identity, cap, due/expiry, and when they must stay silent)
         working-directory: "Cottage Holidays Blakeney"
         run: php test-watchers.php

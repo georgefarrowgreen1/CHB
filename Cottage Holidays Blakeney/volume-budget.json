@@ -93,6 +93,13 @@
     "rowsRead": 14400,
     "ms": 1000
   },
+  "owner Status": {
+    "bytes": 25209,
+    "gz": 5361,
+    "statements": 40,
+    "rowsRead": 14761,
+    "ms": 1000
+  },
   "owner guest list": {
     "bytes": 160263,
     "gz": 19513,
