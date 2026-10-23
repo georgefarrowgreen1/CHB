@@ -7,11 +7,11 @@
 // the window properties when the bundle loads. Deploy checklist: bump ADMIN_V
 // whenever admin.js changes (it is the ?v= cache-buster).
 // ============================================================
-const ADMIN_BUNDLE_V = 804;
+const ADMIN_BUNDLE_V = 805;
 // admin.css is the owner-only stylesheet, split out of app.css so guests never
 // download it. Injected here (not a static <link>) and version-stamped on its
 // own — bump when admin.css changes. Kept OUT of the sw.js CORE precache.
-const ADMIN_CSS_V = 418;
+const ADMIN_CSS_V = 419;
 function ensureAdminCss() {
     if (document.getElementById('admin-css')) return Promise.resolve();
     return new Promise((resolve) => {
@@ -11920,11 +11920,38 @@ function displayGrand(p, ps, holdStatus, b) {
 // was taken, and drops it once refunded. Use this for "how much is still to come
 // in"; keep paymentSummary for the RENTAL question.
 function bookingDue(propKey, b) {
+    const m = chbMoneyOf(propKey, b);
+    if (!m) return bookingDueNow(propKey, b);
+    if (!m.due) m.due = bookingDueNow(propKey, b);
+    return Object.assign({}, m.due);
+}
+function bookingDueNow(propKey, b) {
     const ps = paymentSummary(propKey, b);
     const p =
         b.agreedPrice ||
         priceBreakdown(propKey, b.adults || 0, b.children || 0, b.checkIn, b.checkOut);
     return displayGrand(p, ps, b.holdStatus || 'none', b);
+}
+// ONE ANSWER PER BOOKING UNTIL IT CHANGES. With a price snapshot, paymentSummary,
+// bookingDue and damageHeld (admin.js) depend only on the booking's own money fields,
+// and every surface asks them again: opening Payments asked bookingDue 11,819 times on
+// a five-year business, and a Today refresh asked damageHeld 11,096 times. So the
+// answers are kept beside the booking, checked against the fields they were made from,
+// and a changed field makes a new answer. A booking WITHOUT a snapshot is priced from
+// today's rates and seasons, which this check cannot see, so it is worked out every
+// time, as before. Each caller gets a copy.
+/** @type {WeakMap<object, any>} */
+const __chbMoney = new WeakMap();
+function chbMoneyOf(propKey, b) {
+    const ap = b && b.agreedPrice;
+    if (!ap) return null;
+    let m = __chbMoney.get(b);
+    if (!m || m.pk !== propKey || m.ap !== ap || m.dp !== b.depositPaid || m.pay !== b.payment
+        || m.hs !== b.holdStatus || m.ha !== b.holdAmount || m.po !== b.priceOverride) {
+        m = { pk: propKey, ap, dp: b.depositPaid, pay: b.payment, hs: b.holdStatus, ha: b.holdAmount, po: b.priceOverride, ps: null, due: null, held: null, ret: undefined };
+        __chbMoney.set(b, m);
+    }
+    return m;
 }
 
 // BUILT ONCE, for the same reason ukNowParts is. toLocaleString constructs a fresh
@@ -11944,6 +11971,12 @@ function gbp(n) {
 
 // Total / deposit-paid / balance for a booking, using the agreed (locked) price.
 function paymentSummary(propKey, b) {
+    const m = chbMoneyOf(propKey, b);
+    if (!m) return paymentSummaryNow(propKey, b);
+    if (!m.ps) m.ps = paymentSummaryNow(propKey, b);
+    return Object.assign({}, m.ps);
+}
+function paymentSummaryNow(propKey, b) {
     const p =
         b.agreedPrice ||
         priceBreakdown(propKey, b.adults || 0, b.children || 0, b.checkIn, b.checkOut);
@@ -22597,7 +22630,7 @@ const CHB_SK_CARD = '<div class="card glass-panel sk-card"><div class="skeleton 
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'r3perfa';
+    const BUILD = 'r3sums';
     /** @type {any} */ (window).__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;

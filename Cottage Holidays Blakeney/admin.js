@@ -3503,7 +3503,15 @@ function chbCalc(s) {
     if (i !== s.length) throw 0;
     return v;
 }
-function chbNum(v) { const r = Math.round(v * 100) / 100; return r.toLocaleString('en-GB', { maximumFractionDigits: 2 }); }
+// A sum as a row states it (75, 75.5), from ONE formatter built once: toLocaleString
+// with options builds a new Intl.NumberFormat on every call, and the deposit duty asked
+// it twice per held deposit per build of the duty list (6,752 times in one Today
+// refresh on a five-year business, most of a second at 4x CPU).
+let __chbNumFmt = null;
+function chbNum(v) {
+    if (!__chbNumFmt) __chbNumFmt = new Intl.NumberFormat('en-GB', { maximumFractionDigits: 2 });
+    return __chbNumFmt.format(Math.round(v * 100) / 100);
+}
 // Parse a spoken date — "20 august", "august 20th", "20/08", "christmas" — to the
 // NEXT occurrence (a passed date without an explicit year rolls to next year).
 function chbComputeDate(str) {
@@ -16878,7 +16886,13 @@ async function openAccounts() {
     // is in hand and money.php's figures fill in when they land.
     nav('view-accounts');
     adminHistPush('view-accounts');
+    // Drawn at once from what is held, and the page's own answers asked for at once
+    // (renderMoneyOverview's refresh): ONE load per opening, in step with the reads below.
     accountsShowIndex();
+    // What the page was drawn with, to tell whether the reads below changed it (Today's
+    // own refresh may fetch the returns in between: what counts is the drawn copy).
+    const gen = /** @type {any} */ (window).__chbDataGen;
+    const retDrawn = damagesReturnedMap;
     try {
         if (!Object.keys(dbBookings).some((k) => (dbBookings[k] || []).length)) await loadData();
     } catch (e) {}
@@ -16886,7 +16900,11 @@ async function openAccounts() {
     try {
         await loadDepositReturns();
     } catch (e) {}
-    renderMoneyOverview();
+    // Drawn again only if what it was drawn from has changed; never asked again (a
+    // second refresh here asked for the summary twice whenever the returns took
+    // longer than the refresh's 200ms to answer).
+    const changed = !chbSameReturns(retDrawn, damagesReturnedMap) || /** @type {any} */ (window).__chbDataGen !== gen;
+    if (changed && pmRoot()) pmRender();
     loadExpenses().catch(() => {});
 }
 
@@ -17480,6 +17498,13 @@ async function deleteExpense(id) {
 // Damage-deposit lifecycle: how much of the refundable deposit has been
 // collected vs returned for a booking. Keyed by the DB id (booking.dbId).
 let damagesReturnedMap = {};
+// Two answers about the returns say the same thing (each fetch makes a new object).
+function chbSameReturns(a, b) {
+    const x = a || {};
+    const y = b || {};
+    const ks = Object.keys(y);
+    return ks.length === Object.keys(x).length && ks.every((k) => x[k] === y[k]);
+}
 async function loadDepositReturns() {
     try {
         const r = await apiPost('bookings.php', { action: 'deposit_returns' });
@@ -17494,7 +17519,19 @@ async function loadDepositReturns() {
 }
 // Refundable damage deposit ACTUALLY collected into the rental ledger.
 // MUST stay in lockstep with damages_collected() in bookings.php.
+// Kept beside the booking like bookingDue (app.js chbMoneyOf), with the returns
+// recorded against it as one more thing the answer was made from.
 function damageHeld(propKey, b) {
+    const m = chbMoneyOf(propKey, b);
+    if (!m) return damageHeldNow(propKey, b);
+    const ret = damagesReturnedMap[b.dbId];
+    if (!m.held || m.ret !== ret) {
+        m.held = damageHeldNow(propKey, b);
+        m.ret = ret;
+    }
+    return Object.assign({}, m.held);
+}
+function damageHeldNow(propKey, b) {
     const p =
         b.agreedPrice ||
         priceBreakdown(propKey, b.adults || 0, b.children || 0, b.checkIn, b.checkOut);
@@ -18126,9 +18163,11 @@ function pmPlan(r) {
 // the balance is in, or the deposit is kept against it, the chase is the job.
 // Returns the sum to hand back, or 0. ONE rule for the duty, Payments and search.
 function chbDepositBackDue(pk, b) {
+    // Whether they have left is the cheaper question, so it is asked first.
+    if (!b || !(hasCheckedOut(b) || b.guestCheckedOutAt)) return 0;
     let h = null;
     try { h = damageHeld(pk, b); } catch (e) { return 0; }
-    if (!h || !(h.held > 0.005) || !(hasCheckedOut(b) || b.guestCheckedOutAt)) return 0;
+    if (!h || !(h.held > 0.005)) return 0;
     let owes = 0;
     try { owes = Number(bookingDue(pk, b).balance) || 0; } catch (e) {}
     return owes > 0.5 ? 0 : h.held;
@@ -18450,6 +18489,9 @@ function pmBooksCardHtml() {
         <button type="button" class="pm-openrow" data-pm="books">Open the books ${PM_IC.chev}</button>
     </section>`;
 }
+/** @type {HTMLElement|null} */
+let __pmListEl = null;
+let __pmListHtml = '';
 function pmRenderList() {
     const lp = document.getElementById('pm-list');
     if (!lp) return;
@@ -18472,7 +18514,19 @@ function pmRenderList() {
         const whole = __pmWhole ? '<div class="pm-whole"><span>The whole business</span><button type="button" class="pm-linkbtn" data-pm="split-mine">Back to yours</button></div>' : '';
         html = whole + pmBankCardHtml() + pmOwedCardHtml(rows, 'Guests still to pay', sub) + pmNeedsHtml(rows) + pmActivityHtml() + (view === 'holder' ? pmSplitBooksHtml() : pmBooksCardHtml()) + pmSourcesHtml();
     }
+    // A list drawn the same as it stands is not drawn again: on a five-year business it
+    // is 422KB of rows, and parsing, styling and laying them out again is about a second
+    // at 4x CPU, for no change on screen. Only this function writes the list. What a
+    // rewrite would have taken away goes all the same: a figure's settle from the last
+    // draw (the same figures do not settle twice).
+    if (__pmListEl === lp && __pmListHtml === html) {
+        lp.querySelectorAll('.is-changed').forEach((el) => el.classList.remove('is-changed'));
+        __pmFresh.clear();
+        return;
+    }
     lp.innerHTML = html;
+    __pmListEl = lp;
+    __pmListHtml = html;
     lp.scrollTop = keep;
     // A figure that changed settles, so the owner sees what moved; the first paint stays still.
     const figs = {};
@@ -18763,34 +18817,59 @@ function pmRefresh() {
     clearTimeout(__pmT);
     __pmT = setTimeout(pmLoad, 200);
 }
+// ONE DRAW FOR THE PAGE'S ANSWERS. The bank and split answers drew the list as each
+// landed and the summary drew it again, so opening Payments drew it five times on a
+// five-year business, 422KB of rows each time. The three are asked together and the
+// page is drawn once, when the summary (the page's own answer) is in, with whatever
+// else has landed by then or within PM_BATCH_GRACE of it; anything later draws itself.
+// A summary still out after PM_BATCH_WAIT does not hold the others back: they are
+// drawn then, and the summary draws itself when it lands. A caller that awaits this
+// still gets the summary's answer, as before.
+const PM_BATCH_WAIT = 4000;
+const PM_BATCH_GRACE = 250;
 async function pmLoad(expectNew) {
     const stamp = ++__pmStamp;
-    pmBankLoad();
-    splitLoad();
+    let drew = false;
+    const held = () => !drew;
+    const side = Promise.allSettled([pmBankLoad(held), splitLoad(held)]);
     const before = new Set(__pmAct.map((e) => e.id));
-    try {
-        const r = await apiPost('money.php', { action: 'summary' });
-        if (stamp !== __pmStamp) return;
-        __pm = r;
-        __pmErr = false;
-        __pmAct = Array.isArray(r.activity) ? r.activity : [];
-        __pmActEnd = __pmAct.length < 80;
-        if (r.books && r.books.year) {
-            __pmBooks[r.books.year] = r.books;
-            if (!__pmYear) __pmYear = r.books.year;
+    const summary = (async () => {
+        try {
+            const r = await apiPost('money.php', { action: 'summary' });
+            if (stamp !== __pmStamp) return;
+            __pm = r;
+            __pmErr = false;
+            __pmAct = Array.isArray(r.activity) ? r.activity : [];
+            __pmActEnd = __pmAct.length < 80;
+            if (r.books && r.books.year) {
+                __pmBooks[r.books.year] = r.books;
+                if (!__pmYear) __pmYear = r.books.year;
+            }
+            if (expectNew) __pmAct.forEach((e) => { if (!before.has(e.id)) __pmFresh.add(e.id); });
+            // The stay and payout pages re-read what they show — the open one keeps
+            // what it shows until its re-read lands.
+            const open = __pmOpen || '';
+            const openB = open.indexOf('stay:') === 0 ? findBookingById(open.slice(5)) : null;
+            Object.keys(__pmStay).forEach((k) => { if (!openB || String(openB.dbId) !== k) delete __pmStay[k]; });
+            if (openB) pmLoadStay(open.slice(5));
+        } catch (e) {
+            if (stamp !== __pmStamp) return;
+            __pmErr = true; // the last good figures stay on screen
         }
-        if (expectNew) __pmAct.forEach((e) => { if (!before.has(e.id)) __pmFresh.add(e.id); });
-        // The stay and payout pages re-read what they show — the open one keeps
-        // what it shows until its re-read lands.
-        const open = __pmOpen || '';
-        const openB = open.indexOf('stay:') === 0 ? findBookingById(open.slice(5)) : null;
-        Object.keys(__pmStay).forEach((k) => { if (!openB || String(openB.dbId) !== k) delete __pmStay[k]; });
-        if (openB) pmLoadStay(open.slice(5));
-    } catch (e) {
-        if (stamp !== __pmStamp) return;
-        __pmErr = true; // the last good figures stay on screen
-    }
-    pmRender();
+        // Landed after the batch was drawn: it draws itself.
+        if (drew && stamp === __pmStamp) {
+            try { pmRender(); } catch (e) { chbSwallow(e, 'pm-late'); }
+        }
+    })();
+    const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+    await Promise.race([
+        Promise.allSettled([summary, side]),
+        summary.then(() => wait(PM_BATCH_GRACE)),
+        wait(PM_BATCH_WAIT),
+    ]);
+    drew = true;
+    if (stamp === __pmStamp) pmRender();
+    await summary;
 }
 async function pmLoadStay(id) {
     const b = findBookingById(id);
@@ -19158,15 +19237,18 @@ const PM_BANK_CATS = [
 const pmBankLines = () => (__pmBank && Array.isArray(__pmBank.lines) ? __pmBank.lines : []);
 const pmBankOn = () => !!(__pmBank && __pmBank.ready && __pmBank.on);
 let __pmBankQ = null;
-function pmBankLoad() {
+// `heldBack`: pmLoad's batch, true while its own draw is still to come.
+function pmBankLoad(heldBack) {
     if (__pmBankQ) return __pmBankQ;
     __pmBankQ = (async () => {
         try {
             __pmBank = await apiPost('statements.php', { action: 'status' });
         } catch (e) { /* the last good copy stays on screen */ }
         __pmBankQ = null;
-        pmRenderList();
-        if (__pmOpen === 'bank') pmRenderDetail();
+        if (!(typeof heldBack === 'function' && heldBack())) {
+            pmRenderList();
+            if (__pmOpen === 'bank') pmRenderDetail();
+        }
         pmMzWatch();
         pmMzKick();
     })();
@@ -19941,7 +20023,8 @@ let __split = null; // split.php status: the last good copy
 let __splitStamp = 0;
 let __splitBusy = false;
 let __pmWhole = false; // a paid-out host with full access, looking at the whole business
-async function splitLoad() {
+// `heldBack` as pmBankLoad's.
+async function splitLoad(heldBack) {
     const st = ++__splitStamp;
     __splitBusy = true;
     try {
@@ -19950,8 +20033,10 @@ async function splitLoad() {
     } catch (e) { /* the last good copy stays on screen */ }
     if (st !== __splitStamp) return;
     __splitBusy = false;
-    pmRenderList();
-    if (!__pmOpen && pmWide()) pmRenderDetail();
+    if (!(typeof heldBack === 'function' && heldBack())) {
+        pmRenderList();
+        if (!__pmOpen && pmWide()) pmRenderDetail();
+    }
     try { if (settingsShowing('split')) renderSplitSettings(); } catch (e) {}
     // Permissions' "Cottages & money" row states whose account the money lands in;
     // its words are patched where they stand (the oaPeoplePatch rule) or the row
@@ -23879,20 +23964,28 @@ function prSmartToggle() {
 //   volunteer  due, not arranged, not stale: what Today's pill, the day sentence and
 //              the greeting total (owner-digest.php's booking_owed_volunteered too).
 const CHB_OWED_DAYS = 14;
+// The day before which a finished stay is a record, not a chore, worked out once a
+// day: every per-booking check compares a date string against it before anything
+// is priced (five years of finished stays are most of the bookings).
+let __chbOwedCut = { day: '', cut: '' };
+function chbOwedCutoff(today) {
+    if (__chbOwedCut.day !== today) __chbOwedCut = { day: today, cut: ukShiftDays(today, -CHB_OWED_DAYS) };
+    return __chbOwedCut.cut;
+}
 function chbOwedOf(pk, b) {
     let gt = null;
     try { gt = bookingDue(pk, b); } catch (e) { chbSwallow(e, 'owed-of'); }
     const bal = gt && !gt.fullyPaid ? Number(gt.balance) || 0 : 0;
     const due = bal > 0.5 ? Math.round(bal * 100) / 100 : 0;
     const arranged = bookingOwnerArranged(b);
-    const stale = !!(b && b.checkOut) && b.checkOut < ukShiftDays(todayDashed(), -CHB_OWED_DAYS);
+    const stale = !!(b && b.checkOut) && b.checkOut < chbOwedCutoff(todayDashed());
     return { due, gt, arranged, stale, volunteer: due > 0 && !arranged && !stale };
 }
 // The sums across every booking: what is volunteered, and what the owner arranged
 // personally (named on Today's pill, so "Nothing to chase" never reads as "nobody owes").
 function chbOwedTotals() {
     const t = { sum: 0, n: 0, arrSum: 0, arrN: 0 };
-    const horizon = ukShiftDays(todayDashed(), -CHB_OWED_DAYS);
+    const horizon = chbOwedCutoff(todayDashed());
     Object.keys(dbBookings || {}).forEach((pk) => (dbBookings[pk] || []).forEach((b) => {
         if (b && b.checkOut && b.checkOut < horizon) return; // stale: never counted, so never priced
         const o = chbOwedOf(pk, b);
@@ -23917,6 +24010,10 @@ function chbOwedTotals() {
 // app.js global. ONE definition; test-payrail holds its card pattern in step
 // with payment_rail's, byte for byte.
 function chbChaseInfo(k, b) {
+    // An ancient never-reconciled booking must not nag forever (asked before the money,
+    // and before anything else: on five years of bookings most stays are in that past).
+    const today = todayDashed();
+    if (b && b.checkOut && b.checkOut < chbOwedCutoff(today)) return null;
     if (bookingOwnerArranged(b)) return null; // arranged personally — never volunteered
     // AND NEVER CHASE MONEY THE GUEST HAS ALREADY ARRANGED. An armed plan means a
     // card is on file and the collection is scheduled — the pay screen tells the
@@ -23926,11 +24023,7 @@ function chbChaseInfo(k, b) {
     // different and must still chase: the card failed, so the money is genuinely
     // outstanding (payments-due.php draws the same line).
     if (b && b.autopayState === 'armed') return null;
-    // An ancient never-reconciled booking must not nag forever (asked before the money).
-    const today = todayDashed();
     const t0 = dpParse(today).getTime();
-    const outAgo = b.checkOut ? Math.round((t0 - dpParse(b.checkOut).getTime()) / 86400e3) : 0;
-    if (outAgo > CHB_OWED_DAYS) return null;
     const gt = bookingDue(k, b);
     if (gt.fullyPaid || !(gt.balance > 0.5) || !b.checkIn) return null;
     const days = Math.round((dpParse(b.checkIn).getTime() - t0) / 86400e3);
@@ -24172,11 +24265,11 @@ function chbDutiesAll() {
             if (backDue > 0.005) {
                 out.push({
                     kind: 'deposit', key: 'deposit:' + b.dbId, sev: 'warn', ic: 'deposit',
-                    label: `Return ${b.name || 'the guest'}’s ${'£' + (Math.round(backDue * 100) / 100).toLocaleString('en-GB', { minimumFractionDigits: 0, maximumFractionDigits: 2 })} deposit`,
+                    label: `Return ${b.name || 'the guest'}’s £${chbNum(backDue)} deposit`,
                     sub: !hasCheckedOut(b) && b.guestCheckedOutAt
                         ? `Left ${guestCheckoutTapTime(b.guestCheckedOutAt) || 'this morning'} ✓ (guest-declared) · ${pname(k)}`
                         : `Checked out ${fmtDate(b.checkOut)} · ${pname(k)}`,
-                    act: 'Return £' + (Math.round(backDue * 100) / 100).toLocaleString('en-GB', { minimumFractionDigits: 0, maximumFractionDigits: 2 }), go: chbAttrs('openBookingHub', String(b.id)),
+                    act: 'Return £' + chbNum(backDue), go: chbAttrs('openBookingHub', String(b.id)),
                     board: 'money', scope: 'money',
                     run: () => { closeCmdK(); openBookingHub(b.id); },
                 });

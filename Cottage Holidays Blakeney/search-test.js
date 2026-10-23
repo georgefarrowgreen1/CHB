@@ -3441,6 +3441,116 @@ process.on('exit', (code) => { if (!__searchTestDone && code === 0) { console.er
         }
     } else fail('chbOwedTotals / chbChaseList / mapBookingFromApi missing for §47');
 
+    // §48 A BOOKING'S MONEY IS WORKED OUT ONCE UNTIL IT CHANGES. bookingDue, paymentSummary
+    // and damageHeld keep their answer beside a booking with a price snapshot and give it
+    // back until a field it was made from changes (app.js chbMoneyOf); a booking with no
+    // snapshot is priced from today's rates and worked out every time. Each caller gets a
+    // copy. The duty checks ask the cheap date question before the money, and the duty
+    // list builds no number formatter per row. The clock is pinned.
+    console.log('\n§48 money: worked out once per change');
+    if (typeof ctx.chbMoneyOf === 'function' && typeof ctx.bookingDueNow === 'function' && typeof ctx.damageHeldNow === 'function') {
+        vm.runInContext(`globalThis.__realParts48 = ukNowParts; ukNowParts = () => ({ y: 2026, m: 7, d: 15, hh: 12, mm: 0 });`, ctx);
+        try {
+            // In a function of its own: §47 declared snap and row at the context's top level.
+            vm.runInContext(`(() => { propertyMeta.jollyboat = propertyMeta.jollyboat || { name: 'Jollyboat' };
+                Object.keys(dbBookings).forEach((k) => dbBookings[k] = []); enquiries = [];
+                damagesReturnedMap = {};
+                propertyRates.jollyboat = Object.assign({}, propertyRates.jollyboat || {}, { coupleRate: 100, extraAdultRate: 0, childRate: 0, damagesDeposit: 50, transactionPct: 0 });
+                const snap = { agreed_total: 500, agreed_nightly: 480, agreed_txn_fee: 20, agreed_booking_fee: 50, agreed_per_night: 120, agreed_nights: 4, agreed_txn_pct: 0, adults: 2, children: 0, prop_key: 'jollyboat', email: 'g@x.co' };
+                const row = (id, name, ci, co, extra, noSnap) => mapBookingFromApi(Object.assign({ id, name, check_in: ci, check_out: co, deposit_paid: 0, payment: 'unpaid', hold_status: 'none', payment_method: '' }, noSnap ? { prop_key: 'jollyboat', adults: 2, children: 0, email: 'n@x.co' } : snap, extra));
+                dbBookings.jollyboat = [
+                    row(481, 'Card Cara', '2026-07-20', '2026-07-24', { deposit_paid: 125, payment: 'deposit', hold_status: 'charged', hold_amount: 50, payment_method: 'Square card' }),
+                    row(482, 'Cash Cal', '2026-06-20', '2026-06-24', { deposit_paid: 550, payment: 'paid', payment_method: 'Cash' }),
+                    row(483, 'Over Ollie', '2026-07-01', '2026-07-05', { price_override: 400, deposit_paid: 400, payment: 'paid' }),
+                    row(484, 'Returned Ria', '2026-06-01', '2026-06-05', { deposit_paid: 500, payment: 'paid', hold_status: 'returned', hold_amount: 50 }),
+                    row(485, 'Nosnap Ned', '2026-08-03', '2026-08-06', { deposit_paid: 0 }, true),
+                    row(486, 'Edge Eve', '2026-06-27', '2026-07-01', { deposit_paid: 125, payment: 'deposit', hold_status: 'charged', hold_amount: 50, payment_method: 'Square card' }),
+                    row(487, 'Past Pip', '2026-06-26', '2026-06-30', { deposit_paid: 125, payment: 'deposit', hold_status: 'charged', hold_amount: 50, payment_method: 'Square card' }),
+                ]; })();`, ctx);
+            const same = vm.runInContext(`(() => {
+                const bad = [];
+                dbBookings.jollyboat.forEach((b) => {
+                    const a = [JSON.stringify(bookingDue('jollyboat', b)), JSON.stringify(paymentSummary('jollyboat', b)), JSON.stringify(damageHeld('jollyboat', b))];
+                    const z = [JSON.stringify(bookingDueNow('jollyboat', b)), JSON.stringify(paymentSummaryNow('jollyboat', b)), JSON.stringify(damageHeldNow('jollyboat', b))];
+                    if (a.join() !== z.join()) bad.push(b.name);
+                });
+                return bad;
+            })()`, ctx);
+            check(`the kept answers are the worked-out ones, booking by booking (${same.length ? 'differ: ' + same.join(', ') : 'all seven'})`, same.length === 0);
+            const once = vm.runInContext(`(() => {
+                const rd = bookingDueNow, rp = paymentSummaryNow, rh = damageHeldNow;
+                const n = { d: 0, p: 0, h: 0 };
+                bookingDueNow = function () { n.d++; return rd.apply(this, arguments); };
+                paymentSummaryNow = function () { n.p++; return rp.apply(this, arguments); };
+                damageHeldNow = function () { n.h++; return rh.apply(this, arguments); };
+                try {
+                    const b = dbBookings.jollyboat.find((x) => x.dbId === 481);
+                    const fresh = (x) => { __chbMoney.delete(x); };
+                    fresh(b);
+                    for (let i = 0; i < 5; i++) { bookingDue('jollyboat', b); paymentSummary('jollyboat', b); damageHeld('jollyboat', b); }
+                    const first = Object.assign({}, n);
+                    const before = bookingDue('jollyboat', b).balance;
+                    b.depositPaid = 375; // a payment recorded in place
+                    const after = bookingDue('jollyboat', b).balance;
+                    const counted = n.d;
+                    const heldBefore = damageHeld('jollyboat', b).held;
+                    damagesReturnedMap[b.dbId] = 50; // the deposit handed back
+                    const heldAfter = damageHeld('jollyboat', b).held;
+                    const g = bookingDue('jollyboat', b); g.balance = -1; g.fullyPaid = true;
+                    const again = bookingDue('jollyboat', b);
+                    const ned = dbBookings.jollyboat.find((x) => x.dbId === 485);
+                    const nd0 = n.d;
+                    const p1 = bookingDue('jollyboat', ned).total;
+                    propertyRates.jollyboat.coupleRate = 200; // a rate changed: a booking with no snapshot follows it
+                    const p2 = bookingDue('jollyboat', ned).total;
+                    propertyRates.jollyboat.coupleRate = 100;
+                    return { first, before, after, counted, heldBefore, heldAfter, againBal: again.balance, againPaid: again.fullyPaid, nedComputed: n.d - nd0, p1, p2, kept: chbMoneyOf('jollyboat', ned) === null };
+                } finally { bookingDueNow = rd; paymentSummaryNow = rp; damageHeldNow = rh; damagesReturnedMap = {}; }
+            })()`, ctx);
+            check(`asked five times, worked out once (${JSON.stringify(once.first)})`, once.first.d === 1 && once.first.p === 1 && once.first.h === 1);
+            check(`a payment recorded in place is a new answer (${once.before} → ${once.after}, worked out ${once.counted} times)`, once.before > once.after && Math.abs(once.before - once.after - 250) < 0.005 && once.counted === 2);
+            check(`a deposit handed back is a new answer for what is held (${once.heldBefore} → ${once.heldAfter})`, once.heldBefore === 50 && once.heldAfter === 0);
+            check(`each caller gets its own copy: changing one changes no later answer (${once.againBal}, ${once.againPaid})`, once.againBal > 0 && once.againPaid === false);
+            check(`a booking with no snapshot is never kept, and follows today's rates (${once.p1} → ${once.p2}, worked out ${once.nedComputed} times)`, once.kept && once.nedComputed === 2 && once.p2 > once.p1);
+            // THE CHEAP QUESTION FIRST, AND THE SAME ANSWER: the stay that ended exactly
+            // CHB_OWED_DAYS ago is still chased, the day before that is a record. The old
+            // reckoning (days between two parsed dates) is worked here and compared.
+            const edge = vm.runInContext(`(() => {
+                const old = (b) => { const t0 = dpParse(todayDashed()).getTime(); return b.checkOut ? Math.round((t0 - dpParse(b.checkOut).getTime()) / 86400e3) > CHB_OWED_DAYS : false; };
+                return dbBookings.jollyboat.map((b) => ({ n: b.name, co: b.checkOut, oldStale: old(b), info: !!chbChaseInfo('jollyboat', b), stale: !!(b.checkOut && b.checkOut < chbOwedCutoff(todayDashed())) }));
+            })()`, ctx);
+            const eve = edge.find((e) => e.n === 'Edge Eve') || {};
+            const pip = edge.find((e) => e.n === 'Past Pip') || {};
+            check(`the date question agrees with the old reckoning for every stay (${edge.filter((e) => e.oldStale !== e.stale).map((e) => e.n).join(', ') || 'all agree'})`, edge.every((e) => e.oldStale === e.stale));
+            check(`…a stay that left exactly ${'14'} days ago is still chased, one a day earlier is not (${eve.co} ${eve.info}, ${pip.co} ${pip.info})`, eve.co === '2026-07-01' && eve.info === true && pip.co === '2026-06-30' && pip.info === false);
+            const back = vm.runInContext(`(() => {
+                const old = (pk, b) => { let h = null; try { h = damageHeld(pk, b); } catch (e) { return 0; } if (!h || !(h.held > 0.005) || !(hasCheckedOut(b) || b.guestCheckedOutAt)) return 0; let owes = 0; try { owes = Number(bookingDue(pk, b).balance) || 0; } catch (e) {} return owes > 0.5 ? 0 : h.held; };
+                return dbBookings.jollyboat.map((b) => [b.name, old('jollyboat', b), chbDepositBackDue('jollyboat', b)]);
+            })()`, ctx);
+            check(`the deposit to hand back is the same with the leaving question asked first (${back.map((x) => x[0] + ':' + x[2]).join(', ')})`, back.every((x) => x[1] === x[2]) && back.some((x) => x[2] > 0));
+            // NO NUMBER FORMATTER PER ROW. toLocaleString with options builds one every call;
+            // four hundred deposits to hand back made the duty list build eight hundred.
+            const fmt = vm.runInContext(`(() => {
+                const many = [];
+                for (let i = 0; i < 40; i++) many.push(mapBookingFromApi({ id: 900 + i, name: 'Dep ' + i, check_in: '2026-05-01', check_out: '2026-05-05', deposit_paid: 125, payment: 'deposit', hold_status: 'charged', hold_amount: 50.5, payment_method: 'Square card', agreed_total: 100, agreed_nightly: 100, agreed_txn_fee: 0, agreed_booking_fee: 50.5, agreed_per_night: 25, agreed_nights: 4, agreed_txn_pct: 0, adults: 2, children: 0, prop_key: 'jollyboat', email: 'd' + i + '@x.co' }));
+                const keep = dbBookings.jollyboat; dbBookings.jollyboat = many;
+                const real = Number.prototype.toLocaleString;
+                let withOpts = 0;
+                Number.prototype.toLocaleString = function (loc, opts) { if (opts) withOpts++; return real.call(this, loc, opts); };
+                try {
+                    const d = chbDutiesAll().filter((x) => x.kind === 'deposit');
+                    return { withOpts, n: d.length, label: d[0] ? d[0].label : '', act: d[0] ? d[0].act : '' };
+                } finally { Number.prototype.toLocaleString = real; dbBookings.jollyboat = keep; }
+            })()`, ctx);
+            check(`forty deposits to hand back build no formatter per row (${fmt.withOpts} built, ${fmt.n} duties)`, fmt.n === 40 && fmt.withOpts === 0);
+            check(`…and say the sum as before ("${fmt.label}" / "${fmt.act}")`, /^Return Dep 0’s £50\.5 deposit$/.test(fmt.label) && fmt.act === 'Return £50.5');
+            const nums = vm.runInContext(`[0, 75, 75.5, 75.25, 1234.56, 0.004, 99.999, 12345678.9].map((v) => [chbNum(v), (Math.round(v * 100) / 100).toLocaleString('en-GB', { maximumFractionDigits: 2 })])`, ctx);
+            check(`chbNum says what toLocaleString said (${nums.map((x) => x[0]).join(' ')})`, nums.every((x) => x[0] === x[1]));
+        } finally {
+            vm.runInContext('ukNowParts = globalThis.__realParts48; delete globalThis.__realParts48; Object.keys(dbBookings).forEach((k) => dbBookings[k] = []); damagesReturnedMap = {};', ctx);
+        }
+    } else fail('chbMoneyOf / bookingDueNow / damageHeldNow missing for §48');
+
     // ---- Summary ----
     console.log('\n== Summary ==');
     if (failures) { console.log(`  ${failures} CHECK(S) FAILED ❌\n`); __searchTestDone = true; process.exit(1); }

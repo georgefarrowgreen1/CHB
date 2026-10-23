@@ -17,7 +17,9 @@
 //    - how long it takes (a ceiling only: a loaded machine moves the time, not the count);
 //  and in a browser: how many elements Today has on this much data, and how many each
 //  of three small changes restyles there (a line of text, a class on one element, a row
-//  added and taken away: ui-test-stylecost's changes, made here on a full Today). (What a
+//  added and taken away: ui-test-stylecost's changes, made here on a full Today); what a
+//  refresh of Today works out and how often opening Payments writes its list, with each
+//  one's main-thread time at 4x CPU (time x3, at least 2s: the counts hold the line). (What a
 //  first visit fetches before the page shows depends on timing; it is measured where
 //  that is the subject, not budgeted here.)
 //
@@ -394,6 +396,76 @@ const freePort = () => new Promise((resolve) => {
         for (const [k, fn] of Object.entries(CHANGES)) today[k] = await restyled(fn);
         measured['Today in a browser'] = today;
 
+        // THE BACK OFFICE ON FIVE YEARS OF SUMS (CLAUDE.md "The back office stops redoing
+        // five years of sums"), counted: what one refresh of Today works out (a booking's
+        // money once per load, it was nine times over) and how often it builds the duty
+        // list; how often opening Payments writes its list (once per answer, it was five
+        // to seven) and how often a second visit with nothing changed does (none); how
+        // often Today at rest restyles the page (a box-shadow pulse did it every frame).
+        // And the main thread's time for a refresh and an opening at 4x CPU: a ceiling
+        // with room, the counts being what holds the line.
+        await page.evaluate(() => {
+            const W = /** @type {any} */ (window);
+            W.__n = {};
+            for (const name of ['bookingDueNow', 'paymentSummaryNow', 'damageHeldNow', 'chbDutiesAll']) {
+                const f = W[name];
+                W[name] = function (...a) { W.__n[name] = (W.__n[name] || 0) + 1; return f.apply(this, a); };
+            }
+            const real = W.pmLoad;
+            W.pmLoad = function (...a) {
+                W.__pmIdle = false;
+                const pr = real.apply(this, a);
+                W.__pmLast = pr;
+                Promise.resolve(pr).finally(() => { if (W.__pmLast === pr) W.__pmIdle = true; });
+                return pr;
+            };
+            W.__writes = 0;
+            new MutationObserver((recs) => { if (recs.some((r) => r.addedNodes.length || r.removedNodes.length)) W.__writes++; })
+                .observe(document.getElementById('pm-list'), { childList: true });
+        });
+        await cdp.send('Performance.enable');
+        const metric = async () => Object.fromEntries((await cdp.send('Performance.getMetrics')).metrics.map((x) => [x.name, x.value]));
+        const pause = (ms) => new Promise((r) => setTimeout(r, ms));
+        const work = async (fn, payments) => {
+            await page.evaluate(() => { const W = /** @type {any} */ (window); W.__n = {}; W.__writes = 0; W.__pmIdle = undefined; });
+            const a = await metric();
+            await page.evaluate(fn);
+            if (payments) await page.waitForFunction(() => /** @type {any} */ (window).__pmIdle === true, null, { timeout: 60000 }).catch(() => {});
+            await pause(payments ? 1500 : 3000);
+            const b = await metric();
+            const got = await page.evaluate(() => ({ n: /** @type {any} */ (window).__n, writes: /** @type {any} */ (window).__writes }));
+            return { taskMs: Math.round((b.TaskDuration - a.TaskDuration) * 1000), ...got };
+        };
+        await cdp.send('Emulation.setCPUThrottlingRate', { rate: 4 });
+        let backOffice;
+        try {
+            await page.evaluate(() => nav('view-backoffice'));
+            await pause(3000);
+            const t = await work(() => initBackOffice(), false);
+            const p1 = await work(() => openAccounts(), true);
+            await page.evaluate(() => nav('view-backoffice'));
+            await pause(4000);
+            const p2 = await work(() => openAccounts(), true);
+            await page.evaluate(() => nav('view-backoffice'));
+            await pause(4000); // past Today's arrival animation
+            const r0 = await metric();
+            await pause(2000);
+            const r1 = await metric();
+            const money = (n) => (n.bookingDueNow || 0) + (n.paymentSummaryNow || 0) + (n.damageHeldNow || 0);
+            backOffice = {
+                todayMoney: money(t.n),
+                dutyBuilds: t.n.chbDutiesAll || 0,
+                paymentsWrites: p1.writes,
+                paymentsRepeatWrites: p2.writes,
+                restyledAtRest: Math.round(r1.RecalcStyleCount - r0.RecalcStyleCount),
+                todayTaskMs: t.taskMs,
+                paymentsTaskMs: p1.taskMs,
+            };
+        } finally {
+            await cdp.send('Emulation.setCPUThrottlingRate', { rate: 1 });
+        }
+        measured['The back office on five years'] = backOffice;
+
         // THE PAGE'S OWN MERGE, on five years of data: each list after a change, made from
         // the copy it held and the buckets that came back, is the list a fresh ask returns,
         // row for row and in the same order (the order is the page's to restore).
@@ -489,7 +561,7 @@ const freePort = () => new Promise((resolve) => {
 
     // 7. Against the budget. One rule for the room a measured figure is given, used by
     // --update to write the budget and by the check to say when a figure came down.
-    const room = { bytes: (n) => Math.ceil(n * 1.1), gz: (n) => Math.ceil(n * 1.1), statements: (n) => n + 2, rowsRead: (n) => Math.ceil(n * 1.1 + 20), ms: (n) => Math.max(1000, n * 5), elements: (n) => Math.ceil(n * 1.1), restyledByText: () => 40, restyledByClass: () => 40, restyledByRow: () => 40 };
+    const room = { bytes: (n) => Math.ceil(n * 1.1), gz: (n) => Math.ceil(n * 1.1), statements: (n) => n + 2, rowsRead: (n) => Math.ceil(n * 1.1 + 20), ms: (n) => Math.max(1000, n * 5), elements: (n) => Math.ceil(n * 1.1), restyledByText: () => 40, restyledByClass: () => 40, restyledByRow: () => 40, todayMoney: (n) => Math.ceil(n * 1.1 + 20), dutyBuilds: (n) => n + 2, paymentsWrites: (n) => n + 1, paymentsRepeatWrites: (n) => n + 1, restyledAtRest: (n) => Math.max(10, n * 2), todayTaskMs: (n) => Math.max(2000, Math.ceil(n * 3)), paymentsTaskMs: (n) => Math.max(2000, Math.ceil(n * 3)) };
     if (UPDATE) {
         const out = { comment: 'Ceilings for volume-test.js, written by `node volume-test.js --update` from a run with headroom: bytes and rows +10%, statements +2, time x5 (at least 1s), each small change at most 40 restyled elements. Lower a figure when a change brings it down; never raise one to get green without saying in the PR what grew and why.', engine: maria ? 'mariadb' : 'mysql', measuredOn: seeded.today };
         for (const [label, m] of Object.entries(measured)) {
@@ -502,7 +574,7 @@ const freePort = () => new Promise((resolve) => {
     }
     let budget;
     try { budget = JSON.parse(fs.readFileSync(BUDGET_PATH, 'utf8')); } catch (e) { fatal('volume-budget.json is missing or unreadable: write it with node volume-test.js --update'); }
-    const fmt = (k, v) => (k === 'bytes' || k === 'gz' ? `${(v / 1024).toFixed(1)}KB` : k === 'ms' ? `${v}ms` : String(v));
+    const fmt = (k, v) => (k === 'bytes' || k === 'gz' ? `${(v / 1024).toFixed(1)}KB` : k === 'ms' || /Ms$/.test(k) ? `${v}ms` : String(v));
     const nudges = [];
     for (const [label, m] of Object.entries(measured)) {
         const b = budget[label];
@@ -514,7 +586,7 @@ const freePort = () => new Promise((resolve) => {
             if (v > b[k]) over.push(`${k} ${fmt(k, v)} over ${fmt(k, b[k])}`);
             // Came down: the budget this run would write is below the one stored, by a
             // statement, or by a tenth for the figures that wobble.
-            else if (k !== 'ms' && !k.startsWith('restyled') && room[k](v) < (k === 'statements' ? b[k] : b[k] * 0.9)) nudges.push(`${label} ${k}: ${fmt(k, b[k])} → ${fmt(k, room[k](v))}`);
+            else if (k !== 'ms' && !/Ms$/.test(k) && !k.startsWith('restyled') && room[k](v) < (k === 'statements' ? b[k] : b[k] * 0.9)) nudges.push(`${label} ${k}: ${fmt(k, b[k])} → ${fmt(k, room[k](v))}`);
         }
         ok(!over.length, `${label}: ${Object.entries(m).map(([k, v]) => `${k} ${fmt(k, v)}`).join(', ')}${over.length ? ' — ' + over.join('; ') : ''}`);
     }

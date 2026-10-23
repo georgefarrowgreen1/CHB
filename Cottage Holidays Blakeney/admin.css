@@ -1154,16 +1154,25 @@ body.light-mode {
   border-color: color-mix(in srgb, var(--info) 32%, transparent);
 }
 /* Live "here now" dot: a gentle pulse distinguishes a currently-staying guest
-   from a static green "Paid". */
-.bk-chip.stay .bk-dot {
+   from a static green "Paid". The halo is a layer of its own that only scales and
+   fades, which the compositor runs: animating box-shadow restyled and repainted
+   Today sixty times a second for as long as anyone was staying. */
+.bk-chip.stay .bk-dot { position: relative; }
+.bk-chip.stay .bk-dot::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  background: currentColor;
+  opacity: 0;
   animation: bkStayPulse 2s ease-in-out infinite;
 }
 @keyframes bkStayPulse {
-  0%, 100% { box-shadow: 0 0 0 0 rgba(76, 175, 80, 0.55); }
-  50% { box-shadow: 0 0 0 4px rgba(76, 175, 80, 0); }
+  0%, 100% { transform: scale(1); opacity: 0.55; }
+  50% { transform: scale(2.15); opacity: 0; }
 }
 @media (prefers-reduced-motion: reduce) {
-  .bk-chip.stay .bk-dot { animation: none; }
+  .bk-chip.stay .bk-dot::after { animation: none; }
 }/* The declined drawer's rows: the same index-row anatomy, but they are not
    buttons — the whole row does nothing, only Restore does. */
 .enq-declined-row {
@@ -8646,7 +8655,7 @@ body.owner-mode .cal-tools .mo-tool {
 .al-capn { font-weight: 500; opacity: 0.85; }
 @keyframes alRise { from { opacity: 0; transform: translateY(10px); } }
 @keyframes alGrow { from { transform: scaleY(0); } }
-@keyframes alPulse { 0% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--warn) 50%, transparent); } 70% { box-shadow: 0 0 0 8px transparent; } 100% { box-shadow: 0 0 0 0 transparent; } }
+@keyframes alPulse { 0% { transform: scale(1); opacity: 0.5; } 70%, 100% { transform: scale(2.6); opacity: 0; } }
 @keyframes alArrive { 0% { opacity: 0; transform: translateY(-12px); background: color-mix(in srgb, var(--accent) 20%, transparent); } 40% { opacity: 1; transform: none; } 100% { background: transparent; } }
 @keyframes alLeave { to { opacity: 0; transform: translateX(24px); } }
 @keyframes alUnfold { from { opacity: 0; transform: translateY(-6px); } }
@@ -8672,7 +8681,9 @@ body.owner-mode .cal-tools .mo-tool {
 .al-need { display: flex; align-items: flex-start; gap: 12px; padding: 16px; }
 .al-need + .al-need { border-top: 1px solid color-mix(in srgb, var(--warn) 15%, transparent); }
 .al-need.is-leaving { animation: alLeave 240ms var(--in) both; }
-.al-pulse { flex: none; width: 10px; height: 10px; margin-top: 4px; border-radius: 50%; background: var(--warn); animation: alPulse 2.2s ease-out infinite; }
+.al-pulse { position: relative; flex: none; width: 10px; height: 10px; margin-top: 4px; border-radius: 50%; background: var(--warn); }
+/* A scaling, fading layer the compositor runs, as the Staying dot's (a box-shadow pulse repainted every frame). */
+.al-pulse::after { content: ""; position: absolute; inset: 0; border-radius: 50%; background: var(--warn); opacity: 0; animation: alPulse 2.2s ease-out infinite; }
 .al-ntext { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
 .al-ntext b { font-size: var(--fs-body); font-weight: 600; color: var(--text-light); }
 .al-ntext > span { font-size: var(--fs-sub); color: var(--text-muted); line-height: 1.45; }
@@ -8736,7 +8747,7 @@ body.owner-mode .cal-tools .mo-tool {
 .al-emptyic { width: 48px; height: 48px; border-radius: 50%; background: color-mix(in srgb, var(--text-light) 6%, transparent); color: var(--text-muted); display: inline-flex; align-items: center; justify-content: center; }
 @media (max-width: 480px) { .al-foldin { margin-left: 16px; } }
 @media (prefers-reduced-motion: reduce) {
-  .al-week, .al-needs-sec, .al-search, .al-tabs, .al-item, .al-wbar i, .al-pulse, .al-foldin, .al-need { animation: none !important; }
+  .al-week, .al-needs-sec, .al-search, .al-tabs, .al-item, .al-wbar i, .al-pulse, .al-pulse::after, .al-foldin, .al-need { animation: none !important; }
   .al-pill, .al-tabic, .al-chev { transition: none !important; }
 }
 
