@@ -466,6 +466,31 @@ const freePort = () => new Promise((resolve) => {
         }
         measured['The back office on five years'] = backOffice;
 
+        // LONG LISTS DRAW A PAGE AT A TIME (CLAUDE.md "Long lists draw a page at a time"):
+        // the elements Today's Past list, the Guest list and Payments put on the page when
+        // opened at the top. Each drew its whole list: on five years the Past list was 1,289
+        // rows, the Guest list every guest with their details drawn and hidden.
+        const top = () => page.evaluate(() => window.scrollTo({ top: 0, behavior: 'instant' }));
+        const lists = {};
+        await page.evaluate(() => nav('view-backoffice'));
+        await top();
+        await page.evaluate(() => bookingsSetFilter('past'));
+        await pause(1500);
+        lists.pastElements = await page.evaluate(() => document.querySelectorAll('#bookings-list *').length);
+        await page.evaluate(() => bookingsSetFilter('upcoming'));
+        await page.evaluate(() => settingsOpen('guests'));
+        await page.waitForFunction(() => document.querySelectorAll('#gst-body .gst-item').length > 0, null, { timeout: 60000 });
+        await top();
+        await pause(1000);
+        lists.guestElements = await page.evaluate(() => document.querySelectorAll('#gst-body *').length);
+        await page.evaluate(() => { const W = /** @type {any} */ (window); W.__pmIdle = undefined; });
+        await page.evaluate(() => openAccounts());
+        await page.waitForFunction(() => /** @type {any} */ (window).__pmIdle === true, null, { timeout: 60000 }).catch(() => {});
+        await top();
+        await pause(1000);
+        lists.paymentsElements = await page.evaluate(() => document.querySelectorAll('#pm-list *').length);
+        measured['Long lists on five years'] = lists;
+
         // THE PAGE'S OWN MERGE, on five years of data: each list after a change, made from
         // the copy it held and the buckets that came back, is the list a fresh ask returns,
         // row for row and in the same order (the order is the page's to restore).
@@ -561,7 +586,7 @@ const freePort = () => new Promise((resolve) => {
 
     // 7. Against the budget. One rule for the room a measured figure is given, used by
     // --update to write the budget and by the check to say when a figure came down.
-    const room = { bytes: (n) => Math.ceil(n * 1.1), gz: (n) => Math.ceil(n * 1.1), statements: (n) => n + 2, rowsRead: (n) => Math.ceil(n * 1.1 + 20), ms: (n) => Math.max(1000, n * 5), elements: (n) => Math.ceil(n * 1.1), restyledByText: () => 40, restyledByClass: () => 40, restyledByRow: () => 40, todayMoney: (n) => Math.ceil(n * 1.1 + 20), dutyBuilds: (n) => n + 2, paymentsWrites: (n) => n + 1, paymentsRepeatWrites: (n) => n + 1, restyledAtRest: (n) => Math.max(10, n * 2), todayTaskMs: (n) => Math.max(2000, Math.ceil(n * 3)), paymentsTaskMs: (n) => Math.max(2000, Math.ceil(n * 3)) };
+    const room = { bytes: (n) => Math.ceil(n * 1.1), gz: (n) => Math.ceil(n * 1.1), statements: (n) => n + 2, rowsRead: (n) => Math.ceil(n * 1.1 + 20), ms: (n) => Math.max(1000, n * 5), elements: (n) => Math.ceil(n * 1.1), restyledByText: () => 40, restyledByClass: () => 40, restyledByRow: () => 40, todayMoney: (n) => Math.ceil(n * 1.1 + 20), dutyBuilds: (n) => n + 2, paymentsWrites: (n) => n + 1, paymentsRepeatWrites: (n) => n + 1, restyledAtRest: (n) => Math.max(10, n * 2), todayTaskMs: (n) => Math.max(2000, Math.ceil(n * 3)), paymentsTaskMs: (n) => Math.max(2000, Math.ceil(n * 3)), pastElements: (n) => Math.ceil(n * 1.1), guestElements: (n) => Math.ceil(n * 1.1), paymentsElements: (n) => Math.ceil(n * 1.1) };
     if (UPDATE) {
         const out = { comment: 'Ceilings for volume-test.js, written by `node volume-test.js --update` from a run with headroom: bytes and rows +10%, statements +2, time x5 (at least 1s), each small change at most 40 restyled elements. Lower a figure when a change brings it down; never raise one to get green without saying in the PR what grew and why.', engine: maria ? 'mariadb' : 'mysql', measuredOn: seeded.today };
         for (const [label, m] of Object.entries(measured)) {

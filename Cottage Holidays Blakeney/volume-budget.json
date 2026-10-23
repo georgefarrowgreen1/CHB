@@ -122,7 +122,7 @@
     "ms": 1000
   },
   "Today in a browser": {
-    "elements": 5613,
+    "elements": 5041,
     "restyledByText": 40,
     "restyledByClass": 40,
     "restyledByRow": 40
@@ -156,5 +156,10 @@
     "restyledAtRest": 10,
     "todayTaskMs": 5004,
     "paymentsTaskMs": 10515
+  },
+  "Long lists on five years": {
+    "pastElements": 398,
+    "guestElements": 1263,
+    "paymentsElements": 798
   }
 }

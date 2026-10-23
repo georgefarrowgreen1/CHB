@@ -10643,3 +10643,7 @@ body.owner-mode #oa-dev-sheet .oa-dev-out { color: var(--danger-text); }
 @media (prefers-reduced-motion: reduce) {
   #oa-pw-sheet .oa-pw-spin { display: none; }
 }
+
+/* A LONG LIST'S NEXT PAGE (chbPagedHtml): the house "Show older" link, centred under the
+   rows it follows. Drawn as the row comes near, so it is mostly seen on a slow phone. */
+.chb-more { display: block; margin: 8px auto 0; min-height: 44px; padding: 0 16px; border: 0; border-radius: var(--r-pill); background: none; color: var(--accent-text); font: 600 var(--fs-sub) var(--font-sans); cursor: pointer; }

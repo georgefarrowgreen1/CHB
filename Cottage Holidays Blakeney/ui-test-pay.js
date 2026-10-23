@@ -436,8 +436,8 @@ const SUM = {
     await page.click('[data-act="payTurnOff"]');
     await page.waitForSelector('#glass-dialog.open, .glass-dialog.open', { timeout: 4000 }).catch(() => {});
     await page.evaluate(() => { const b = document.getElementById('glass-dialog-ok'); if (b) b.click(); });
-    await page.waitForFunction(() => window.__posted || true, null, { timeout: 500 }).catch(() => {});
-    await page.waitForTimeout(600);
+    // Waits for the post rather than sleeping: under a loaded run it lands after 600ms.
+    for (let t = 0; t < 50 && !posts.some((p) => p.action === 'autopay_off'); t++) await page.waitForTimeout(100);
     ok(posts.some((p) => p.action === 'autopay_off'), 'turning it off asks first, then posts autopay_off');
     await page.close();
   }
