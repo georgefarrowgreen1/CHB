@@ -171,6 +171,9 @@ function migration_stmt_is_schema($stmt)
     $s = trim(preg_replace('/^\s*(--[^\n]*\n|\/\*.*?\*\/|\s)+/s', '', (string) $stmt));
     return (bool) preg_match('/^(CREATE|ALTER|DROP|RENAME|TRUNCATE\s+TABLE)\b/i', $s);
 }
+// The last two are one error (1091, dropping what is not there) in two engines' words:
+// MySQL's "Can't DROP 'x'; check that column/key exists", MariaDB's "Can't DROP INDEX
+// `x`; check that it exists" (migration-152 drops an index only some databases have).
 function is_idempotent_error($msg)
 {
     $m = strtolower($msg);
@@ -181,6 +184,7 @@ function is_idempotent_error($msg)
             'duplicate key name',
             'multiple primary key',
             'check that column/key exists',
+            'check that it exists',
         ]
         as $needle
     ) {

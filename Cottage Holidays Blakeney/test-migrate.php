@@ -122,6 +122,205 @@ check('migration-111 really carries both a schema statement and a data one',
     count(array_filter($m111, 'migration_stmt_is_schema')) >= 1
     && count(array_filter($m111, fn($s) => !migration_stmt_is_schema($s))) >= 1);
 
+// ---- "Already in place", in both engines' words --------------------------------
+// migrate.php skips a statement whose change is already there and stops a file on
+// anything else. Dropping an index that is not there is one error (1091) worded two
+// ways: MariaDB's wording was missing, so migration-152's DROP of an index only some
+// databases have stopped the file on every MariaDB database. The messages are the
+// engines' own, captured from a server.
+echo "\n== What counts as already in place ==\n";
+check('MySQL: dropping an index that is not there is already done',
+    is_idempotent_error("SQLSTATE[42000]: Syntax error or access violation: 1091 Can't DROP 'ft_bookings'; check that column/key exists") === true);
+check('MariaDB: the same error in its own words',
+    is_idempotent_error('SQLSTATE[42000]: Syntax error or access violation: 1091 Can\'t DROP INDEX `ft_bookings`; check that it exists') === true);
+check('an index name that exists already is already done',
+    is_idempotent_error("SQLSTATE[42000]: Syntax error or access violation: 1061 Duplicate key name 'ft_messages_body'") === true);
+check('a column that exists already is already done',
+    is_idempotent_error("SQLSTATE[42S21]: Column already exists: 1060 Duplicate column name 'username'") === true);
+check('a table that exists already is already done',
+    is_idempotent_error("SQLSTATE[42S01]: Base table or view already exists: 1050 Table 'perf_day' already exists") === true);
+check('a full-text index over two collations is a real failure (1283)',
+    is_idempotent_error("SQLSTATE[HY000]: General error: 1283 Column 'email' cannot be part of FULLTEXT index") === false);
+check('an illegal mix of collations is a real failure (1267)',
+    is_idempotent_error("SQLSTATE[HY000]: General error: 1267 Illegal mix of collations (utf8mb4_unicode_ci,IMPLICIT) and (utf8mb4_general_ci,IMPLICIT) for operation '='") === false);
+check('a missing table is a real failure (1146)',
+    is_idempotent_error("SQLSTATE[42S02]: Base table or view not found: 1146 Table 'chb.pageviews' doesn't exist") === false);
+
+// ---- One collation per full-text index -----------------------------------------
+// A FULLTEXT index needs ONE collation across its columns (error 1283). A column that
+// states its own (migration-112's email, migration-148's username) and one that takes
+// its table's default only agree on a server whose utf8mb4 default happens to be that
+// same collation: MariaDB's is utf8mb4_general_ci, MySQL 8's utf8mb4_0900_ai_ci. The
+// first migration-151 indexed email beside name and message, passed every local run on
+// MariaDB, and failed on the live database every night. Read from the files, so an
+// index is checked the day it is written.
+/** @return array{0: array<string, array<string, string>>, 1: array<string, string>, 2: list<array{0: string, 1: string, 2: list<string>}>} */
+function tm_sql_shape(array $stmts): array
+{
+    $stated = [];
+    $tableColl = [];
+    $fts = [];
+    $id = '`?([A-Za-z0-9_]+)`?';
+    // Split on commas outside brackets and quotes.
+    $split = function (string $s): array {
+        $out = [];
+        $cur = '';
+        $depth = 0;
+        $q = '';
+        for ($i = 0, $n = strlen($s); $i < $n; $i++) {
+            $ch = $s[$i];
+            if ($q !== '') {
+                $cur .= $ch;
+                if ($ch === '\\') { $cur .= $s[++$i] ?? ''; continue; }
+                if ($ch === $q) { $q = ''; }
+                continue;
+            }
+            if ($ch === "'" || $ch === '"' || $ch === '`') { $q = $ch; $cur .= $ch; continue; }
+            if ($ch === '(') { $depth++; }
+            if ($ch === ')') { $depth--; }
+            if ($ch === ',' && $depth === 0) { $out[] = trim($cur); $cur = ''; continue; }
+            $cur .= $ch;
+        }
+        $out[] = trim($cur);
+        return array_values(array_filter($out, fn($x) => $x !== ''));
+    };
+    $cols = fn(string $list) => array_map(fn($c) => strtolower(trim(preg_replace('/\(\d+\)$/', '', trim($c, " `\t\n")) ?? '')), explode(',', $list));
+    foreach ($stmts as $stmt) {
+        $s = trim((string) $stmt);
+        if (preg_match('/^CREATE\s+TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?' . $id . '\s*\(/i', $s, $m)) {
+            $t = strtolower($m[1]);
+            $open = strlen($m[0]) - 1;
+            $depth = 0;
+            $close = -1;
+            $q = '';
+            for ($i = $open, $n = strlen($s); $i < $n; $i++) {
+                $ch = $s[$i];
+                if ($q !== '') { if ($ch === '\\') { $i++; } elseif ($ch === $q) { $q = ''; } continue; }
+                if ($ch === "'" || $ch === '"') { $q = $ch; continue; }
+                if ($ch === '(') { $depth++; }
+                if ($ch === ')' && --$depth === 0) { $close = $i; break; }
+            }
+            if ($close < 0) { continue; }
+            if (preg_match('/\bCOLLATE\s*=?\s*([a-z0-9_]+)/i', substr($s, $close + 1), $c)) { $tableColl[$t] = strtolower($c[1]); }
+            foreach ($split(substr($s, $open + 1, $close - $open - 1)) as $def) {
+                if (preg_match('/^FULLTEXT\s+(?:KEY|INDEX)?\s*(?:`?([A-Za-z0-9_]+)`?\s*)?\(([^)]*)\)/i', $def, $f)) {
+                    $fts[] = [$t, $f[1] !== '' ? $f[1] : '(unnamed)', $cols($f[2])];
+                } elseif (!preg_match('/^(PRIMARY|KEY|INDEX|UNIQUE|CONSTRAINT|FOREIGN|CHECK|SPATIAL)\b/i', $def)
+                    && preg_match('/^' . $id . '\s+/', $def, $c1) && preg_match('/\bCOLLATE\s+([a-z0-9_]+)/i', $def, $c2)) {
+                    $stated[$t][strtolower($c1[1])] = strtolower($c2[1]);
+                }
+            }
+            continue;
+        }
+        if (preg_match('/^CREATE\s+FULLTEXT\s+INDEX\s+' . $id . '\s+ON\s+' . $id . '\s*\(([^)]*)\)/i', $s, $m)) {
+            $fts[] = [strtolower($m[2]), $m[1], $cols($m[3])];
+            continue;
+        }
+        if (preg_match('/^ALTER\s+TABLE\s+' . $id . '\s+(.*)$/is', $s, $m)) {
+            $t = strtolower($m[1]);
+            foreach ($split($m[2]) as $spec) {
+                if (preg_match('/^ADD\s+FULLTEXT\s+(?:KEY|INDEX)?\s*(?:`?([A-Za-z0-9_]+)`?\s*)?\(([^)]*)\)/i', $spec, $f)) {
+                    $fts[] = [$t, $f[1] !== '' ? $f[1] : '(unnamed)', $cols($f[2])];
+                } elseif (preg_match('/^(?:ADD|MODIFY)\s+(?:COLUMN\s+)?' . $id . '\s+(.*)$/is', $spec, $c)
+                    && !preg_match('/^(INDEX|KEY|UNIQUE|PRIMARY|CONSTRAINT|FOREIGN|FULLTEXT|SPATIAL)$/i', $c[1])
+                    && preg_match('/\bCOLLATE\s+([a-z0-9_]+)/i', $c[2], $c2)) {
+                    $stated[$t][strtolower($c[1])] = strtolower($c2[1]);
+                } elseif (preg_match('/^CHANGE\s+(?:COLUMN\s+)?' . $id . '\s+' . $id . '\s+(.*)$/is', $spec, $c)
+                    && preg_match('/\bCOLLATE\s+([a-z0-9_]+)/i', $c[3], $c2)) {
+                    $stated[$t][strtolower($c[2])] = strtolower($c2[1]);
+                }
+            }
+        }
+    }
+    return [$stated, $tableColl, $fts];
+}
+/** The full-text indexes whose columns do not share one collation, in words. */
+function tm_ft_mixed(array $stmts): array
+{
+    [$stated, $tableColl, $fts] = tm_sql_shape($stmts);
+    $bad = [];
+    foreach ($fts as [$t, $name, $cs]) {
+        $by = [];
+        foreach ($cs as $c) {
+            $by[$stated[$t][$c] ?? ($tableColl[$t] ?? "the table's default")][] = $c;
+        }
+        if (count($by) > 1) {
+            $bad[] = "$t.$name: " . implode('; ', array_map(fn($k, $v) => implode(', ', $v) . " ($k)", array_keys($by), $by));
+        }
+    }
+    return $bad;
+}
+echo "\n== One collation per full-text index ==\n";
+$allStmts = split_sql(__DIR__ . '/schema.sql');
+foreach (migration_sort(glob(__DIR__ . '/migration-*.sql')) as $mf) {
+    $allStmts = array_merge($allStmts, split_sql($mf));
+}
+[$shStated, $shTableColl, $shFts] = tm_sql_shape($allStmts);
+check('the scan finds the full-text indexes (vacuity guard: at least 9)', count($shFts) >= 9);
+check('…and the columns that state their own collation: the three emails and the username',
+    ($shStated['bookings']['email'] ?? '') === 'utf8mb4_general_ci' && ($shStated['enquiries']['email'] ?? '') === 'utf8mb4_general_ci'
+    && ($shStated['guests']['email'] ?? '') === 'utf8mb4_general_ci' && ($shStated['guests']['username'] ?? '') === 'utf8mb4_general_ci');
+check('…and a table that states one for every column (bank_lines)', ($shTableColl['bank_lines'] ?? '') === 'utf8mb4_general_ci');
+$mixedNow = tm_ft_mixed($allStmts);
+check('no full-text index mixes a column that states its collation with ones that do not'
+    . ($mixedNow ? ' — ' . implode(' | ', $mixedNow) : ''), $mixedNow === []);
+// The check can fail: the first migration-151, as it shipped, is caught three times over.
+$first151 = [
+    'ALTER TABLE enquiries ADD FULLTEXT INDEX ft_enquiries (name, email, message)',
+    'ALTER TABLE bookings ADD FULLTEXT INDEX ft_bookings (name, email, address, notes)',
+    'ALTER TABLE guests ADD FULLTEXT INDEX ft_guests (name, email)',
+];
+$mixedFirst = tm_ft_mixed(array_merge($allStmts, $first151));
+check('…and it catches the first migration-151 (all three indexes it could not build)',
+    count($mixedFirst) === 3 && strpos(implode(' ', $mixedFirst), 'enquiries.ft_enquiries: ') !== false
+    && strpos(implode(' ', $mixedFirst), 'email (utf8mb4_general_ci)') !== false);
+// An index over columns that all state the same collation is fine (the table states it).
+check('…while columns that all share one stated collation pass',
+    tm_ft_mixed(['CREATE TABLE z (id INT, a TEXT COLLATE utf8mb4_general_ci, b TEXT COLLATE utf8mb4_general_ci) ENGINE=InnoDB',
+        'ALTER TABLE z ADD FULLTEXT INDEX fz (a, b)']) === []
+    && tm_ft_mixed(['CREATE TABLE y (id INT, a TEXT, b TEXT, FULLTEXT KEY fy (a, b)) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci']) === []);
+// search.php matches each source's words against an index that really lists those
+// columns: MySQL refuses a MATCH() whose columns no FULLTEXT index lists (error 1191),
+// and an index nothing reads is a cost for nothing. The indexes are the ones the
+// migrations leave (an index a later migration drops is gone).
+$ftLeft = [];
+foreach ($shFts as [$t, $name, $cs]) {
+    $ftLeft["$t.$name"] = [$t, $cs];
+}
+foreach ($allStmts as $st) {
+    if (preg_match('/^\s*ALTER\s+TABLE\s+`?(\w+)`?\s+DROP\s+(?:INDEX|KEY)\s+`?(\w+)`?/i', (string) $st, $dm)) {
+        unset($ftLeft[strtolower($dm[1]) . '.' . $dm[2]]);
+    }
+}
+$srcTokens = token_get_all((string) file_get_contents(__DIR__ . '/search.php'));
+$srcCode = implode('', array_map(fn($tk) => is_array($tk) ? (in_array($tk[0], [T_COMMENT, T_DOC_COMMENT], true) ? '' : $tk[1]) : $tk, $srcTokens));
+$searchFt = [];
+if (preg_match('/const SEARCH_FT = \[(.*?)\];/s', $srcCode, $sm)) {
+    preg_match_all("/'(\\w+)'\\s*=>\\s*\\[([^\\]]*)\\]/", $sm[1], $pm, PREG_SET_ORDER);
+    foreach ($pm as $p) {
+        preg_match_all("/'(\\w+)'/", $p[2], $cm);
+        $searchFt[$p[1]] = $cm[1];
+    }
+}
+check('search.php names its word indexes in one list (vacuity guard: at least 9 sources)', count($searchFt) >= 9);
+$noIndex = [];
+foreach ($searchFt as $t => $cs) {
+    $hit = array_filter($ftLeft, fn($ix) => $ix[0] === $t && $ix[1] === $cs);
+    if (!$hit) { $noIndex[] = "$t (" . implode(', ', $cs) . ')'; }
+}
+check('every source search.php matches by its words has an index listing exactly those columns'
+    . ($noIndex ? ' — none for ' . implode('; ', $noIndex) : ''), $noIndex === []);
+$unread = [];
+foreach ($ftLeft as $key => [$t, $cs]) {
+    if (($searchFt[$t] ?? null) !== $cs) { $unread[] = $key; }
+}
+check('…and every full-text index the migrations leave is one search.php reads'
+    . ($unread ? ' — not read: ' . implode(', ', $unread) : ''), $unread === []);
+check('…and no word index holds a column that states its own collation (an email is found by its own index)',
+    !array_filter($searchFt, fn($cs, $t) => array_intersect($cs, array_keys($shStated[$t] ?? [])) !== [], ARRAY_FILTER_USE_BOTH));
+check('search.php reads no MATCH() it did not build from that list',
+    substr_count($srcCode, 'MATCH(') === 1 && strpos($srcCode, "'MATCH(' . implode(', ', \$cols)") !== false);
+
 echo "\n== Summary ==\n";
 if ($fail) {
     echo "  $fail CHECK(S) FAILED \xE2\x9D\x8C\n\n";

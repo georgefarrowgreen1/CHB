@@ -36,6 +36,21 @@ build step**); PHP backend files sit alongside it. App-style guest shell lives i
   `/opt/pw-browsers/chromium-*` and passes it as `CHB_CHROMIUM`), and the container can RESTART
   mid-session (`uptime` resets, files survive): MariaDB and any `php -S` are gone, and a suite started
   then dies with "Connection refused".
+  **It can also come back REBUILT** (30/10/2026): no MariaDB at all, no node_modules, an empty scratchpad, and PHP
+  8.3.6, whose date parser reads `modify('+-6 days')` as six days ahead, so ten integration checks fail for that
+  alone. Before trusting a run:
+  - `apt-get install -y mariadb-server mariadb-client`, then `service mariadb start`, then give root the
+    password the gates use: `ALTER USER 'root'@'localhost' IDENTIFIED VIA mysql_native_password USING
+    PASSWORD('root')`.
+  - PHP 8.4.27, the host's version, from ppa:ondrej/php. `add-apt-repository` fails on this image (its python
+    has no apt_pkg), so add it by hand: the key `14AA40EC0831756756D7F66C4F4EA0AAE5267A6C` from
+    keyserver.ubuntu.com, dearmored into `/etc/apt/keyrings`, and a `signed-by` line for
+    `ppa.launchpadcontent.net/ondrej/php/ubuntu noble main`. Then install `php8.4-cli` plus mysql, mbstring, gd,
+    curl, intl, zip, xml, opcache and bcmath, and run `update-alternatives --set php /usr/bin/php8.4`.
+  - `npm install --no-save eslint globals typescript@5.6.3 playwright@1.61.1` in a scratch folder, with
+    `node_modules` symlinked into the app folder. Never commit the symlink.
+  MariaDB is not the live server: see "One collation per full-text index" for what that hid, and why
+  test-integration lays its tables out like MySQL 8's.
 - **CI ran PHP with the TRACING JIT ON, and run-checks.js does too** (an ini on `PHP_INI_SCAN_DIR`, so
   a spawned `php -S` gets it). PHP 8.3.35's JIT miscompiled a hand-written CSV character loop (the
   first file read in a process grew eight extra header fields; the same file a moment later read
@@ -1774,8 +1789,9 @@ search.php `search_ft_terms` and the quick path; migration-151.
   its own dimensions' items. **The arithmetic is the dense build's own, rounding included**: the same items, the same
   scores to the last bit, the same order. search-test §49 keeps the dense build as the reference and compares twelve
   queries; break-tested three ways (weights kept in doubles, the cache not carried over, the counts off by one).
-- **THE QUICK SERVER SEARCH READS FULL-TEXT INDEXES** (migration-151: messages, sent mail, the activity log,
-  enquiries, reviews, bookings, guest accounts, expenses, the waitlist). `search_ft_terms($q)` turns the query into
+- **THE QUICK SERVER SEARCH READS FULL-TEXT INDEXES** (migrations 151 and 152: messages, sent mail, the activity log,
+  enquiries, reviews, bookings, guest accounts, expenses, the waitlist; the emails of bookings, enquiries and guests
+  are NOT in them, see "One collation per full-text index" below). `search_ft_terms($q)` turns the query into
   required word starts (`+pemb* +sarah*`): words of three letters or digits or more (the shortest an index holds),
   the engines' own three-letter-plus stopwords left out (never indexed, so a required one would match nothing), and
   everything but letters and digits splits words, so no character of the query reaches the engine's own syntax.
@@ -1801,6 +1817,67 @@ search.php `search_ft_terms` and the quick path; migration-151.
 - The battery found two load flakes, both test-side and both of a known shape: ui-test-searchpage laid owner-mode
   before the boot's own session check had answered (it waits with `bootVerdict` now, as the other suites do), and
   ui-test-overlays slept 450ms before asserting an exit had finished (it waits on the state now, up to 3s).
+
+## One collation per full-text index (migration-151 failed on the live database every night)
+
+Reported from the live Activity log, eight days after the search upgrade shipped: "Database update FAILED —
+migration-151-search.sql — 1283 Column 'email' cannot be part of FULLTEXT index", and "A daily job failed" every
+morning since.
+- **WHY IT FAILED THERE AND NOWHERE ELSE.** A FULLTEXT index needs ONE collation across its columns. Every table says
+  `DEFAULT CHARSET=utf8mb4` and no collation, so each server picks its own: MariaDB (this container) gives
+  `utf8mb4_general_ci`, MySQL 8 (the live host) gives `utf8mb4_0900_ai_ci`. A few columns state `utf8mb4_general_ci`
+  themselves: the emails of bookings, enquiries, guests and admins (migration-112, -133), a guest's username (-148),
+  and the guest_codes and bank tables whole. The first 151 indexed email beside name and message: one collation on
+  MariaDB, two on MySQL 8. CI used to run on GitHub's preinstalled MySQL 8 and would have failed; moving the checks
+  here changed the database engine as well as where the checks ran.
+- **WHAT IT COST.** migrate.php stops a file at its first hard error and does not record it, so the nightly job ran
+  151 again and failed again. Six of search.php's sources (bookings, enquiries, guest accounts, reviews, expenses,
+  the waitlist) had no index, and each answered every search with nothing: the source wrapper swallowed the error
+  (1191, no FULLTEXT index for the columns) in silence. Nobody noticed, because the owner's own copy of the bookings
+  and guests still answered in the search window.
+- **THE FIX.**
+  - migration-151 is corrected in place. It never applied on the live database, which runs it again each night, so the
+    corrected file is the one live gets; the three email indexes are gone from it.
+  - **migration-152** builds those three without email (`ft_bookings_words (name, address, notes)`,
+    `ft_enquiries_words (name, message)`, `ft_guests_words (name)`) and drops the first version's `ft_bookings`,
+    `ft_enquiries`, `ft_guests` wherever it did apply. Where it never did, the DROP finds nothing, which is "already in
+    place".
+  - **migrate.php reads MariaDB's wording of that error too.** MySQL says "Can't DROP 'x'; check that column/key
+    exists", MariaDB "Can't DROP INDEX `x`; check that it exists", and only MySQL's was accepted, so 152 stopped on
+    every MariaDB database.
+- **search.php**:
+  - `SEARCH_FT` is the one list of each source's indexed columns.
+  - `search_words` builds the MATCH, or (without the index) the LIKE the index replaced, over the same columns.
+  - `search_rows` reads with the index, and again without it on error 1191. A database a migration has not reached is
+    slower, never silent.
+  - An email is found by its START through its own column's index (`search_mail_like`: three characters, no space,
+    `%` and `_` escaped, so "qmail_04" is not "qmail104").
+  - A source that fails is logged (`search_source_failed` → `chb_log_server_error`, deduped hourly) instead of
+    swallowed.
+- **What changed for the owner, said plainly**: an email is matched from its first letter ("sarah" finds
+  sarah.p@…, "pemberton" no longer finds s.pemberton@… through the email). "Search everything" and the owner's own
+  copy of bookings and guests still match anywhere in an address.
+- **Gates.**
+  - **test-migrate "One collation per full-text index"**: reads schema.sql and every migration. No FULLTEXT index may
+    mix a column that states its collation with ones that do not; the first 151 is caught three times (a fixture).
+    `SEARCH_FT` must equal the indexes the migrations leave, both ways, with no email in any list, and search.php has
+    exactly one `MATCH(`, the one built from the list. Plus what counts as "already in place", in both engines' words.
+  - **test-integration runs on the live database's layout.** schema.sql and every migration in the app copy are
+    rewritten so a table that states a charset and no collation gets `utf8mb4_0900_ai_ci` (or `utf8mb4_unicode_ci`
+    where the server has no such collation), and §2 asserts the layout took. `CHB_IT_TABLE_COLLATION=server` keeps the
+    server's own default. With the first 151 restored, §2 fails exactly as live did.
+  - **§104**: an email by its start in all three, the underscore literal, read through the column's index, a missing
+    word index still answering with no error logged, and a failing source logged while the others answer.
+  - Break-tested ten ways, each failing its own named check: the first 151 restored (static check and §2), email back
+    in a word list, the MariaDB wording dropped, an index not built, a hand-written MATCH, no fallback, a silent source,
+    the underscore unescaped, and no email branch.
+- **THE WHOLE SUITE ON THE LIVE LAYOUT FOUND NO OTHER MIX**: no comparison between a column that states its collation
+  and one that takes the default (error 1267) in any path the 1,486 checks drive. Such a comparison is the other way this
+  fails: `waitlist.email` and `chat_threads.email` take the default, so on MySQL 8 a join to `bookings.email` would be
+  refused. Compare across those tables through a parameter, never column to column.
+- **The rebuilt container had PHP 8.3.6**, where `modify('+-6 days')` reads as six days AHEAD. Ten integration checks
+  failed for that alone, with or without this change. The live host runs 8.4.27, which reads it as six days back.
+  Install PHP 8.4 before trusting a local run (see the container note under Workflow preferences).
 
 ## "Nothing new" costs almost nothing (third round, upgrade 5)
 

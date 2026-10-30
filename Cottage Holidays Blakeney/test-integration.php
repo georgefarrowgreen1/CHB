@@ -114,8 +114,26 @@ try {
 $rootDb->exec("DROP DATABASE IF EXISTS `$DB_NAME`");
 $rootDb->exec("CREATE DATABASE `$DB_NAME` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci");
 $rootDb->exec("USE `$DB_NAME`");
+// THE LIVE DATABASE'S COLLATIONS. Every table says `DEFAULT CHARSET=utf8mb4` and no
+// collation, so each server picks its own: MariaDB utf8mb4_general_ci, MySQL 8
+// utf8mb4_0900_ai_ci. The columns that state utf8mb4_general_ci (the emails, a guest's
+// username, the bank tables) therefore match their neighbours on MariaDB and differ from
+// them on the live server, and two collations in one FULLTEXT index (error 1283) or one
+// comparison (1267) fail only there: the first migration-151 passed every run here and
+// failed on the live database every night. So the tables take MySQL 8's default (or the
+// nearest this server has); CHB_IT_TABLE_COLLATION=server keeps the server's own.
+$itTableColl = (string) (getenv('CHB_IT_TABLE_COLLATION') ?: '');
+if ($itTableColl === '') {
+    $itTableColl = $rootDb->query("SHOW COLLATION LIKE 'utf8mb4_0900_ai_ci'")->fetch() ? 'utf8mb4_0900_ai_ci' : 'utf8mb4_unicode_ci';
+}
+$itCollate = function (string $sql) use ($itTableColl): string {
+    if ($itTableColl === 'server') {
+        return $sql;
+    }
+    return (string) preg_replace('/\bCHARSET\s*=\s*utf8mb4\b(?!\s+COLLATE)/i', '$0 COLLATE=' . $itTableColl, $sql);
+};
 foreach (split_sql(__DIR__ . '/schema.sql') as $stmt) {
-    $rootDb->exec($stmt);
+    $rootDb->exec($itCollate($stmt));
 }
 it_check('schema.sql applies to an empty database', true);
 
@@ -127,6 +145,10 @@ mkdir($work, 0777, true);
 // (not the multi-MB model binaries, screenshots or node_modules).
 foreach (glob(__DIR__ . '/*.{php,sql,html,txt,json}', GLOB_BRACE) as $f) {
     copy($f, $work . '/' . basename($f));
+}
+// The migrations create their tables the way schema.sql's were (the live collations, above).
+foreach (glob($work . '/migration-*.sql') as $f) {
+    file_put_contents($f, $itCollate((string) file_get_contents($f)));
 }
 $cfg = (string) file_get_contents($work . '/config.php');
 $dbHostForDsn = $DB_PORT === 3306 ? $DB_HOST : "$DB_HOST;port=$DB_PORT"; // db.php's DSN has no port slot — ride the host string
@@ -241,6 +263,14 @@ it_check('every migration applies cleanly (' . count($migs) . ' files)', $r['cod
 $r2 = http($guest, 'GET', '/migrate.php?cron=' . $SECRET);
 $reruns = array_filter($r2['json']['migrations'] ?? [], fn($m) => ($m['status'] ?? '') !== 'already-recorded');
 it_check('second run: ledger records every file (all already-recorded)', $r2['code'] === 200 && !$reruns);
+// The suite runs on the live database's layout, not this server's (the collations, above):
+// a column that states utf8mb4_general_ci sits beside ones that took another default.
+$itColl = $rootDb->query("SELECT COLUMN_NAME, COLLATION_NAME FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'enquiries' AND COLUMN_NAME IN ('name', 'email', 'message')")->fetchAll(PDO::FETCH_KEY_PAIR);
+it_check($itTableColl === 'server'
+        ? "(CHB_IT_TABLE_COLLATION=server: the tables keep this server's own default)"
+        : "the tables take the live server's kind of default ($itTableColl), the emails keep utf8mb4_general_ci",
+    $itTableColl === 'server' || (($itColl['name'] ?? '') === $itTableColl && ($itColl['message'] ?? '') === $itTableColl && ($itColl['email'] ?? '') === 'utf8mb4_general_ci'),
+    json_encode($itColl));
 it_check('wrong cron secret is rejected', http($guest, 'GET', '/migrate.php?cron=nope')['code'] !== 200);
 
 // ---- 4. Admin auth + CSRF ------------------------------------------------
@@ -8372,6 +8402,44 @@ it_check('§104 a payment is found by its exact amount ("£4,321.09") or the sta
 it_check('§104 …and never by a part of an amount ("432" found 4,321.09 and every other figure with those digits)', count($pay104('432')) === 0 && count($pay104('4321')) === 0);
 $ex104 = $rootDb->query("EXPLAIN SELECT m.thread_id FROM messages m WHERE MATCH(m.body) AGAINST('+zanzib*' IN BOOLEAN MODE) AND m.thread_id IS NOT NULL ORDER BY m.id DESC LIMIT 6")->fetch(PDO::FETCH_ASSOC);
 it_check('§104 the messages are read through their full-text index, not scanned', strtolower((string) ($ex104['type'] ?? '')) === 'fulltext', json_encode($ex104));
+// An email is found by its start, through its column's own index: a FULLTEXT index cannot
+// hold a column that states its collation (the emails, utf8mb4_general_ci) beside ones that
+// take the table's default, which is what failed on the live database (migration-152).
+// In a scope of its own (the §105 rule: this file's top level is one scope to PHPStan).
+(function () use ($rootDb, $q104, $types104, $bk104, $w104) {
+$rootDb->prepare("INSERT INTO guests (name, email, password_hash) VALUES ('Quinta Zanzibarquill', 'qmail104@x.test', '')")->execute();
+$gu104 = (int) $rootDb->lastInsertId();
+$ids104 = fn(array $rows, string $type) => array_map(fn($x) => (int) ($x['id'] ?? 0), array_values(array_filter($rows, fn($x) => ($x['type'] ?? '') === $type)));
+$enq104 = (int) $rootDb->query("SELECT id FROM enquiries WHERE email = 'enq104@x.test'")->fetchColumn();
+it_check('§104 an email is found by its start: a booking, an enquiry and a guest account, by nothing else they hold',
+    in_array($bk104, $ids104($q104('quillon104')['rows'], 'booking'), true) && in_array($enq104, $ids104($q104('enq104')['rows'], 'enquiry'), true)
+        && in_array($gu104, $ids104($q104('qmail104')['rows'], 'guest'), true) && in_array($gu104, $ids104($q104('QMail104@X.test')['rows'], 'guest'), true));
+it_check('§104 …and a guest account by a word of the name', in_array($gu104, $ids104($q104('zanzib')['rows'], 'guest'), true));
+it_check('§104 …where an underscore in the query is an underscore, not any letter', !in_array($gu104, $ids104($q104('qmail_04')['rows'], 'guest'), true));
+$pl104 = $rootDb->query("EXPLAIN SELECT id FROM guests WHERE email LIKE 'qmail104%'")->fetch(PDO::FETCH_ASSOC);
+it_check('§104 …through the email column\'s own index', (string) ($pl104['possible_keys'] ?? '') !== '', json_encode($pl104));
+// A database without a word index reads that source the old way rather than finding
+// nothing: the first migration-151 left six sources with no index on the live database,
+// and for a week they answered every search with silence.
+$srvErr104 = fn() => (int) $rootDb->query("SELECT COUNT(*) FROM activity_log WHERE action = 'server.error' AND summary LIKE 'Server error in search.php%'")->fetchColumn();
+$rootDb->exec('ALTER TABLE enquiries DROP INDEX ft_enquiries_words');
+$rootDb->exec('ALTER TABLE guest_reviews DROP INDEX ft_reviews_text');
+$r104 = $q104($w104);
+$rootDb->exec('ALTER TABLE enquiries ADD FULLTEXT INDEX ft_enquiries_words (name, message)');
+$rootDb->exec('ALTER TABLE guest_reviews ADD FULLTEXT INDEX ft_reviews_text (review_text)');
+it_check('§104 a source whose word index is missing still answers, read without the index (and that is no error)',
+    in_array('enquiry', $types104($r104['rows']), true) && in_array('review', $types104($r104['rows']), true) && $srvErr104() === 0,
+    implode(',', $types104($r104['rows'])) . ' errors ' . $srvErr104());
+// A source that fails is said (Needs attention), and the rest of the search answers.
+$rootDb->exec('RENAME TABLE expenses TO expenses_it104');
+$r104 = $q104($w104);
+$rootDb->exec('RENAME TABLE expenses_it104 TO expenses');
+it_check('§104 a source that fails is logged, while the others still answer',
+    $r104['code'] === 200 && in_array('message', $types104($r104['rows']), true) && !in_array('expense', $types104($r104['rows']), true) && $srvErr104() === 1,
+    'errors ' . $srvErr104() . ' ' . implode(',', $types104($r104['rows'])));
+$rootDb->exec("DELETE FROM activity_log WHERE action = 'server.error' AND summary LIKE 'Server error in search.php%'");
+$rootDb->exec("DELETE FROM guests WHERE id = $gu104");
+})();
 $rootDb->exec("DELETE FROM payments WHERE booking_id = $bk104");
 $rootDb->exec("DELETE FROM bookings WHERE id = $bk104");
 $rootDb->exec("DELETE FROM messages WHERE thread_id = $th104");
