@@ -7349,7 +7349,8 @@ $r = $post94('/server-check.php?cron=header', (string) json_encode(['needs' => $
 $m94 = json_decode((string) ($last94()['meta'] ?? ''), true);
 it_check('§94 a long report still fits the log, its open list cut rather than the record', is_array($m94) && count($m94['open']['gone'] ?? []) > 10 && ($m94['open']['goneAll'] ?? 0) === 200, substr(json_encode($m94), 0, 300));
 $d94 = $row94();
-it_check('§94 …and the files the cut left out still count as open', is_array($d94) && $d94['status'] === 'warn' && strpos((string) $d94['detail'], '200 things on the server need a look') === 0, json_encode($d94));
+$kept94 = 200 - count($m94['open']['gone'] ?? []);
+it_check('§94 …and the files the cut left out still count as open (the listed ones are not on disk here, so they read as dealt with)', is_array($d94) && $d94['status'] === 'warn' && $kept94 > 0 && strpos((string) $d94['detail'], $kept94 . ' things on the server need a look') === 0, json_encode($d94));
 
 // BETWEEN RUNS THE SITE CHECKS FOR ITSELF, AND "FIX SAFE ISSUES" REMOVES THE OLD FILES.
 // A report naming two strays: mailtest.php (on the list the site removes) is on disk,
@@ -7378,6 +7379,7 @@ $there94 = array_values(array_filter(RETIRED_FILES, fn($f) => is_file($work . '/
 $before94 = count(glob($work . '/*') ?: []);
 $s94 = http($adm83, 'POST', '/self-repair.php', []);
 $sr94 = (string) $rootDb->query("SELECT summary FROM activity_log WHERE action = 'selfrepair.retired' ORDER BY id DESC LIMIT 1")->fetchColumn();
+clearstatcache(); // another process deleted them; PHP remembers what it saw before
 $left94 = array_values(array_filter(RETIRED_FILES, fn($f) => is_file($work . '/' . $f)));
 it_check('§94 "Fix safe issues" removes the old files present (' . implode(', ', $there94) . ') and says so', in_array('mailtest.php', $there94, true) && $left94 === [] && in_array('old files:' . count($there94), $s94['json']['fixed'] ?? [], true) && strpos($sr94, 'Self-repair: removed ' . count($there94) . ' file') === 0 && strpos($sr94, 'mailtest.php') !== false, json_encode([$s94['json']['fixed'] ?? null, $sr94]));
 it_check('§94 …and nothing else in the folder', count(glob($work . '/*') ?: []) === $before94 - count($there94) && is_file($work . '/config.php') && is_file($work . '/db.php'), (string) count(glob($work . '/*') ?: []));
