@@ -7,11 +7,11 @@
 // the window properties when the bundle loads. Deploy checklist: bump ADMIN_V
 // whenever admin.js changes (it is the ?v= cache-buster).
 // ============================================================
-const ADMIN_BUNDLE_V = 807;
+const ADMIN_BUNDLE_V = 808;
 // admin.css is the owner-only stylesheet, split out of app.css so guests never
 // download it. Injected here (not a static <link>) and version-stamped on its
 // own — bump when admin.css changes. Kept OUT of the sw.js CORE precache.
-const ADMIN_CSS_V = 420;
+const ADMIN_CSS_V = 421;
 function ensureAdminCss() {
     if (document.getElementById('admin-css')) return Promise.resolve();
     return new Promise((resolve) => {
@@ -154,7 +154,7 @@ function loadAdminBundle() {
     });
     return __adminBundlePromise;
 }
-["accountsBack","accountsOpen","accountsShowIndex","activityLogSearch","addAdminPasskey","afterPaymentChange","autoSyncIcalBlocks","backfillWebp","bookingHubBack","bookingsSetFilter","bookingsSetSearch","changeAdminPassword","changeMonth","timelineToday","inboxFolder","mailboxTab","initBackOffice","diagnoseReplyEmail","closeEnquiryEmailModal","addComposeAttachments","previewComposedEmail","sendEnquiryEmail","backToComposeEdit","loadAdminMessages","loadDiagnostics","logoutStaff","oaDevOpenTarget","offerUpdatedConfirmationEmail","openAccounts","openAddBooking","openArea","openBlockDates","openBookings","openBookingEmail","openArrivalReview","chbWithReauth","openBookingHub","openCmdK","openEnquiryHub","enquiryHubBack","openInbox","openKeysafe","renderKeysafe","openSettings","openStagingSite","refreshModerationCounts","renderActivityLog","renderBookings","renderCalendar","renderExpenses","renderInbox","renderMoneyOverview","requestPayment","renderSquareSettings","runMigrations","saveApiKey","saveContent","saveBacsDetails","saveDepositPct","saveGoogleReviewUrl","saveSquareLocation","saveHostText","sendBroadcast","sendSampleEmails","sendTestEmail","settingsBack","settingsFilter","settingsOpen","settingsOpenAccom","settingsOpenAccomSec","settingsOpenCalendar","settingsOpenCancel","settingsSearchKey","settingsShowIndex","tryAccessBackOffice"].forEach((n) => {
+["accountsBack","accountsOpen","accountsShowIndex","activityLogSearch","addAdminPasskey","afterPaymentChange","autoSyncIcalBlocks","backfillWebp","bookingHubBack","bookingsSetFilter","bookingsSetSearch","changeAdminPassword","changeMonth","timelineToday","inboxFolder","mailboxTab","initBackOffice","diagnoseReplyEmail","closeEnquiryEmailModal","addComposeAttachments","previewComposedEmail","sendEnquiryEmail","backToComposeEdit","loadAdminMessages","loadDiagnostics","logoutStaff","oaDevOpenTarget","offerUpdatedConfirmationEmail","openAccounts","openAddBooking","openArea","openBlockDates","openBookings","openBookingEmail","openArrivalReview","chbWithReauth","openBookingHub","openCmdK","openEnquiryHub","enquiryHubBack","openInbox","openKeysafe","renderKeysafe","openSettings","refreshModerationCounts","renderActivityLog","renderBookings","renderCalendar","renderExpenses","renderInbox","renderMoneyOverview","requestPayment","renderSquareSettings","runMigrations","saveApiKey","saveContent","saveBacsDetails","saveDepositPct","saveGoogleReviewUrl","saveSquareLocation","saveHostText","sendBroadcast","sendSampleEmails","sendTestEmail","settingsBack","settingsFilter","settingsOpen","settingsOpenAccom","settingsOpenAccomSec","settingsOpenCalendar","settingsOpenCancel","settingsSearchKey","settingsShowIndex","tryAccessBackOffice"].forEach((n) => {
     const stub = (...a) =>
         loadAdminBundle()
             .catch((e) => {
@@ -506,7 +506,7 @@ const CHB_ACT_CAP = {
     'we.content': ['contentEditSave', 'contentEditImage', 'optimizeHeroNow', 'expApprove', 'expDelete', 'expMove', 'expReject', 'expSave', 'expUpload'],
     'we.news': ['sendBroadcast'],
     'we.stats': ['loadAnalytics', 'exportAnalyticsCsv'],
-    owner: ['runBackupNow', 'runFilesBackupNow', 'verifyBackupNow', 'saveBackupPass', 'saveSmsSettings', 'sendSmsTest', 'connectSquareWebhook', 'loadDiagnostics', 'navDiagnostics', 'diagnoseReplyEmail', 'openStagingSite', 'oaSplitHolder', 'oaSplitHost', 'oaSplitUnlink'],
+    owner: ['runBackupNow', 'runFilesBackupNow', 'verifyBackupNow', 'saveBackupPass', 'saveSmsSettings', 'sendSmsTest', 'connectSquareWebhook', 'loadDiagnostics', 'navDiagnostics', 'diagnoseReplyEmail', 'oaSplitHolder', 'oaSplitHost', 'oaSplitUnlink'],
 };
 // Manage sections by permission (settingsOpen's argument); sections anyone may open are not listed.
 const CHB_SEC_CAP = {
@@ -516,7 +516,7 @@ const CHB_SEC_CAP = {
     'we.content': ['content', 'experiences'],
     'we.news': ['newsletter'],
     'we.stats': ['analytics'],
-    owner: ['payments', 'follow-ups', 'sms', 'diagnostics', 'backups', 'apis', 'search-learning', 'testcentre', 'people', 'person', 'perms', 'split'],
+    owner: ['payments', 'follow-ups', 'sms', 'diagnostics', 'backups', 'apis', 'search-learning', 'people', 'person', 'perms', 'split'],
 };
 // The views a dock or rail button opens.
 const CHB_VIEW_CAP = { 'mo.view': ['view-accounts'], 'ks.see': ['view-keysafe'], owner: ['view-activity-log'] };
@@ -2277,79 +2277,9 @@ const ACCT_PREVIEW = !!ACCT_PREVIEW_ID;
 let __acctPreviewData = null; // the fetched account payload (bookings/enquiries/guest)
 // Preview-as-guest: opening the site with ?preview=1 renders the customer
 // experience even though an admin is signed in (owner-mode + the admin bounce
-// are suppressed). Read-only — used by the staging Test centre to view the site.
+// are suppressed). Read-only.
 // ACCT_PREVIEW joins it so all the owner-chrome/nav suppression applies too.
 const PREVIEW_MODE = /[?&]preview=1\b/.test(location.search || '') || ACCT_PREVIEW;
-// The staging site runs the same code from a staging.<domain> host with its
-// OWN database + sandbox Square/email. Show a persistent banner there so it's
-// never mistaken for the live site. (Search engines are blocked via .htaccess.)
-const IS_STAGING = /(^|\.)staging\./i.test(location.hostname || '');
-function injectStagingBanner() {
-    if (!IS_STAGING || document.getElementById('staging-banner')) return;
-    const bar = document.createElement('div');
-    bar.id = 'staging-banner';
-    // The seat switcher: past the staging gate there is no second secret worth
-    // asking for, so one tap swaps between the guest view and the back office
-    // (staging_admin_session server-side re-verifies the gate cookie).
-    bar.innerHTML =
-        '<span id="staging-banner-msg">TEST COPY — practice only, nothing here affects your live site.</span>' +
-        '<button id="staging-seat-btn" type="button"></button>';
-    document.body.appendChild(bar);
-    document.body.classList.add('has-staging-banner');
-    const btn = document.getElementById('staging-seat-btn');
-    if (btn) btn.addEventListener('click', () => stagingSeatSwitch(btn));
-    stagingSeatSync();
-    // owner-mode arrives after auth settles (and changes on every seat switch) —
-    // keep the label true to the seat rather than to the moment we injected.
-    try {
-        new MutationObserver(stagingSeatSync).observe(document.body, {
-            attributes: true,
-            attributeFilter: ['class'],
-        });
-    } catch (e) {}
-}
-function stagingSeatSync() {
-    const btn = document.getElementById('staging-seat-btn');
-    if (!btn) return;
-    btn.textContent = document.body.classList.contains('owner-mode')
-        ? 'Switch to guest view'
-        : 'Open the back office';
-}
-async function stagingSeatSwitch(btn) {
-    if (btn) {
-        btn.disabled = true;
-        btn.textContent = 'Switching…';
-    }
-    try {
-        if (document.body.classList.contains('owner-mode')) {
-            await apiPost('auth.php', { action: 'admin_logout', push_endpoint: await chbPushEndpoint() }).catch(() => {});
-            // A fresh guest-seat visit should auto-sign the test guest back in.
-            try { sessionStorage.removeItem('chb-staging-noauto'); } catch (e) {}
-        } else {
-            await apiPost('auth.php', { action: 'staging_admin_session' });
-        }
-        location.reload(); // the boot owns everything after a seat change
-    } catch (e) {
-        if (btn) {
-            btn.disabled = false;
-            stagingSeatSync();
-        }
-        toast(e.message || "Couldn't switch — sign in at the staging gate first.");
-    }
-}
-if (IS_STAGING) {
-    try {
-        document.addEventListener('DOMContentLoaded', () => {
-            injectStagingBanner();
-            // Staging is the test environment: show the Test centre tools, and
-            // hide the "open staging" link (we're already on it).
-            const tc = document.getElementById('testcentre-row');
-            if (tc) tc.style.display = '';
-            const link = document.getElementById('staging-link-row');
-            if (link) link.style.display = 'none';
-        });
-    } catch (e) {}
-}
 // First-party, cookie-free analytics (see track.php). Fire-and-forget; never
 // blocks the UI and never counts the owner's own browsing. utm_source from the
 // landing URL is captured once so campaign traffic (newsletter, Instagram…) is
@@ -2618,7 +2548,7 @@ function nav(viewId, anchorId = null) {
     // the back office (covers deep links, the address bar, stray calls). In
     // preview-as-guest mode we let the customer views through. The secure pay
     // page is token-authorised (not a session), so it's always allowed — an
-    // admin can open a pay link to test it (staging) or settle on a guest's behalf.
+    // admin can open a pay link to test it or settle on a guest's behalf.
     if (isAuthenticated && !PREVIEW_MODE && viewId !== 'view-pay' && !ADMIN_VIEWS.includes(viewId))
         viewId = 'view-backoffice';
     // A screen switched off for the person signed in (Payments without Money
@@ -3507,8 +3437,8 @@ function injectPreviewBanner() {
     // Inside the back office's account-preview overlay, the opener already wraps
     // this iframe in a read-only header bar (naming the customer + a Close). A
     // second banner in here is redundant — skip it when embedded. A standalone
-    // ?acctpreview= tab (parent === self) and the staging test-centre preview
-    // keep their banner as the only read-only indicator.
+    // ?acctpreview= tab (parent === self) and a ?preview=1 tab keep their banner
+    // as the only read-only indicator.
     try {
         if (ACCT_PREVIEW && window.parent && window.parent !== window) {
             // EMBEDDED: our edges are the overlay's, not the device's, and the
@@ -3524,8 +3454,8 @@ function injectPreviewBanner() {
     const bar = document.createElement('div');
     bar.id = 'preview-banner';
     // The account preview names the customer once their payload lands (see
-    // maybeAccountPreview); a generic label until then. The staging test-centre
-    // preview keeps the original wording.
+    // maybeAccountPreview); a generic label until then. A ?preview=1 tab keeps the
+    // original wording.
     const msg = ACCT_PREVIEW
         ? `<span id="preview-banner-label">Read-only account preview — this is what the customer sees. Nothing here is saved.</span>`
         : `<span>Preview mode — viewing the site as a guest. Nothing you do here is saved.</span>`;
@@ -6164,11 +6094,6 @@ async function deletePasskey(id) {
 async function guestLogout() {
     try {
         await apiPost('auth.php', { action: 'guest_logout', push_endpoint: await chbPushEndpoint() });
-    } catch (e) {}
-    // On staging, remember the explicit logout so we don't auto-sign-in again
-    // (lets the real sign-in / sign-up flow be tested). Cleared on a new tab.
-    try {
-        if (IS_STAGING) sessionStorage.setItem('chb-staging-noauto', '1');
     } catch (e) {}
     currentGuest = null;
     // The device stops being a signed-in one, so the boot's fast reveal applies
@@ -10357,22 +10282,6 @@ window.addEventListener('DOMContentLoaded', async () => {
         // app's front door; restoreSessions() stays extracted so the next attempt
         // starts from a named function rather than a 52-line inline block.
         await restoreSessions();
-        // Staging sandbox: skip the sign-in wall — auto-establish a test-guest
-        // session so every guest-only feature is testable without logging in.
-        // Never overrides an admin session, and respects an explicit logout
-        // (so the real sign-in flow can still be tested).
-        if (IS_STAGING && !isAuthenticated && !currentGuest) {
-            let optedOut = false;
-            try {
-                optedOut = sessionStorage.getItem('chb-staging-noauto') === '1';
-            } catch (e) {}
-            if (!optedOut) {
-                try {
-                    const r = await apiPost('auth.php', { action: 'staging_guest_session' });
-                    currentGuest = r.guest || null;
-                } catch (e) {}
-            }
-        }
         try {
             setAuthUI();
         } catch (e) {
@@ -22630,7 +22539,7 @@ const CHB_SK_CARD = '<div class="card glass-panel sk-card"><div class="skeleton 
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'r3search';
+    const BUILD = 'stagingout';
     /** @type {any} */ (window).__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;

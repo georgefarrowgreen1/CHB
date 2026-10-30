@@ -10,12 +10,21 @@ name: Tidy the server's leftover files
 # Started only by hand, from the Actions tab. Unticked, it lists what would go and
 # deletes nothing; with "Delete them" ticked it deletes that list, lists the host
 # again, and fails if any of them is still there.
+#
+# "Remove the old staging site" also deletes the folder staging/ whole, but only while
+# the check finds it to be a copy of the site (a .deploy-commit and 50+ files). The
+# staging site was retired on 30/10/2026; its subdomain and database are the owner's
+# to delete in IONOS.
 
 on:
   workflow_dispatch:
     inputs:
       delete:
         description: 'Delete them (unticked: only list what would go)'
+        type: boolean
+        default: false
+      remove_staging:
+        description: 'Remove the old staging site (the whole staging/ folder) as well'
         type: boolean
         default: false
 
@@ -52,11 +61,11 @@ jobs:
           LFTP_PASSWORD: ${{ secrets.IONOS_SFTP_PASS }}
           PORT: ${{ secrets.IONOS_SFTP_PORT }}
           REMOTE: ${{ secrets.IONOS_REMOTE_PATH }}
-          STAGING_REMOTE: ${{ secrets.STAGING_REMOTE_PATH }}
           APP_SECRET: ${{ secrets.APP_SECRET }}
           CRON_SECRET: ${{ secrets.CRON_SECRET }}
           SITE_URL: ${{ secrets.SITE_URL }}
           TIDY: ${{ inputs.delete && 'apply' || 'dry' }}
+          REMOVE_COPY: ${{ inputs.remove_staging && 'staging' || '' }}
         run: |
           if [ -z "$HOST" ] || [ -z "$USERNAME" ] || [ -z "$LFTP_PASSWORD" ]; then
             echo "::error::The deploy's SFTP secrets are not set, so there is nothing to tidy."

@@ -81,7 +81,6 @@ $REGISTRY = [
     'rates.php' => ['admin'], // public GET lists live rates; every write is admin
     'search.php' => ['admin'],
     'square-setup.php' => ['admin'],
-    'testcentre.php' => ['admin'],
     'track.php' => ['admin'],
     'upload.php' => ['admin'],
     'webp-backfill.php' => ['admin'],
@@ -183,7 +182,6 @@ $REGISTRY = [
     'hero-shell.php' => ['page', [], 'hero-image shell used by the SEO routes'],
     'shell-etag.php' => ['page', [], 'conditional-GET ending shared by the three SSR shell routes'],
     'home.php' => ['page', [], '/ server-rendered for crawlers'],
-    'staging-gate.php' => ['page', [], 'staging-host gate page (no-op in production)'],
 
     // ---- Include-only libraries (no routing; requesting them runs nothing) --
     'activity-lib.php' => ['lib', [], 'log_activity helpers'],
@@ -302,7 +300,7 @@ foreach ($REGISTRY as $file => $entry) {
 }
 exec('rm -rf ' . escapeshellarg($stageOut));
 $deploy = (string) file_get_contents(dirname(__DIR__) . '/.github/workflows/deploy.yml');
-ap_check('both deploy jobs stage with that script', substr_count($deploy, 'bash .github/scripts/stage-site.sh "Cottage Holidays Blakeney" deploy') === 2);
+ap_check('the deploy stages with that script', substr_count($deploy, 'bash .github/scripts/stage-site.sh "Cottage Holidays Blakeney" deploy') === 1);
 
 echo "\n== Summary ==\n";
 if ($fail) {

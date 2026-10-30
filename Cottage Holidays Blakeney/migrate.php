@@ -219,7 +219,7 @@ foreach ($files as $path) {
 // ALTERs the pageviews table that migration-pageviews.sql (later in byte order)
 // creates — so a single alphabetical pass can never bring an empty database up.
 // Production databases never hit this (they applied each file as it shipped);
-// fresh installs, staging and the CI integration DB do. Numeric migrations
+// fresh installs and the CI integration DB do. Numeric migrations
 // (migration-NNN-*) can't need this — they always run after all legacy files.
 $errored = [];
 do {

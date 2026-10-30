@@ -1875,13 +1875,13 @@ console.log('\n== 10. Design-system & recent-fix contracts ==');
             const saved = zlib.gzipSync(Buffer.from(src)).length - zlib.gzipSync(Buffer.from(out)).length;
             check(`${f}: it saves real bytes (${(saved / 1024).toFixed(1)}KB gz)`, saved > 2000, String(saved));
         });
-        // The deploy's staging script must run it, with --verify, and both deploy jobs must
-        // stage with that script, or the guest payload never shrinks.
+        // The deploy's stage script must run it, with --verify, and the deploy must stage
+        // with that script, or the guest payload never shrinks.
         const stage = fs.readFileSync(path.join(__dirname, '..', '.github', 'scripts', 'stage-site.sh'), 'utf8');
         const dep = fs.readFileSync(path.join(__dirname, '..', '.github', 'workflows', 'deploy.yml'), 'utf8');
-        check('the staging script strips, with --verify', /node "\$OUT\/strip-comments\.js" "\$OUT" --verify/.test(stage));
-        check('…and both deploy jobs (production + staging) stage with it',
-            (dep.match(/bash \.github\/scripts\/stage-site\.sh "Cottage Holidays Blakeney" deploy/g) || []).length === 2);
+        check('the stage script strips, with --verify', /node "\$OUT\/strip-comments\.js" "\$OUT" --verify/.test(stage));
+        check('…and the deploy stages with it (one deploy job: the staging site was retired)',
+            (dep.match(/bash \.github\/scripts\/stage-site\.sh "Cottage Holidays Blakeney" deploy/g) || []).length === 1 && !/staging/i.test(dep));
         check('…and the stripper itself never ships', !stagedFiles().has('strip-comments.js') && stagedFiles().size > 200);
     }
 
@@ -2274,9 +2274,9 @@ console.log('\n== 7. Every required PHP file survives the deploy ==');
     const runtime = [...shipped].filter((f) => /^(uploads|sessions|backups)\//.test(f)).sort();
     check(`the runtime folders ship as their guards only (${runtime.join(', ')})`,
         JSON.stringify(runtime) === JSON.stringify(['backups/.htaccess', 'sessions/.gitignore', 'sessions/.htaccess', 'uploads/.htaccess', 'uploads/README.txt']));
-    // Both deploy jobs and the server check build with the one script.
+    // The deploy and the server check build with the one script.
     const wf = fs.readFileSync(path.join(__dirname, '..', '.github', 'workflows', 'deploy.yml'), 'utf8');
-    check('both deploy jobs stage with stage-site.sh', (wf.match(/bash \.github\/scripts\/stage-site\.sh "Cottage Holidays Blakeney" deploy/g) || []).length === 2);
+    check('the deploy stages with stage-site.sh', (wf.match(/bash \.github\/scripts\/stage-site\.sh "Cottage Holidays Blakeney" deploy/g) || []).length === 1);
     const sc = fs.readFileSync(path.join(__dirname, '..', '.github', 'scripts', 'server-check.sh'), 'utf8');
     check('the server check builds what it compares with stage-site.sh too', /stage-site\.sh/.test(sc));
     // THE FILES THE SITE REMOVES FROM ITS OWN HOST (retired-lib.php, run by self-repair)
@@ -2350,8 +2350,8 @@ console.log('\n== 7. Every required PHP file survives the deploy ==');
 // only if the caller sends override_clash, which exists so the owner can overlap
 // deliberately. That makes the flag the single bypass of the one guarantee this
 // business cannot trade away — so it may only ever be set AFTER a human has read
-// the clash and said yes. The Test Centre's demo-booking button sent it
-// unconditionally, so the one control that creates a booking with nobody reading
+// the clash and said yes. The (since removed) Test Centre's demo-booking button sent
+// it unconditionally, so the one control that created a booking with nobody reading
 // the answer could also silently overlap a real guest.
 console.log('\n== 12. The clash guard has exactly one bypass, and it is a human ==');
 {
@@ -2741,13 +2741,18 @@ console.log('\n§15 The pipeline runs pinned code with the least access');
     check(`the host's SSH keys are pinned, one "type key" per line with no host name (${pinned.length})`, pinned.length === 3 && pinned.every((f) => f.length === 2));
     check('…and each is the key IONOS publishes', pinned.length === 3 && pinned.every(([t, k]) => IONOS_KEYS[t] && fingerprint(k) === IONOS_KEYS[t]));
 
-    // The staging site lives in a folder of the live web space and shares this file: on
-    // the live host that folder must answer nothing, ahead of every rule that could
-    // serve a page from it (the gate and noindex are tied to the staging host name).
+    // The retired staging site lived in a folder of the live web space (staging/). Until
+    // the tidy-up has deleted it, that folder must answer nothing on any host, ahead of
+    // every rule that could serve a page from it.
     const ht = fs.readFileSync(path.join(__dirname, 'htaccess.txt'), 'utf8');
-    const closeAt = ht.search(/RewriteCond %\{HTTP_HOST\} !\(\^\|\\\.\)staging\\\. \[NC\]\nRewriteCond %\{REQUEST_URI\} \^\/staging\(\/\|\$\) \[NC\]\nRewriteRule \^ - \[R=404,L\]/);
-    check('the staging folder is not found through the live host', closeAt > 0);
-    check('…before the staging gate and the home page could answer', closeAt > 0 && closeAt < ht.indexOf('staging-gate.php [L]') && closeAt < ht.indexOf('home.php [L]'));
+    const closeAt = ht.search(/\nRewriteCond %\{REQUEST_URI\} \^\/staging\(\/\|\$\) \[NC\]\nRewriteRule \^ - \[R=404,L\]/);
+    check('the old staging folder is not found, on any host', closeAt > 0 && !/HTTP_HOST\} !?\(\^\|\\\.\)staging/.test(ht));
+    check('…before the home page could answer', closeAt > 0 && closeAt < ht.indexOf('home.php [L]'));
+    check('…and no staging gate or staging-only header is left', !/staging-gate\.php|CHB_STAGING/.test(ht));
+    // The tidy-up removes that folder only when asked, and only as a copy of the site.
+    check('the tidy-up deletes the old staging folder only when that box is ticked', /remove_staging:\n\s+description:[^\n]*\n\s+type: boolean\n\s+default: false/.test(tidyWf) && /REMOVE_COPY: \$\{\{ inputs\.remove_staging && 'staging' \|\| '' \}\}/.test(tidyWf));
+    const scSh = fs.readFileSync(path.join(__dirname, '..', '.github', 'scripts', 'server-check.sh'), 'utf8');
+    check('…and server-check.sh removes a folder only when the check found it to be a copy of the site', /\[\[ "\$REMOVE_COPY" =~ \^\[A-Za-z0-9\]\[A-Za-z0-9\._-\]\*\$ \]\] && case " \$\{COPIES\[\*\]-\} " in \*" \$REMOVE_COPY "\*\)/.test(scSh) && /if \[ "\$TIDY" = "apply" \]; then\n\s+bash "\$HERE\/sftp\.sh" "cd \\"\$ROOT\\"; rm -r \\"\$COPY\\""/.test(scSh));
 }
 
 Promise.all(pendingChecks).then(() => {

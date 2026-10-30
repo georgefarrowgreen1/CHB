@@ -176,9 +176,6 @@ $WEBHOOK_KEY = 'chb-it-webhook-key-abcdef';
 $WEBHOOK_URL = $BASE . '/square-webhook.php';
 $cfg = preg_replace("/define\('SQUARE_WEBHOOK_SIGNATURE_KEY',\s*'[^']*'\)/", "define('SQUARE_WEBHOOK_SIGNATURE_KEY', '" . $WEBHOOK_KEY . "')", $cfg);
 $cfg = preg_replace("/define\('SQUARE_WEBHOOK_URL',\s*'[^']*'\)/", "define('SQUARE_WEBHOOK_URL', '" . $WEBHOOK_URL . "')", $cfg);
-// Staging-sandbox constants so §20 can drive the seat endpoint + Test-centre
-// seeder for real. These gate NOTHING else: every staging action also demands
-// a staging.* Host header, which no other section sends.
 $cfg .= "\ndefine('MONZO_API_BASE', 'http://127.0.0.1:$MONZO_PORT');\ndefine('MONZO_AUTH_BASE', 'http://127.0.0.1:$MONZO_PORT/auth/');\n";
 // §17(k) holds an op's lock to prove a repeat is refused; a short wait keeps it quick.
 $cfg .= "\ndefine('CHB_OP_LOCK_WAIT', 2);\n";
@@ -188,7 +185,6 @@ $cfg .= "\ndefine('CHB_MONZO_LOCK_WAIT', 2);\n";
 // that loads the owner's payload after changing something tests it (§97).
 $cfg .= "\ndefine('CHB_PAYLOAD_FP_STRICT', true);\n";
 $cfg .= "\ndefine('MAIL_POP_HOST', '127.0.0.1');\ndefine('MAIL_POP_PORT', $POP_PORT);\n";
-$cfg .= "\ndefine('STAGING_SANDBOX', true);\ndefine('STAGING_GATE_USER', 'it-gate');\ndefine('STAGING_GATE_PASS', 'it-gate-pass');\n";
 file_put_contents($work . '/config.php', $cfg);
 
 // `exec` so php replaces the sh -c wrapper — proc_terminate must reach the
@@ -225,7 +221,7 @@ function http(&$jar, $method, $path, $body = null, $host = null)
     global $BASE;
     $headers = ['Accept: application/json'];
     if ($host) {
-        $headers[] = 'Host: ' . $host; // §20: the staging endpoints key on the Host header
+        $headers[] = 'Host: ' . $host; // §20: a request to the retired staging host name
     }
     if ($jar) {
         $headers[] = 'Cookie: ' . implode('; ', array_map(fn($k) => "$k={$jar[$k]}", array_keys($jar)));
@@ -2153,65 +2149,31 @@ $ucBid = (int) $rootDb->lastInsertId();
 $r = http($rk, 'POST', '/bookings.php', ['action' => 'cancel', 'id' => $ucBid, 'reason' => 'changed their mind']);
 it_check('cancelling a booking nobody paid for needs no step-up', ($r['json']['ok'] ?? false) === true, $r['raw']);
 
-// ---- 20. Staging seats + the stage seeder --------------------------------
-// The one-tap "Back office" seat mints an ADMIN session, so its boundary gets
-// executable checks in every direction that matters: the staging Host, the
-// gate proof (cookie HMAC), and that success really is an admin session. Then
-// the Test centre's seed_stage / purge_data round-trip on the real database.
-echo "\n== 20. Staging seats + stage seeder ==\n";
+// ---- 20. The staging site is gone ----------------------------------------
+// The staging site (retired 30/10/2026) had two sign-in seats on auth.php that minted
+// sessions with no password, behind a constant its own config.php set and a staging
+// Host header, plus a Test centre. With the constant gone nothing set them off, but
+// "unreachable" is weaker than "not there": the seats must answer as unknown actions
+// whatever host and cookie arrive, and the Test centre must not exist.
+echo "\n== 20. The staging site is gone ==\n";
 $STG_HOST = 'staging.chb-it.test';
-$gateCookie = hash_hmac('sha256', 'staging-gate|it-gate|' . hash('sha256', 'it-gate-pass'), $SECRET); // staging-gate.php's own recipe (user + the password's hash)
-
-$sj = []; // fresh persona: gate passed, nothing else
-$r = http($sj, 'POST', '/auth.php', ['action' => 'staging_admin_session'], $STG_HOST);
-it_check('admin seat without the gate cookie → 403', $r['code'] === 403, $r['raw']);
-$sj = ['chb_staging_gate' => 'not-the-hmac'];
-$r = http($sj, 'POST', '/auth.php', ['action' => 'staging_admin_session'], $STG_HOST);
-it_check('a forged gate cookie → 403', $r['code'] === 403, $r['raw']);
-$sj = ['chb_staging_gate' => $gateCookie];
-$r = http($sj, 'POST', '/auth.php', ['action' => 'staging_admin_session']); // ordinary host
-it_check('the right cookie on a NON-staging host → 403 (belt-and-braces)', $r['code'] === 403, $r['raw']);
-$r = http($sj, 'POST', '/auth.php', ['action' => 'staging_admin_session'], $STG_HOST);
-it_check('gate cookie + staging host → the seat opens', $r['code'] === 200 && !empty($r['json']['ok']), $r['raw']);
-$r = http($sj, 'POST', '/auth.php', ['action' => 'admin_status']);
-it_check('…and it is a REAL admin session', !empty($r['json']['admin']), $r['raw']);
-
-// The seeder: a full pretend business appears, and the purge takes all of it
-// back out. Driven with the $admin jar (a password-authenticated session) —
-// testcentre.php itself keys only on the Host + require_admin.
-$mark = '%[CHB-TEST]%';
-$q = fn($sql) => (int) $rootDb->query($sql)->fetchColumn();
-$b0 = $q("SELECT COUNT(*) FROM bookings WHERE notes LIKE '$mark'");
-$e0 = $q("SELECT COUNT(*) FROM enquiries WHERE message LIKE '$mark'");
-$x0 = $q('SELECT COUNT(*) FROM expenses');
-$w0 = $q('SELECT COUNT(*) FROM waitlist');
-$v0 = $q("SELECT COUNT(*) FROM guest_reviews WHERE status = 'pending'");
-$r = http($admin, 'POST', '/testcentre.php', ['action' => 'seed_stage']);
-it_check('seed_stage on a non-staging host → 403', $r['code'] === 403, $r['raw']);
+$gateCookie = hash_hmac('sha256', 'staging-gate|it-gate|' . hash('sha256', 'it-gate-pass'), $SECRET); // the old gate's own recipe
+foreach (['staging_admin_session', 'staging_guest_session'] as $act20) {
+    $sj = ['chb_staging_gate' => $gateCookie];
+    $r = http($sj, 'POST', '/auth.php', ['action' => $act20], $STG_HOST);
+    it_check("$act20 is an unknown action, even from a staging host with the old gate's cookie", $r['code'] === 400 && empty($r['json']['ok']), $r['raw']);
+    $ra = http($sj, 'POST', '/auth.php', ['action' => 'admin_status']);
+    $rg = http($sj, 'POST', '/auth.php', ['action' => 'guest_status']);
+    it_check("…and it left no session behind ($act20)", $ra['code'] === 200 && empty($ra['json']['admin']) && $rg['code'] === 200 && empty($rg['json']['guest']), $ra['raw'] . ' ' . $rg['raw']);
+}
+// php -S answers a missing script with the home page (Apache, a 404): either way, no
+// endpoint answers.
 $r = http($admin, 'POST', '/testcentre.php', ['action' => 'seed_stage'], $STG_HOST);
-it_check('seed_stage succeeds', $r['code'] === 200 && !empty($r['json']['ok']), $r['raw']);
-it_check(
-    'six stays seeded across the money states (none skipped on a quiet calendar)',
-    (int) ($r['json']['bookings'] ?? 0) + (int) ($r['json']['skipped'] ?? 0) === 6 && (int) ($r['json']['bookings'] ?? 0) >= 4,
-    $r['raw'],
-);
-it_check('the marker finds every seeded stay', $q("SELECT COUNT(*) FROM bookings WHERE notes LIKE '$mark'") - $b0 === (int) $r['json']['bookings'], '');
-it_check('three enquiries, one of them declined', $q("SELECT COUNT(*) FROM enquiries WHERE message LIKE '$mark'") - $e0 === 3
-    && $q("SELECT COUNT(*) FROM enquiries WHERE message LIKE '$mark' AND declined_at IS NOT NULL") === 1, '');
-it_check('expenses + waitlist + a pending review landed', $q('SELECT COUNT(*) FROM expenses') - $x0 === 3
-    && $q('SELECT COUNT(*) FROM waitlist') - $w0 === 1
-    && $q("SELECT COUNT(*) FROM guest_reviews WHERE status = 'pending'") - $v0 >= 1, '');
-// EVERY seeded stay carries a real price snapshot — the property that keeps
-// the money surfaces coherent, whichever stays survived the clash filter.
-$noSnap = $q("SELECT COUNT(*) FROM bookings WHERE notes LIKE '$mark' AND (agreed_total IS NULL OR agreed_total <= 0)");
-it_check('every seeded stay carries a REAL price snapshot', $noSnap === 0, "unsnapshotted: $noSnap");
-$r = http($admin, 'POST', '/testcentre.php', ['action' => 'purge_data'], $STG_HOST);
-it_check('purge_data succeeds', $r['code'] === 200 && !empty($r['json']['ok']), $r['raw']);
-it_check('…and the whole stage comes back out', $q("SELECT COUNT(*) FROM bookings WHERE notes LIKE '$mark'") === 0
-    && $q("SELECT COUNT(*) FROM enquiries WHERE message LIKE '$mark'") === 0
-    && $q('SELECT COUNT(*) FROM expenses') === $x0
-    && $q('SELECT COUNT(*) FROM waitlist') === $w0
-    && $q("SELECT COUNT(*) FROM guest_reviews WHERE status = 'pending'") === $v0, '');
+it_check('the Test centre is not there to seed anything', !is_array($r['json']) && strpos($r['raw'], '"ok"') === false, substr($r['raw'], 0, 120));
+require_once __DIR__ . '/retired-lib.php';
+foreach (['staging-gate.php', 'testcentre.php'] as $f20) {
+    it_check("$f20 is not in the app, and the host's copy is on the retired list", !is_file($work . '/' . $f20) && in_array($f20, RETIRED_FILES, true), '');
+}
 
 // ---- 21. An email lookup is case-blind AND index-usable -------------------
 //  Every "is this the same person" query used to read `LOWER(email) = LOWER(?)`,

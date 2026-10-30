@@ -12,8 +12,8 @@
 //  (encrypted at rest). A new operational key someone forgets to classify is
 //  therefore served, silently, to every anonymous visitor. That has happened:
 //  'owner-ping' (the owner's latest push notification — guest names and
-//  amounts), 'mailbox-seen' and 'testcentre-seeded' all leaked this way until
-//  this gate found them.
+//  amounts), 'mailbox-seen' and 'testcentre-seeded' (the retired staging Test
+//  centre's) all leaked this way until this gate found them.
 //
 //  The gate scans every non-test PHP file for content writes with LITERAL
 //  keys — INSERT INTO content …, content_set_scalar(), content_set_secret()
@@ -33,7 +33,6 @@ require_once __DIR__ . '/db.php'; // the classifiers (CLI include: no request ru
 // Keys written by server code that are DELIBERATELY public.
 $PUBLIC_OK = [
     'hero-bg' => 'the homepage hero image path (optimize-hero.php) — rendered to every visitor anyway',
-    'reviews' => 'the public review list (testcentre.php demo seed writes the same key the site serves)',
 ];
 
 $fail = 0;
@@ -70,7 +69,8 @@ foreach (glob(__DIR__ . '/*.php') as $f) {
     }
     // INSERT INTO content (…) VALUES (?, …) …->execute(['literal-key', …: the key bound
     // as a parameter. Missed by the two forms above, which is how testcentre-guest (the
-    // staging test guest's id and the owner's email) reached the public content GET.
+    // retired staging Test centre's guest: its id and the owner's email) reached the
+    // public content GET.
     // A whole literal only: 'geo-' . $k is a family the other scans name already.
     if (preg_match_all("/INSERT INTO content\s*\([^)]*\)\s*VALUES\s*\(\s*\?[\s\S]{0,400}?->execute\(\s*\[\s*'([a-z0-9-]+)'\s*,/i", $src, $m)) {
         $keys = array_merge($keys, $m[1]);
@@ -81,9 +81,9 @@ foreach (glob(__DIR__ . '/*.php') as $f) {
 }
 
 ck_check('the scan finds server-written keys (sanity: ≥ 15 literals)', count($found) >= 15);
-// The ->execute(['key', …]) form is read too: testcentre.php writes its guest record
-// that way, and it is the case that form exists for.
-ck_check('the scan reads a key bound in ->execute([...]) (testcentre-guest, in testcentre.php)', in_array('testcentre.php', $found['testcentre-guest'] ?? [], true));
+// The ->execute(['key', …]) form is read too: the weekly digest writes its stamp only
+// that way.
+ck_check('the scan reads a key bound in ->execute([...]) (owner-digest-last, in owner-digest.php)', in_array('owner-digest.php', $found['owner-digest-last'] ?? [], true));
 
 ksort($found);
 foreach ($found as $key => $files) {

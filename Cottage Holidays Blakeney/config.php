@@ -104,9 +104,3 @@ define('TWILIO_SID', '');     // Twilio Account SID (starts AC…)
 define('TWILIO_TOKEN', '');   // Twilio Auth Token — SECRET
 define('TWILIO_FROM', '');    // your Twilio number in E.164, e.g. +447700900000
 
-// Staging sandbox marker. LEAVE THIS UNSET on production. Define it (true) ONLY
-// in the staging /staging/config.php: it unlocks the frictionless test-guest
-// session used by the staging Test centre. The gate is this server-side constant
-// — never the request Host header — so a spoofed `Host: staging.…` sent to
-// production can't mint a credential-less guest session.
-// define('STAGING_SANDBOX', true);

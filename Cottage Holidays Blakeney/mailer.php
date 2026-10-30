@@ -258,7 +258,7 @@ function smtp_transmit(
     // extra SMTP commands (RCPT TO) or email headers. Addresses are also validated
     // with FILTER_VALIDATE_EMAIL on input.
     $toEmail = preg_replace('/[\r\n]+/', '', (string) $toEmail);
-    // The staging Test centre marks sample emails so they're unmistakable in the inbox.
+    // The sample sender marks its emails so they're unmistakable in the inbox.
     if (!empty($GLOBALS['__chb_test_prefix'])) {
         $subject = $GLOBALS['__chb_test_prefix'] . $subject;
     }
@@ -1261,7 +1261,7 @@ function email_outbox_kick()
     if ($kicked || !function_exists('db')) {
         return;
     }
-    // NOT IN A REQUEST THAT IS SENDING SAMPLES. Their [SAMPLE]/[TEST] prefix is applied
+    // NOT IN A REQUEST THAT IS SENDING SAMPLES. Their [SAMPLE] prefix is applied
     // to every subject smtp_transmit sends in the request, so the first sample to go
     // out drained real queued mail under it: a guest got "[SAMPLE] We've got your
     // enquiry…". The daily drain, or the next ordinary send, takes the queue instead.

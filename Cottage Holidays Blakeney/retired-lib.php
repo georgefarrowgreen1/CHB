@@ -39,6 +39,11 @@ const RETIRED_FILES = [
     'migration-payment-lifecycle.sql',
     'migration-payment-snapshot.sql',
     'sitemap.xml',
+    // The staging site's own pages, retired with it on 30/10/2026. On the live host the
+    // gate answered only a staging host name and the Test centre refused every other
+    // host, but both were still there.
+    'staging-gate.php',
+    'testcentre.php',
 ];
 
 // A name this may ever delete: a plain relative path, no folder the site keeps

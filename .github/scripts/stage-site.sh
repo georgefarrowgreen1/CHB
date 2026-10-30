@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # Builds the folder the deploy uploads, from the app folder. This is the ONE
-# definition used by the live deploy, the staging deploy and the server file check,
-# so the three cannot drift apart (the two deploy copies of it already had: staging
-# had lost cmd:fail-exit and the second upload pass).
+# definition used by the deploy and the server file check, so the two cannot drift
+# apart (the staging deploy's copy of it once had: it had lost cmd:fail-exit and the
+# second upload pass).
 #
 #   stage-site.sh <app folder> <out folder> [--no-build]
 #

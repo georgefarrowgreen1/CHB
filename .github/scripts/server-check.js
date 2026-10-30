@@ -14,7 +14,7 @@
 //             version: the passkey library is installed by hand, so it is checked
 //             against the library's own releases instead of this repository
 // --nested    <folder>=<build>: a folder inside the web root that is another copy of
-//             the site (the staging site lives in staging/). It is compared with its
+//             the site (the staging site lived in staging/ until 30/10/2026). It is compared with its
 //             own build, the same way, instead of being reported file by file.
 //             findCopies (`--copies <listing>`) says which folders those are.
 // --tidy      <file>: what the tidy-up (server-tidy.yml) may delete, as JSON
@@ -63,8 +63,8 @@ function fromFolder(p, folder) {
 
 // WHICH FOLDERS ARE COPIES OF THE SITE: a folder the deploy wrote a .deploy-commit
 // into, holding at least 50 files. Found from the listing, so it does not depend on
-// how a secret names the staging folder (the 26/10/2026 check compared the staging
-// copy as 150 strays because the two paths were written differently). A copy inside
+// how a secret names the folder (the 26/10/2026 check compared the staging copy as
+// 150 strays because the two paths were written differently). A copy inside
 // a copy is part of the outer one; the photo, session, backup and library folders are
 // never a copy; and a name the shell would have to quote is not offered.
 const NOT_A_COPY = /^(uploads|sessions|backups|lib|\.well-known)(\/|$)/;
@@ -393,7 +393,7 @@ function main(argv) {
             prefix: nx.dir + '/',
             r: classify({ expected: exp, remote: split.inner.remote, server: split.inner.server, history, webauthn }),
             meta: {
-                title: nx.dir === 'staging' ? 'The staging copy in staging/' : `The copy of the site in ${nx.dir}/`,
+                title: `The copy of the site in ${nx.dir}/`,
                 commit: built && /^[0-9a-f]{40}\s*$/.test(built.buf.toString('utf8')) ? built.buf.toString('utf8').trim() : '',
             },
         });
