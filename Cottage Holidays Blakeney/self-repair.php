@@ -19,6 +19,8 @@
 //      ("2. Rebecca — 5 stars — May 2026" → "Rebecca") — the numbering,
 //      star count and month are display noise the review card already
 //      renders properly from its own fields.
+//   (and housekeeping further down: old session files, devices, analytics,
+//   and the files the site no longer uses — retired-lib.php)
 //  Flags (owner decides):
 //   5. Payments whose booking row no longer exists (orphans) — money records
 //      are NEVER deleted; logged once when the count grows.
@@ -566,6 +568,21 @@ try {
     $sx = session_files_prune(__DIR__ . '/sessions', time());
     if ($sx['empty'] + $sx['expired'] > 0) {
         $fixed[] = 'sessions:' . ($sx['empty'] + $sx['expired']);
+    }
+} catch (\Throwable $e) {
+}
+
+// ---- 4d-ii-b. Files the site no longer has -----------------------------------
+// The deploy never deletes, so a file the code stopped shipping stays on the host and
+// the weekly server file check names it (retired-lib.php: the list and its rules).
+// Only from this site's own folder, and only where the deploy wrote .deploy-commit.
+try {
+    require_once __DIR__ . '/retired-lib.php';
+    $retired = retired_remove(__DIR__);
+    if ($retired) {
+        $nR = count($retired);
+        $fixed[] = 'old files:' . $nR;
+        log_activity('system', 'selfrepair.retired', 'Self-repair: removed ' . $nR . ' file' . ($nR === 1 ? '' : 's') . ' the site no longer uses (' . implode(', ', array_slice($retired, 0, 5)) . ($nR > 5 ? ' and ' . ($nR - 5) . ' more' : '') . ')', ['actor' => $actor, 'entity' => 'selfrepair', 'meta' => ['files' => $retired]]);
     }
 } catch (\Throwable $e) {
 }

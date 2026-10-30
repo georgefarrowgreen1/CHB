@@ -164,21 +164,63 @@ function status_php_rows(int $major, int $minor, int $release, array $wa): array
 // (summary, severity, meta, created_at) or null; returns the Status row, or null before
 // the check has ever run (nothing to say yet). A run more than 15 days old is a
 // warning: the check runs weekly, and one that has stopped says nothing at all.
-function status_server_check_row(?array $row, int $now): ?array
+//
+// BETWEEN RUNS THE SITE CHECKS WHAT IT CAN FOR ITSELF. The report carries `open`: the
+// files whose removal resolves their finding (`gone`), the files that should be there
+// (`back`), and how many findings it cannot judge (`other`: a changed file, a stand-in
+// name). With $exists (path → is it on disk here) a finding already dealt with stops
+// counting, so "Fix safe issues" clears the row at once rather than next Monday. The
+// row names up to three files; $removable is what "Fix safe issues" deletes
+// (retired-lib.php), so the fourth element can say whether that button will help.
+// Returns [label, status, sentence, hint].
+function status_server_check_row(?array $row, int $now, ?callable $exists = null, array $removable = []): ?array
 {
     if (!$row) {
         return null;
     }
+    $gh = 'The check\'s run on GitHub (Actions, "Check the server\'s files") names each file.';
     $at = strtotime((string) ($row['created_at'] ?? '')) ?: 0;
     $day = $at ? date('d/m/Y', $at) : 'an unknown date';
     if ($now - $at > 15 * 86400) {
-        return ['Server files', 'warn', 'The weekly server file check last reported on ' . $day . ', so it may have stopped running.'];
+        return ['Server files', 'warn', 'The weekly server file check last reported on ' . $day . ', so it may have stopped running.', ''];
     }
     $meta = json_decode((string) ($row['meta'] ?? ''), true);
     $found = is_array($meta) ? (int) ($meta['found'] ?? 0) : 0;
-    if (($row['severity'] ?? '') === 'warn' || $found > 0) {
-        $found = max(1, $found);
-        return ['Server files', 'warn', $found . ' thing' . ($found === 1 ? '' : 's') . ' on the server need' . ($found === 1 ? 's' : '') . ' a look, found on ' . $day . ' by the server file check, which names them.'];
+    if (($row['severity'] ?? '') !== 'warn' && $found <= 0) {
+        return ['Server files', 'ok', 'Checked ' . $day . '.', ''];
     }
-    return ['Server files', 'ok', 'Checked ' . $day . '.'];
+    $found = max(1, $found);
+    $open = is_array($meta) && is_array($meta['open'] ?? null) ? $meta['open'] : null;
+    if (!$exists || !$open) {
+        return ['Server files', 'warn', $found . ' thing' . ($found === 1 ? '' : 's') . ' on the server need' . ($found === 1 ? 's' : '') . ' a look, found on ' . $day . ' by the server file check, which names them.', $gh];
+    }
+    // A path the site will look up: plain, relative, no dot folders. Anything else
+    // counts as still open.
+    $plain = fn($p) => is_string($p) && preg_match('#^[A-Za-z0-9._@+-]+(/[A-Za-z0-9._@+-]+)*$#', $p) && !preg_match('#(^|/)\.\.?(/|$)#', $p);
+    $gone = array_values(array_filter(is_array($open['gone'] ?? null) ? $open['gone'] : [], $plain));
+    $back = array_values(array_filter(is_array($open['back'] ?? null) ? $open['back'] : [], $plain));
+    // What the lists leave out (they stop at 200, and an odd name was dropped above) is
+    // still open; so is everything the site cannot judge.
+    $unseen = max(0, (int) ($open['goneAll'] ?? 0) - count($gone)) + max(0, (int) ($open['backAll'] ?? 0) - count($back));
+    $other = max(0, (int) ($open['other'] ?? 0));
+    $here = array_values(array_filter($gone, $exists));
+    $absent = array_values(array_filter($back, fn($p) => !$exists($p)));
+    $n = count($here) + count($absent) + $unseen + $other;
+    if ($n === 0) {
+        return ['Server files', 'ok', 'Checked ' . $day . '; what it found has since been dealt with.', ''];
+    }
+    $names = array_slice(array_merge($here, $absent), 0, 3);
+    $verb = $n === 1 ? 'needs' : 'need';
+    if (!$names) {
+        $text = $n . ' thing' . ($n === 1 ? '' : 's') . ' on the server ' . $verb . ' a look, found on ' . $day . ' by the server file check, which names them.';
+    } else {
+        $more = $n - count($names);
+        $list = count($names) === 1 ? $names[0] : implode(', ', array_slice($names, 0, -1)) . ($more ? ', ' : ' and ') . end($names);
+        $text = $list . ($more ? ' and ' . $more . ' more' : '') . ' ' . $verb . ' a look on the server, found on ' . $day . ' by the server file check.';
+    }
+    $fixable = count(array_intersect($here, $removable));
+    $hint = $fixable === 0 ? $gh
+        : ($fixable === $n ? '"Fix safe issues" removes ' . ($n === 1 ? 'it' : 'them') . ': the site no longer uses ' . ($n === 1 ? 'that file' : 'those files') . '.'
+            : '"Fix safe issues" removes ' . $fixable . ' of them (files the site no longer uses). ' . $gh);
+    return ['Server files', 'warn', $text, $hint];
 }

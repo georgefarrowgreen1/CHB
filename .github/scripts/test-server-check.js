@@ -5,7 +5,7 @@
 'use strict';
 
 const zlib = require('zlib');
-const { parseListing, classify, report, splitNested, blobHash, sameContent, tidyPick, GUARD_RULES } = require('./server-check.js');
+const { parseListing, classify, report, splitNested, findCopies, fromFolder, blobHash, sameContent, tidyPick, GUARD_RULES } = require('./server-check.js');
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
@@ -210,6 +210,58 @@ console.log('== a staging copy in a folder of the web root ==');
     ok('its report is headed as the staging copy, and names no session or photo', /^## The staging copy in staging\//.test(text) && !/sess_|guest-a1b2|chat-9f9f/.test(text));
 }
 
+console.log('== which folders are copies of the site ==');
+{
+    // The check's own listing: the live site, a staging copy with its .deploy-commit,
+    // and folders that only look like one.
+    const remote = [{ path: '.deploy-commit', type: 'file', size: 41 }];
+    const files = (pre, k) => {
+        for (let i = 0; i < k; i++) remote.push({ path: `${pre}f${i}.css`, type: 'file', size: 3 });
+    };
+    files('', 60);
+    for (const d of ['staging/', 'staging/inner/', 'tiny/', 'uploads/old/', 'sp ace/', 'old/']) files(d, d === 'tiny/' ? 3 : 60);
+    for (const d of ['staging', 'staging/inner', 'tiny', 'uploads/old', 'sp ace']) remote.push({ path: d + '/.deploy-commit', type: 'file', size: 41 });
+    remote.push({ path: 'staging', type: 'dir', size: 4096 });
+    const found = findCopies(remote);
+    ok('a folder the deploy wrote a .deploy-commit into is found (' + found.join(', ') + ')', found.join() === 'staging');
+    ok('…not a copy inside it, a near-empty folder, one in the photo folder, a name the shell would quote, or a folder with no .deploy-commit', !found.some((d) => /inner|tiny|uploads|sp ace|^old$/.test(d)));
+    ok('the root\'s own .deploy-commit is not a copy', !found.includes('') && !found.includes('.'));
+    ok('fromFolder finds a folder at any depth, and only a whole folder name', fromFolder('a/uploads/x.jpg', 'uploads') === 'uploads/x.jpg' && fromFolder('uploads/x.jpg', 'uploads') === 'uploads/x.jpg' && fromFolder('myuploads/x.jpg', 'uploads') === null);
+}
+
+console.log('== private files at any depth, even in a copy the check did not recognise ==');
+{
+    // The 26/10/2026 report: the staging copy was not recognised and its sessions were
+    // named in the public log. Whatever the folder, a session file, a photo and a backup
+    // are counted and never named.
+    const { remote, server } = cleanHost();
+    const add = (p, size) => remote.push({ path: p, type: 'file', size });
+    add('staging/sessions/sess_9f8e7d6c5b4a39281706f5e4d3c2b1a0', 300);
+    add('staging/sessions/sess_00aa', 0);
+    add('staging/uploads/guest-77aa.jpg', 4000);
+    add('staging/uploads/private/chat-12ab.jpg', 4000);
+    add('staging/uploads/cache/uploads_guest-77aa.jpg.w640.webp', 900);
+    add('staging/backups/chb-backup-20261025-020000.sql.gz', 5000);
+    add('stray/sess_5e5e5e5e5e5e5e5e5e5e', 100);
+    add('chb-backup-20261001-020000.sql.gz', 7000);
+    add('holiday-snap-oh8.jpg', 9000);
+    add('old-hero.jpg', 9000);
+    const hist = (p) => (p === 'old-hero.jpg' ? '2025-02-01' : p === 'test-pop3-server.php' ? 'dev' : null);
+    add('test-pop3-server.php', 900);
+    server.set('test-pop3-server.php', B('<?php'));
+    const r = classify({ expected, remote, server, history: hist, webauthn });
+    ok('sessions, photos, resized copies and backups in the unrecognised copy are counted', r.counts.sessions === 5 && r.counts.photos === 6 && r.counts.cachedSizes === 2 && r.counts.backups === 4);
+    ok('a session file outside a sessions folder needs a look, under a stand-in name', r.needs.some((x) => x.path === 'stray/(a session file)'));
+    ok('…as does a backup outside the backups folder', r.needs.some((x) => x.path === '(a backup)'));
+    ok('an image the site never shipped is counted, not named; one it once shipped is a named leftover', r.counts.strayImages === 1 && r.leftovers.some((x) => x.path === 'old-hero.jpg'));
+    ok('a development file the deploy never uploads says so', /development file the deploy never uploads/.test((r.needs.find((x) => x.path === 'test-pop3-server.php') || {}).why || ''));
+    const text = report(r, {});
+    const all = [text, ...r.needs.map((x) => x.path), ...r.leftovers.map((x) => x.path), ...r.changed.map((x) => x.path)].join('\n');
+    ok('nothing in the report names a session file, a photo or a backup', !/sess_|guest-77aa|chat-12ab|holiday-snap|chb-backup-2026/.test(all));
+    ok('…and the report says how many images it counted', /1 other image the site never shipped/.test(text));
+    ok('a finding that deleting the file resolves is marked so; a stand-in name is not', r.needs.find((x) => x.path === 'test-pop3-server.php').gone === true && !r.needs.find((x) => x.path === '(a backup)').gone);
+}
+
 console.log('== without the library\'s releases ==');
 {
     const { remote, server } = cleanHost();
@@ -279,18 +331,41 @@ console.log('== the tidy-up list, as the command line writes it ==');
             list(pre + p, s);
         }
     }
+    // The staging copy's own .deploy-commit (the build carries the same), and a folder
+    // that is NOT a copy, with a sign-in's file and a photo in it.
+    put(build, '.deploy-commit', 'a'.repeat(40) + '\n');
+    for (const pre of ['', 'staging/']) {
+        put(host, pre + '.deploy-commit', 'a'.repeat(40) + '\n');
+        list(pre + '.deploy-commit', 'a'.repeat(40) + '\n');
+    }
+    list('old/sessions/sess_4f4f4f4f4f4f4f4f4f4f4f4f', 'x'.repeat(90));
+    list('old/uploads/guest-99zz.jpg', 'x'.repeat(900));
+    put(host, 'old/run.php', '<?php');
+    list('old/run.php', '<?php');
     fs.writeFileSync(path.join(dir, 'listing.txt'), lines.join('\n'));
+    const copies = execFileSync(process.execPath, [path.join(__dirname, 'server-check.js'), '--copies', path.join(dir, 'listing.txt')], { encoding: 'utf8' });
+    ok('--copies names the staging copy from the listing alone (' + copies.trim() + ')', copies.trim() === 'staging');
     let st = 0;
+    let printed = '';
     try {
-        execFileSync(process.execPath, [path.join(__dirname, 'server-check.js'), '--expected', build, '--listing', path.join(dir, 'listing.txt'),
-            '--server', host, '--tidy', path.join(dir, 'tidy.json'), '--nested', 'staging=' + build], { stdio: 'pipe' });
+        printed = execFileSync(process.execPath, [path.join(__dirname, 'server-check.js'), '--expected', build, '--listing', path.join(dir, 'listing.txt'),
+            '--server', host, '--tidy', path.join(dir, 'tidy.json'), '--json', path.join(dir, 'result.json'), '--summary', path.join(dir, 'summary.md'),
+            '--nested', 'staging=' + build], { encoding: 'utf8', stdio: 'pipe' });
     } catch (e) {
         st = e.status;
+        printed = String(e.stdout || '');
     }
     const out = fs.existsSync(path.join(dir, 'tidy.json')) ? JSON.parse(fs.readFileSync(path.join(dir, 'tidy.json'), 'utf8')) : { delete: [], keep: [] };
-    ok(`the check ran (exit ${st}) and wrote the list`, st === 0 && Array.isArray(out.delete));
+    ok(`the check ran (exit ${st}: old/run.php needs a look) and wrote the list`, st === 1 && Array.isArray(out.delete));
     ok('temp files go from both copies, under their full paths (' + out.delete.join(', ') + ')', out.delete.slice().sort().join() === 'deploy.tmp.lftp,staging/deploy.tmp.lftp');
     ok('…and what stays is named the same way', out.keep.some((k) => k.path === 'staging/never.txt') && out.keep.some((k) => k.path === 'staging/uploads/notes.txt') && out.keep.some((k) => k.path === 'never.txt'));
+    const res = fs.existsSync(path.join(dir, 'result.json')) ? JSON.parse(fs.readFileSync(path.join(dir, 'result.json'), 'utf8')) : {};
+    ok('the site is sent the whole count, not the first 40', res.total && res.total.needs === 1 && res.total.leftovers === 6);
+    ok('…and what it can check for itself: a file whose removal resolves its finding', res.open && res.open.gone.join() === 'old/run.php' && res.open.goneAll === 1 && res.open.other === 0 && res.open.back.length === 0);
+    const summary = fs.existsSync(path.join(dir, 'summary.md')) ? fs.readFileSync(path.join(dir, 'summary.md'), 'utf8') : '';
+    ok('the staging copy\'s report says which commit it is', /## The staging copy in staging\/\n\nCompared with commit `aaaaaaaaaaaa`/.test(summary));
+    const everything = printed + summary + JSON.stringify(res) + JSON.stringify(out);
+    ok('nothing printed, summarised, sent or listed names the sign-in\'s file or the photo', everything.length > 500 && !/sess_|guest-99zz/.test(everything));
     fs.rmSync(dir, { recursive: true, force: true });
 }
 
