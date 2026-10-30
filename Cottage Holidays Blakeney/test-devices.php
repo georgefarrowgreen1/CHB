@@ -69,12 +69,11 @@ dvc('each way in has its words', $words === ['Passkey', 'Password', 'Password an
 dvc('a session from before the list began, or anything unknown, says it was not recorded', devices_how_words('earlier') === 'Not recorded' && devices_how_words('') === 'Not recorded' && devices_how_words('x') === 'Not recorded');
 
 echo "\n== §3 when a sign-in is news ==\n";
-dvc('a device never used before, with other sign-ins already on record, is news', devices_is_new(false, false, 3, 'code', false));
-dvc('…not the same browser signing in again', !devices_is_new(true, false, 3, 'code', false));
-dvc('…not a device two-step already trusts', !devices_is_new(false, true, 3, 'password', false));
-dvc('…not the first sign-in they ever make', !devices_is_new(false, false, 0, 'invite', false));
-dvc('…not a session recorded late (from before the list began)', !devices_is_new(false, false, 3, 'earlier', false));
-dvc('…and never on the staging copy', !devices_is_new(false, false, 3, 'password', true));
+dvc('a device never used before, with other sign-ins already on record, is news', devices_is_new(false, false, 3, 'code'));
+dvc('…not the same browser signing in again', !devices_is_new(true, false, 3, 'code'));
+dvc('…not a device two-step already trusts', !devices_is_new(false, true, 3, 'password'));
+dvc('…not the first sign-in they ever make', !devices_is_new(false, false, 0, 'invite'));
+dvc('…not a session recorded late (from before the list began)', !devices_is_new(false, false, 3, 'earlier'));
 
 echo "\n== §4 when the list can say it is complete ==\n";
 $ttl = 60 * 86400;
@@ -93,7 +92,7 @@ dvc('…and a device signed out is told why, once', strpos($db, "\$_SESSION['adm
 dvc('every sign-in is recorded with how it happened', preg_match('/function admin_session_begin\(\$id, string \$how = \'\'\): array.*?return devices_record\(\$id, \$how\);/s', $db) === 1);
 dvc('logging out ends this device\'s row', preg_match('/function session_end_signed_in\(\)\s*\{.*?devices_end\(\(int\) \$_SESSION\[\'admin_sess\'\], \'logout\'\);/s', $db) === 1);
 $auth = $src('auth.php');
-foreach (['password', 'password_code', 'invite', 'reset', 'code', 'staging'] as $via) {
+foreach (['password', 'password_code', 'invite', 'reset', 'code'] as $via) {
     dvc("auth.php passes how it signed in: $via", strpos($auth, ", '$via');") !== false || strpos($auth, ", '$via'); //") !== false);
 }
 dvc('passkeys.php records a passkey sign-in', strpos($src('passkeys.php'), "admin_session_begin((int) \$cred['admin_id'], 'passkey')") !== false);

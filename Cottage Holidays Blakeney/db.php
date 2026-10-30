@@ -567,7 +567,7 @@ function guest_avatar_v($gid)
     return $n === '' ? '' : substr($n, 0, 10);
 }
 // What the browser is told about the guest signed in, by guest_status and by every
-// way in (a password, an emailed code or link, a passkey, the staging seat). Each
+// way in (a password, an emailed code or link, a passkey). Each
 // built its own; the passkey's had no address, postcode or password, so Your
 // details asked for an address already on the account. null: no such guest.
 function guest_me_payload($gid)
@@ -2540,9 +2540,11 @@ function is_internal_content_key($key)
         // Customer emails the poll has seen but the owner has not opened — the
         // sender's name and subject line, so never on the anonymous GET.
         'mailbox-new',
-        'testcentre-seeded', // demo-data manifest (testcentre.php)
-        'testcentre-staged', // stage-seeder manifest — ids the purge reverses (testcentre.php)
-        'testcentre-guest', // the staging test guest: its id and the owner's email (testcentre.php)
+        // The staging site's Test centre (removed 30/10/2026) wrote these; rows already
+        // stored still hold ids and the owner's email, so they stay off the public GET.
+        'testcentre-seeded',
+        'testcentre-staged',
+        'testcentre-guest',
     ], true);
 }
 
@@ -3262,9 +3264,8 @@ function square_webhook_url_candidates()
     // canonical apex + www hosts, always https.
     $dir = rtrim(str_replace('\\', '/', dirname($_SERVER['SCRIPT_NAME'] ?? '/square-webhook.php')), '/');
     $file = basename($_SERVER['SCRIPT_NAME'] ?? 'square-webhook.php') ?: 'square-webhook.php';
-    $canon = site_canonical_host();
-    $apex = preg_replace('/^staging\./', '', $canon);
-    $hosts = [$canon, $apex, 'www.' . $apex];
+    $apex = site_canonical_host();
+    $hosts = [$apex, 'www.' . $apex];
     $reqHost = strtolower(preg_replace('/:\d+$/', '', (string) ($_SERVER['HTTP_HOST'] ?? '')));
     if ($reqHost !== '' && site_host_trusted($reqHost)) {
         array_unshift($hosts, $reqHost);
@@ -3818,19 +3819,18 @@ function login_token($guestId, $ts)
 {
     return substr(hash_hmac('sha256', 'login:' . (int) $guestId . ':' . (int) $ts, APP_SECRET), 0, 32);
 }
-// The canonical public host for THIS environment, chosen from a SERVER-SIDE signal
-// (an explicit CANONICAL_HOST constant, else staging-vs-production via the
-// STAGING_SANDBOX constant) — never the client-controlled Host header.
+// The canonical public host, chosen from a SERVER-SIDE signal (an explicit
+// CANONICAL_HOST constant, else the site's own) — never the client-controlled Host
+// header.
 function site_canonical_host()
 {
     if (defined('CANONICAL_HOST') && CANONICAL_HOST) {
         return strtolower(CANONICAL_HOST);
     }
-    $base = 'cottageholidaysblakeney.co.uk';
-    return defined('STAGING_SANDBOX') && STAGING_SANDBOX ? 'staging.' . $base : $base;
+    return 'cottageholidaysblakeney.co.uk';
 }
-// Is a request Host header one of OURS (apex / www / staging / localhost)? The
-// Host header is attacker-controlled, so anything else must not be trusted.
+// Is a request Host header one of OURS (apex / www / localhost)? The Host header
+// is attacker-controlled, so anything else must not be trusted.
 function site_host_trusted($host)
 {
     $host = strtolower(preg_replace('/:\d+$/', '', (string) $host)); // strip :port
@@ -3840,9 +3840,8 @@ function site_host_trusted($host)
     if ($host === 'localhost' || $host === '127.0.0.1' || $host === '[::1]') {
         return true; // dev
     }
-    $canon = site_canonical_host();
-    $apex = preg_replace('/^staging\./', '', $canon);
-    return $host === $apex || $host === 'www.' . $apex || $host === 'staging.' . $apex;
+    $apex = site_canonical_host();
+    return $host === $apex || $host === 'www.' . $apex;
 }
 // Public site root (scheme + host + the folder this script runs from), used to
 // build the guest links we EMAIL (sign-in / pay / invoice / guest-reg). Because

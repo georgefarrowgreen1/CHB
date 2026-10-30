@@ -996,12 +996,6 @@ body.cmdk-open #changeover-toasts {
         break-after: avoid;
         margin-top: 4px;
       }
-    /* The staging test centre is a short sub-list: ONE column — two just split a
-           3-row list from its action row. */
-    #testcentre-list.settings-index {
-        column-count: 1;
-        max-width: 640px;
-      }
     /* The Money index is the five-verdict landing + ONE More group now — two
          columns just tore the group from its caption. */
     #accounts-index.settings-index {

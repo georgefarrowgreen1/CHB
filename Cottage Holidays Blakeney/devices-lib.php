@@ -107,7 +107,7 @@ function devices_how_words(string $how): string
         'code' => 'Emailed code',
         'invite' => 'Invite link',
         'reset' => 'Password reset link',
-        'staging' => 'Staging sign-in',
+        'staging' => 'Staging sign-in', // the staging site's seat, retired 30/10/2026; old rows keep their words
     ][$how] ?? 'Not recorded'; // 'earlier': signed in before the list began
 }
 
@@ -115,11 +115,11 @@ function devices_how_words(string $how): string
  * Is this sign-in worth telling the person about? Only a device they have not
  * signed in on before, that two-step doesn't already trust, when they have
  * signed in somewhere else before (their first ever sign-in is not news), and
- * never for a session recorded late or the staging seat. PURE.
+ * never for a session recorded late. PURE.
  */
-function devices_is_new(bool $knownDevice, bool $trusted, int $rowsBefore, string $how, bool $staging): bool
+function devices_is_new(bool $knownDevice, bool $trusted, int $rowsBefore, string $how): bool
 {
-    return !$knownDevice && !$trusted && $rowsBefore > 0 && $how !== 'earlier' && !$staging;
+    return !$knownDevice && !$trusted && $rowsBefore > 0 && $how !== 'earlier';
 }
 
 /**
@@ -174,13 +174,6 @@ function devices_trust_hash(): string
     $tok = preg_replace('/[^a-f0-9]/i', '', (string) ($_COOKIE['chb_admin_device'] ?? ''));
     return strlen($tok) >= 32 ? hash('sha256', $tok) : '';
 }
-// The staging copy, where the seat signs people in all day: the same two proofs
-// the staging endpoints ask for (the constant and the staging host).
-function devices_staging(): bool
-{
-    return defined('STAGING_SANDBOX') && STAGING_SANDBOX && preg_match('/(^|\.)staging\./i', (string) ($_SERVER['HTTP_HOST'] ?? '')) === 1;
-}
-
 // ---- Rows ------------------------------------------------------------------
 
 // Does this two-step trust belong to this person? Trust from before people
@@ -239,7 +232,7 @@ function devices_record(int $adminId, string $how): array
             ->execute([$adminId, $dk, $trust, $lab['label'], $lab['kind'], substr($how, 0, 16), mb_substr($ua, 0, 255)]);
         $sid = (int) db()->lastInsertId();
         $_SESSION['admin_sess'] = $sid;
-        $new = devices_is_new((int) $c['same'] > 0, devices_trust_is($adminId, $trust), (int) $c['n'], $how, devices_staging());
+        $new = devices_is_new((int) $c['same'] > 0, devices_trust_is($adminId, $trust), (int) $c['n'], $how);
         $out = ['sid' => $sid, 'new' => $new, 'label' => $lab['label'], 'keyless' => $keyless];
     } catch (\Throwable $e) {
         // Not migrated yet, or the database is unwell: the sign-in stands, unrecorded.

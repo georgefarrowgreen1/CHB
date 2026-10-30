@@ -10893,56 +10893,6 @@ body.has-preview-banner {
   padding-top: 40px;
 }
 
-/* Staging banner: ONE fixed 38px row — the message truncates so the seat
-   button fits at every width and the header offset below stays true. */
-#staging-banner {
-  position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  z-index: 99999;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 12px;
-  height: 38px;
-  padding: 0 12px;
-  font-size: var(--fs-sub);
-  font-weight: 700;
-  letter-spacing: 0.3px;
-  background: #8a5a00;
-  color: #fff;
-  border-bottom: 2px solid var(--warn-text);
-  box-shadow: var(--shadow-soft);
-  box-sizing: border-box;
-}
-#staging-banner-msg {
-  min-width: 0;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-#staging-seat-btn {
-  flex: 0 0 auto;
-  border: 1px solid rgba(255, 255, 255, 0.55);
-  border-radius: 999px;
-  background: rgba(255, 255, 255, 0.14);
-  color: inherit;
-  font: inherit;
-  font-size: var(--fs-caption);
-  padding: 3px 12px;
-  cursor: pointer;
-  white-space: nowrap;
-}
-body.has-staging-banner {
-  padding-top: 38px;
-}
-/* Both fixed headers would slide UNDER the banner (z 99999 > 1500); margin
-   moves a fixed box, so one rule clears both. */
-body.has-staging-banner header {
-  margin-top: 38px;
-}
-
 /* Full-page guest Sign-in / Account / Security screens on DESKTOP too (match the
    mobile shell). On mobile, body.guest-app already does this; the :not(.guest-app)
    guard means these rules only cover the wide/desktop layout. Admin is excluded. */

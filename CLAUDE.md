@@ -162,7 +162,7 @@ splices a capture into BOTH `smtp_send` and `smtp_send_batch` (send_owner posts 
 the batch one — patch only the first and every owner email renders as "nothing
 captured"), stubs the db.php helpers, and lets `db()` THROW, so a composer that grows a
 `content_value()` call fails loudly rather than quietly needing a database. Sections:
-- **§0** every `test-*.php` is stripped from BOTH deploy passes (production AND staging).
+- **§0** every `test-*.php` is stripped from what the deploy uploads (stage-site.sh).
 - **§1** every one renders with a subject, a text half and a full HTML document, plus a
   coverage check that no composer in mailer.php is left unreached.
 - **§2** contrast by arithmetic on the rendered output, **walking a background stack**
@@ -2106,7 +2106,7 @@ Found by the guest-endpoint and scheduled-jobs reviews; each was reproduced firs
   photo, suggestion picture) is re-encoded through GD in every format and refused when it can't be; a JPEG
   without exif is re-encoded anyway (orientation then can't be read). The owner's own PNG/WebP/GIF stay as
   uploaded.
-- **`testcentre-guest` is internal** (the staging test guest, holding the owner's email), and test-content-keys
+- **`testcentre-guest` is internal** (the retired staging Test centre's guest, holding the owner's email), and test-content-keys
   now also scans literal keys written through `->execute(['key', …])`, which is how it slipped past.
 - **THE HANDLED-MAIL LIST FOLLOWS THE INBOX** (`mailbox_handled_keep`): it was cut to the last 2,000 ids while
   nothing deletes mail, so past 2,000 messages every poll re-handled the newest unknown ones (an old emailed reply
@@ -3230,14 +3230,14 @@ guard removed, the window scope removed — each fails its own checks).
 - **THE BACK LINK NAMES WHERE IT GOES** — "‹ Manage", "‹ Reviews", "‹ Calendar sync", "‹ Price ideas" — through
   ONE helper, `settingsSetBack(fn, label)`; nothing assigns `settingsBackTarget` directly. **A list that repaints in
   the background must not retitle the page the owner moved to**: `renderCalendarList`, `renderCancelList`,
-  `renderTestCentreList` and `renderPricing` set the title and back link only while `settingsShowing(section)` —
+  and `renderPricing` set the title and back link only while `settingsShowing(section)` —
   before this, the calendar overview landing late renamed the Price ideas page "Calendar sync" and pointed its back
   link at Manage (found by the gate, present before the one look).
 - **ADDING IS A ROW AT THE FOOT OF ITS LIST** (`uAddRow(label, attrs, first)` — an accent "+" tile and the words),
   never one more pill among the actions: Write a new reply, Add something to do, Link a platform, Add a season, and
   the cottage editors' Add a photo / amenity / rule / item / question / section, each above its Save row.
 - **The content is the simpler format**: a menu row says where it goes (no sub-lines; Status has no row — the pill is
-  the way in; Backups, Integrations, Search learning and Test copy fold under **More tools**, `mgMoreTools`); the
+  the way in; Backups, Integrations and Search learning fold under **More tools**, `mgMoreTools`); the
   explanation notes, tips and caption sub-lines went from every page (`ga-note`, `acr-note`, `acr-capsub`,
   `acw-tip`, `sl-note`, `pr-swhy`, `sp-tsub`… — their dead CSS with them); a hint under a field stays only when it is
   a unit or a limit ("per night, on top", "0 = no limit"). Renamed so the row and the page say the same thing:
@@ -3461,7 +3461,7 @@ a hairline between, the card corners only on the run's ends — and a caption na
 
 ## The second unified-design pass (overnight, owner-asked: "you may have missed things from previous tasks")
 
-Every admin page was driven on a seeded real stack (staging seat + "Set the stage") at 390 in both themes and at
+Every admin page was driven on a seeded real stack (the since-retired staging site's seat and "Set the stage") at 390 in both themes and at
 1280, screenshotted, and measured for the vocabulary (button/caption/window/field signatures) and for cut text.
 What it set, so later pages follow it:
 - **A CHOSEN CHIP IS THE ACCENT, everywhere.** Payments' filters, the record sheet's chips and the Inbox's
@@ -6165,8 +6165,8 @@ site) · **Guests** (Guest
 accounts, Waitlist, Reviews, Guest photos — the people and what they send in for approval) · **Messages &
 automation** (Follow-up emails, Text messages, Guest chat) ·
 **Website & marketing** (Home page & menu, Things to do, Newsletter, Analytics) ·
-**System & tools** (Activity log, then **More tools** folding Backups, Integrations, Search learning and Test copy;
-Test centre on staging) — there is no Status row: the pill beside the title is the way in (the one look, below).
+**System & tools** (Activity log, then **More tools** folding Backups, Integrations and Search learning) — there
+is no Status row: the pill beside the title is the way in (the one look, below).
 Gated by
 ui-test-manage §1 (first child, uncaptioned, the header's gap at 1280 and 18px/22px at 402, "Needs a look" after it,
 spanning on two columns; four break-tests) and ui-test-people §B (Sophia's first
@@ -6461,7 +6461,7 @@ guest replies had no password state either, so a guest who signed in with a code
 - **One composer per side, in db.php**: `admin_me_payload` and `admin_backfill_owner` moved from auth.php (passkeys.php
   cannot require a router); `admin_me_payload` requires webpush.php itself for `notify_prefs_for`. `guest_me_payload($gid)`
   is new: name, email, phone, address, postcode, `has_password`, `avatar`. guest_status, every guest sign-in (password,
-  code, code-register, link, passkey, the staging seat) and the profile save all answer with it. The passkey reply
+  code, code-register, link, passkey) and the profile save all answer with it. The passkey reply
   re-reads the row after the session begins, as `admin_complete_login` does, so even `seen` matches.
 - **CI can now reach the passkey sign-in.** The WebAuthn library is uploaded to the host and is not in the repo, so
   passkeys.php refused everything in the harness and no test had ever run it. test-integration **§88** writes a stand-in
@@ -6489,7 +6489,7 @@ block in admin.js (`oaDev*`), the DEVICES block at the foot of admin.css.
   **Unknown is not signed out**: a database that can't be read, or no table yet, leaves the session alone.
   `admin_session_begin($id, $how)` records the sign-in (`devices_record`) and returns the row, its label and whether
   it is NEW; every sign-in path passes how (`admin_complete_login(…, $via)`: password, password_code, code, invite,
-  reset, staging; passkeys.php: passkey).
+  reset; passkeys.php: passkey). Old rows from the retired staging seat keep the words "Staging sign-in".
 - **A SESSION FROM BEFORE THE LIST BEGAN** has no row; it is recorded (`how` = 'earlier', "Not recorded") the next
   time it is used. One never used again has no row at all, so for a session lifetime (60 days) after migration-143
   the list can be incomplete: `devices_partial` (the migration's `applied_at`), and the page then keeps "Sign out of
@@ -6503,8 +6503,7 @@ block in admin.js (`oaDev*`), the DEVICES block at the foot of admin.css.
   most every five minutes).
 - **NEW IS THIS BROWSER'S OWN KEY** (`chb_dk`, 400 days, HttpOnly): a device is new when the person has never signed
   in with that key, two-step does not already trust it, they have signed in somewhere before, it is not a late
-  'earlier' row and not the staging host (the constant AND the staging Host header, the other staging guards'
-  rule — the integration harness defines the constant). It replaced the IP-and-browser fingerprint, which called a
+  'earlier' row. It replaced the IP-and-browser fingerprint, which called a
   phone "new" whenever its address changed; the fingerprint stays only as the answer before the table exists. A new
   device logs `admin.login_new` ("… on a new device: Mac · Chrome") and `devices_alert_new` sends, after the
   response, an `urgent` push to that person only (it is about their own account, so it ignores mutes and quiet
@@ -7111,7 +7110,7 @@ migration-148, the USERNAME block in app.js (`gaUsername*`, `gaUn*`, `authByUser
   resets the clip (the newsletter field and the one-look fields both have one). A field with its own
   fill gets it back as an inset shadow: `.input-glass` (app.css), the one-look fields and the password
   sheet (admin.css); a see-through field (booking sheet, sign-in, newsletter) stays see-through.
-  guest-details.php and staging-gate.php carry their own stylesheet and use an opaque inset of their
+  guest-details.php carries its own stylesheet and uses an opaque inset of its
   field's ground. Checked in Chromium with real autofill (CDP `Autofill.trigger` fills a card form);
   WebKit is not available here, so iOS rests on the same mechanism.
 - The site deploys from `main`; the repo is cloned fresh each session (ephemeral
@@ -10294,40 +10293,9 @@ no money by design — chasing is the payments-due cron's job, not its.
   (`fetchpriority="high"` preload) — keep it prioritised, not deferred.
 - Dev/CI-only files (`smoke-test.js`, `test-pricing.php`, `*.md`, `*.sql` are shipped
   for migrate but `.htaccess`-denied) are excluded from the deploy in `deploy.yml`.
-- **Staging sandbox** (LIVE — probed 401-gated at staging.<domain>, tracking main):
-  `deploy.yml`'s `deploy-staging` job mirrors the same code to a `staging.<domain>` site
-  with its OWN database + `config.php` (Square sandbox + test email; see
-  `SETUP-STAGING.md`). On the staging host only, `.htaccess` routes the entry pages
-  through `staging-gate.php` (owner password → HMAC cookie), sends `X-Robots-Tag:
-  noindex`, and `app.js` (`IS_STAGING`) shows the banner. Post-deploy is migrate-only.
-  **The gate password is the ONLY credential — one door, two seats.** The banner carries
-  a seat switcher ("Open the back office" / "Switch to guest view"): `staging_admin_session`
-  (auth.php) mints the admin seat, gated on `STAGING_SANDBOX` (which site) AND
-  `staging_gate_passed()` (who is asking — the gate cookie's HMAC recomputed from
-  `STAGING_GATE_USER` + APP_SECRET, or the Basic header; fails CLOSED unconfigured).
-  The constant alone was NOT enough for an admin seat: API endpoints aren't behind the
-  gate's rewrite rules, so anyone who found the URL could otherwise mint a session on a
-  box with a working mailer. The guest seat was already frictionless
-  (`staging_guest_session`, low-power so constant+host suffice). If no admins row exists
-  the seat MINTS one with a random never-shown password — setup.php is not needed on
-  staging. Gated by test-integration §20, where each refusal is PAIRED with a success
-  differing in exactly one factor (cookie, host), so no check can be vacuous.
-  **"Set the stage" (Test centre) seeds a full pretend business**: six stays across the
-  money states (in residence · arriving today with an arrival window · part-paid balance
-  due · custom plan · unpaid due now · past CASH stay with the deposit bundled, so the
-  deposit-return flow walks end to end with NO Square charge behind it), three enquiries
-  (fresh/stale/declined), a chat thread + pending review (on the owner-email test guest
-  — three stays carry that email so the GUEST seat's My Stays is rich too), expenses and
-  a waitlist entry for taken nights. Every stay is priced with the REAL `price_breakdown`
-  (§20 asserts no seeded row lacks a snapshot) and `dates_clash`-checked — never seeded
-  over existing dates, `skipped` reported. Reversal: bookings/enquiries carry
-  `[CHB-TEST]` in notes/message (the existing purge sweeps); expenses/waitlist/reviews/
-  messages are id-tracked in internal key `testcentre-staged`, which MERGES on re-seed
-  (overwriting would orphan the previous round from the purge). "Mark paid in full" on
-  Test-centre booking rows rides the REAL `set_payment` write (deposit_collected, op
-  ledger id) so skipping the payment still leaves coherent ledgers. And the pay screen
-  names the sandbox test card (`#pay-sandbox-note`, shown when square-config's
-  environment ≠ production — hostname is the wrong key, sandbox IS the fact).
+- **The staging site was REMOVED (30/10/2026, the owner's ask: "no longer needed").** See "The staging
+  site is gone" below. The pay screen's `#pay-sandbox-note` stays: it follows Square's environment, not
+  the host.
 
 **Dead code — what a sweep will re-flag, and why it ISN'T dead.** A naive
 "defined but never referenced" scan over this codebase returns a lot of noise, because
@@ -12059,9 +12027,9 @@ Asked for as "a server file check" and "deploy-pipeline lockdown" (the first two
 The deploy never deletes a file on the host, so the host holds everything the code has ever shipped plus
 whatever else reached it; nothing compared the two. Code: `.github/scripts/` and
 `.github/workflows/server-check.yml`.
-- **ONE STAGING DEFINITION** (`stage-site.sh <app> <out> [--no-build]`). What is uploaded was written out
+- **ONE DEFINITION OF WHAT SHIPS** (`stage-site.sh <app> <out> [--no-build]`). What is uploaded was written out
   twice in deploy.yml, and the staging copy had already drifted (no `cmd:fail-exit`, no second mirror
-  pass). The live deploy, the staging deploy, the server check and four gates (smoke-test §7/§12g/§15,
+  pass). The deploy, the server check and four gates (smoke-test §7/§12g/§15,
   test-auth-posture, test-emails-render §0, test-status) all run THIS script, so the gates check what
   ships rather than a list of `rm -f` lines. Build mode verifies the comment strip and brotli-compresses;
   `--no-build` is the gates' fast form. It writes `.deploy-commit` (the commit's 40 hex) into the upload,
@@ -12123,11 +12091,11 @@ whatever else reached it; nothing compared the two. Code: `.github/scripts/` and
   password, indexable (measured: 200, 120KB, no `X-Robots-Tag`). htaccess now answers 404 for
   `/staging/` on any host but the staging one, placed before the gate and the home-page rewrite (smoke-test
   §15 holds the order). On the staging host the folder is the web root, so its own paths never start
-  with `/staging/`.
-- **The check compares that folder as a copy of the site** (`--nested staging=<build>`, from the
-  `STAGING_REMOTE_PATH` secret when it lies inside the live path; `splitNested` in server-check.js),
-  built from the commit in `staging/.deploy-commit`, with its own report section. The first run listed
-  its 150 files as strays.
+  with `/staging/`. (Since the staging site was retired, `/staging/` answers 404 on every host.)
+- **The check compares that folder as a copy of the site** (`--nested staging=<build>`, `splitNested` in
+  server-check.js), built from the commit in `staging/.deploy-commit`, with its own report section. The
+  first run listed its 150 files as strays. (It went by the `STAGING_REMOTE_PATH` secret then; copies are
+  found from the listing alone now, see the second run.)
 - **The download skips a config and session files at ANY depth** (`(^|/)config\.php$`). It anchored at
   the root, so the first run fetched staging's `config.php` and session files onto the runner. Nothing
   printed them; they have no business there.
@@ -12206,6 +12174,51 @@ then only lists what would go).
   holding a staged build and six planted files: the dry run deleted nothing; with delete on, the old file
   and the temp file went, and the verification page, `error_log`, the uploads file, the planted script and
   every site file stayed.
+
+## The staging site is gone (30/10/2026, the owner's ask: "it's no longer needed")
+
+The staging copy (a `staging.<domain>` site with its own database, deployed into `staging/` in the live web
+space) is removed from the code, and the tidy-up can delete its folder from the host.
+- **Removed**:
+  - deploy.yml's `deploy-staging` job;
+  - `staging-gate.php` and `testcentre.php`, both now on `RETIRED_FILES`, so self-repair deletes the live
+    host's copies;
+  - `SETUP-STAGING.md`;
+  - htaccess's gate rewrites, the Basic-Auth forwarding and the noindex header;
+  - auth.php's `staging_admin_session` / `staging_guest_session` and `staging_gate_passed()`;
+  - app.js's banner, seat switcher and auto guest sign-in (`IS_STAGING`);
+  - the Test centre (its admin.js block, markup, styles and `settingsOpen('testcentre')`);
+  - the "Test copy" row under More tools (`openStagingSite`);
+  - devices-lib's staging exception;
+  - db.php's `staging.` host in `site_canonical_host` / `site_host_trusted` and the square webhook's URL list;
+  - config.php's `STAGING_SANDBOX` note;
+  - the `STAGING_REMOTE` hint in the server check.
+- **Kept, on purpose**:
+  - `/staging/` answers 404 on EVERY host (htaccess, before the home page). The folder is still on the host
+    until the tidy-up deletes it, and the rule is harmless after.
+  - The `testcentre-*` content keys stay classified internal/server-only: rows already stored hold ids and
+    the owner's email.
+  - The Devices list keeps the words "Staging sign-in" for old rows.
+  - `?preview=1` (guest preview mode) stays: a general read-only mode the suites use.
+  - The pay screen's sandbox note follows Square's environment, not the host.
+- **Deleting the folder from the host**: Actions → "Tidy the server's leftover files" has a second box,
+  "Remove the old staging site". It sets `REMOVE_COPY=staging`, and server-check.sh then deletes `staging/`
+  whole, through sftp.sh (`rm -r`), with the leftovers of that copy left out of the file-by-file list. Two
+  conditions:
+  - the folder must be one the check itself found to be a copy of the site (`findCopies`: a .deploy-commit
+    and 50+ files, a top-level name);
+  - the dry run (delete unticked) only lists the folder and how many entries it holds.
+
+  After deleting, it lists the host again and fails if anything under `staging/` is left. smoke-test §15 holds
+  the box's default (off) and the copy-only condition.
+- **The owner's part, which the code cannot do**: delete the staging subdomain and its database in IONOS, and
+  the `STAGING_*` repository secrets (`STAGING_REMOTE_PATH`, `STAGING_CRON_SECRET`, the staging SFTP and
+  APP_SECRET ones) in GitHub. Deleting the folder also removes the staging session files that the 26/10
+  check's logs once named.
+- Gates: integration §20 (both seat actions answer 400 "unknown action" from a staging host with the old gate
+  cookie and leave no session behind; testcentre.php is a 404; both files are on the retired list),
+  smoke-test §12g/§15, test-cron-key, test-emails-render §0, test-auth-posture and test-devices (one deploy job,
+  no staging exception), test-content-keys (its execute-form check now reads the digest's stamp).
 
 ## The round-8 overnight pass
 
@@ -12599,8 +12612,8 @@ too, so the deploy's logs are public (GitHub masks the secret, but anything work
   that answers 401/403 means the host dropped the header: from that job on, the runner puts the job key (never the
   master key) in the address, and logs `cron.key_in_address` once.
 - **THE DEPLOY DERIVES THE SAME KEY** with `openssl dgst -sha256 -hmac "$APP_SECRET"` (or the optional
-  `CRON_SECRET` / `STAGING_CRON_SECRET` repository secret, which must match config.php's), masks it with
-  `::add-mask::` and sends it in the header. Its `job()` (the same in both steps) puts the key in the address only
+  `CRON_SECRET` repository secret, which must match config.php's), masks it with
+  `::add-mask::` and sends it in the header. Its `job()` puts the key in the address only
   after a 401/403, as the runner does. A first draft fell back on ANY curl failure, so a migrate that timed out
   while still running would have been started again beside itself.
 - **Docs**: the setup guides and every job's header comment name `JOB_KEY` and the Status row, never `APP_SECRET`;

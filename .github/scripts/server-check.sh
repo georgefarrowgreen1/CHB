@@ -6,14 +6,15 @@
 # the files server-check.js's --tidy list names and nothing else.
 #
 # Env: HOST USERNAME LFTP_PASSWORD [PORT] [REMOTE]  the SFTP login (as the deploy)
-#      [STAGING_REMOTE]                              the staging site's folder; when it
-#                                                    is inside REMOTE it is compared as
-#                                                    a site of its own, not as strays.
-#                                                    Any folder holding a .deploy-commit
-#                                                    is found from the listing as well,
-#                                                    however the secret writes the path.
 #      [SITE_URL] APP_SECRET|CRON_SECRET             to tell the site what it found
 #      [TIDY=dry|apply]                              the tidy-up: list what may go, or delete it
+#      [REMOVE_COPY=<folder>]                        with TIDY, a copy of the whole site in
+#                                                    that top-level folder goes too (the old
+#                                                    staging site in staging/): listed on a
+#                                                    dry run, deleted with TIDY=apply
+#
+# Any folder holding a .deploy-commit and 50+ files is a copy of the site (found from
+# the listing, server-check.js findCopies) and is compared as one, not as strays.
 # Exit: 0 nothing needs a look, 1 something does, 2 the check itself could not run.
 set -euo pipefail
 
@@ -23,24 +24,11 @@ WORK="${CHECK_WORK:-${RUNNER_TEMP:-/tmp}/server-check}"
 # The build goes inside the repository so strip-comments.js finds typescript in the
 # workspace's node_modules, exactly as the deploy's does.
 BUILT="${CHECK_BUILT:-$REPO/server-check-built}"
-NBUILT="$BUILT-staging"
+NBUILT="$BUILT-copy"
 ROOT="${REMOTE:-/}"
 RUNNER_TEMP="${RUNNER_TEMP:-$WORK}"
 rm -rf "$WORK" "$BUILT" "$NBUILT"*
 mkdir -p "$WORK"
-
-# The staging site's folder inside ROOT ("staging"), or nothing when it lives elsewhere.
-NESTED=""
-if [ -n "${STAGING_REMOTE:-}" ]; then
-    R="${ROOT%/}"
-    S="${STAGING_REMOTE%/}"
-    S="${S#./}"
-    if [ -z "$R" ] || [ "$R" = "." ]; then
-        NESTED="${S#/}"
-    else
-        case "$S/" in "$R"/?*) NESTED="${S#"$R"/}" ;; esac
-    fi
-fi
 
 # Which commit a folder on the host was deployed from: the deploy writes .deploy-commit.
 deployed_commit() {
@@ -49,7 +37,7 @@ deployed_commit() {
     if [ "${#c}" -eq 40 ] && git -C "$REPO" cat-file -e "$c^{commit}" 2>/dev/null; then printf '%s' "$c"; fi
 }
 
-# Exactly what a commit's deploy uploaded, built by that commit's own staging script.
+# Exactly what a commit's deploy uploaded, built by that commit's own stage-site.sh.
 build_commit() {
     git -C "$REPO" worktree prune
     git -C "$REPO" worktree add --detach "$WORK/src" "$1" > /dev/null
@@ -78,13 +66,13 @@ build_commit "$COMMIT" "$BUILT"
 # 3. The host: a listing of everything.
 bash "$HERE/sftp.sh" "cd \"$ROOT\"; find -l ." > "$WORK/listing.txt"
 
-# 3b. The copies of the site inside it: the staging folder the secret names, and any
-#     folder the deploy wrote a .deploy-commit into (server-check.js findCopies). The
-#     26/10/2026 check missed the staging copy because the secret wrote its path in a
-#     form that did not match, and reported all 150 of its files as strays.
+# 3b. The copies of the site inside it: any folder the deploy wrote a .deploy-commit
+#     into (server-check.js findCopies). The 26/10/2026 check went by a secret naming
+#     the staging folder, which wrote its path in a form that did not match, and
+#     reported all 150 of the staging copy's files as strays.
 mapfile -t FOUND < <(node "$HERE/server-check.js" --copies "$WORK/listing.txt")
 COPIES=()
-for d in ${NESTED:+"$NESTED"} ${FOUND[@]+"${FOUND[@]}"}; do
+for d in ${FOUND[@]+"${FOUND[@]}"}; do
     d="${d%/}"
     [[ "$d" =~ ^[A-Za-z0-9._@+-]+(/[A-Za-z0-9._@+-]+)*$ ]] || continue
     case " ${COPIES[*]-} " in *" $d "*) ;; *) COPIES+=("$d") ;; esac
@@ -157,6 +145,20 @@ if [ -n "${TIDY:-}" ]; then
         if (process.argv[2] === "keep") { for (const k of t.keep) console.log("- `" + k.path + "`: " + k.why); }
         else { for (const p of t.delete) if (ok(p)) console.log(p); }'
     mapfile -t GONE < <(node -e "$SAFE" "$WORK/tidy.json" delete)
+    # The copy to remove: a top-level folder the check found to BE a copy of the site
+    # (a .deploy-commit and 50+ files), never any other folder. Its own leftovers go with
+    # it rather than one by one.
+    COPY=""
+    if [ -n "${REMOVE_COPY:-}" ]; then
+        if [[ "$REMOVE_COPY" =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ ]] && case " ${COPIES[*]-} " in *" $REMOVE_COPY "*) true ;; *) false ;; esac; then
+            COPY="$REMOVE_COPY"
+            KEPT=()
+            for p in ${GONE[@]+"${GONE[@]}"}; do case "$p" in "$COPY"/*) ;; *) KEPT+=("$p") ;; esac; done
+            GONE=(${KEPT[@]+"${KEPT[@]}"})
+        else
+            echo "No copy of the site in $REMOVE_COPY/ on the server, so there is no copy to remove." | tee -a "${GITHUB_STEP_SUMMARY:-/dev/null}"
+        fi
+    fi
     {
         echo
         echo "## Tidy-up"
@@ -190,6 +192,31 @@ if [ -n "${TIDY:-}" ]; then
             exit 2
         fi
         echo "Deleted ${#GONE[@]} file(s); the server no longer lists any of them." | tee -a "${GITHUB_STEP_SUMMARY:-/dev/null}"
+    fi
+    if [ -n "$COPY" ]; then
+        N="$(node -e 'const { parseListing } = require(process.argv[1]); const fs = require("fs");
+            const d = process.argv[3] + "/";
+            console.log(parseListing(fs.readFileSync(process.argv[2], "utf8")).filter((r) => r.path.startsWith(d)).length);' \
+            "$HERE/server-check.js" "$WORK/listing.txt" "$COPY")"
+        {
+            echo
+            echo "## The copy of the site in $COPY/"
+            echo
+            if [ "$TIDY" = "apply" ]; then echo "Deleting the whole folder ($N entries)."; else echo "The whole folder ($N entries) would be deleted (run it again with the box ticked)."; fi
+        } | tee -a "${GITHUB_STEP_SUMMARY:-/dev/null}"
+        if [ "$TIDY" = "apply" ]; then
+            bash "$HERE/sftp.sh" "cd \"$ROOT\"; rm -r \"$COPY\"" || echo "::error::The server refused part of the deletion; the listing below says what is left."
+            bash "$HERE/sftp.sh" "cd \"$ROOT\"; find -l ." > "$WORK/after-copy.txt"
+            LEFT="$(node -e 'const { parseListing } = require(process.argv[1]); const fs = require("fs");
+                const d = process.argv[3];
+                console.log(parseListing(fs.readFileSync(process.argv[2], "utf8")).filter((r) => r.path === d || r.path.startsWith(d + "/")).length);' \
+                "$HERE/server-check.js" "$WORK/after-copy.txt" "$COPY")"
+            if [ "$LEFT" != "0" ]; then
+                echo "::error::$LEFT entries are still in $COPY/ after the deletion."
+                exit 2
+            fi
+            echo "Deleted $COPY/; the server no longer lists it." | tee -a "${GITHUB_STEP_SUMMARY:-/dev/null}"
+        fi
     fi
 fi
 

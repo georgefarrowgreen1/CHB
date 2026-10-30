@@ -79,13 +79,13 @@ ckc(strpos($sourced(['APP_SECRET' => APP_SECRET], 'true'), '::add-mask::' . $key
 ckc(strpos((string) file_get_contents($lib), 'X-CHB-Cron: $KEY') !== false, 'it sends the key in the X-CHB-Cron header');
 $deploy = (string) @file_get_contents(__DIR__ . '/../.github/workflows/deploy.yml');
 $check = (string) @file_get_contents(__DIR__ . '/../.github/scripts/server-check.sh');
-ckc(substr_count($deploy, '. .github/scripts/site-job.sh') === 2 && strpos($check, 'site-job.sh') !== false, 'the live and staging post-deploy steps and the server check all use it');
+ckc(substr_count($deploy, '. .github/scripts/site-job.sh') === 1 && strpos($check, 'site-job.sh') !== false, 'the post-deploy step and the server check both use it');
 $wfAll = '';
 foreach (glob(__DIR__ . '/../.github/workflows/*.yml') ?: [] as $wf) {
     $wfAll .= (string) file_get_contents($wf);
 }
 ckc(strpos($wfAll, 'openssl dgst') === false && strpos($wfAll, 'X-CHB-Cron') === false, '…and no workflow works the key out, or asks for a job, any other way');
-ckc(preg_match('/cron=\$\{?APP_SECRET\}?|cron=\$\{\{\s*secrets\.(STAGING_)?APP_SECRET/', $wfAll . $check) === 0, 'no address in a workflow carries APP_SECRET');
+ckc(preg_match('/cron=\$\{?APP_SECRET\}?|cron=\$\{\{\s*secrets\.APP_SECRET/', $wfAll . $check) === 0, 'no address in a workflow carries APP_SECRET');
 
 // site-job.sh's job() run in bash against a stand-in curl, which logs each call and
 // answers the next status code in a scripted sequence ("fail" = no answer at all). The key

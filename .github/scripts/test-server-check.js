@@ -363,7 +363,7 @@ console.log('== the tidy-up list, as the command line writes it ==');
     ok('the site is sent the whole count, not the first 40', res.total && res.total.needs === 1 && res.total.leftovers === 6);
     ok('…and what it can check for itself: a file whose removal resolves its finding', res.open && res.open.gone.join() === 'old/run.php' && res.open.goneAll === 1 && res.open.other === 0 && res.open.back.length === 0);
     const summary = fs.existsSync(path.join(dir, 'summary.md')) ? fs.readFileSync(path.join(dir, 'summary.md'), 'utf8') : '';
-    ok('the staging copy\'s report says which commit it is', /## The staging copy in staging\/\n\nCompared with commit `aaaaaaaaaaaa`/.test(summary));
+    ok('the staging copy\'s report says which commit it is', /## The copy of the site in staging\/\n\nCompared with commit `aaaaaaaaaaaa`/.test(summary));
     const everything = printed + summary + JSON.stringify(res) + JSON.stringify(out);
     ok('nothing printed, summarised, sent or listed names the sign-in\'s file or the photo', everything.length > 500 && !/sess_|guest-99zz/.test(everything));
     fs.rmSync(dir, { recursive: true, force: true });

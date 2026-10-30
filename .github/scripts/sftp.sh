@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Runs lftp commands against the web host. The ONE place for the connection settings,
-# used by the live deploy, the staging deploy and the server file check.
+# used by the deploy and the server file check.
 #
 #   HOST=… USERNAME=… LFTP_PASSWORD=… [PORT=22] sftp.sh '<lftp commands>'
 #

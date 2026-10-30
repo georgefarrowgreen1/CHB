@@ -15,27 +15,18 @@ RewriteRule ^ https://%{HTTP_HOST}%{REQUEST_URI} [L,R=301]
 # ---- One canonical host: www.<domain> 301s to the apex ----
 # Both hosts used to serve 200 (duplicate content mitigated only by
 # rel=canonical, which consistently points at the apex). Guarded to this
-# site's own www so staging.<domain> is untouched.
+# site's own www so no other host name is touched.
 RewriteCond %{HTTP_HOST} ^www\.(cottageholidaysblakeney\.co\.uk)$ [NC]
 RewriteRule ^ https://%1%{REQUEST_URI} [L,R=301]
 
-# ---- The staging copy answers only on its own host ----
-# The staging site is deployed into a folder of this web space (staging/), and this file
-# is its .htaccess too. Reached through the live host, that folder served the whole
-# staging app with no password and no noindex header, both being tied to the staging
-# host name (found by the server file check). It is no page of the live site: not found.
-RewriteCond %{HTTP_HOST} !(^|\.)staging\. [NC]
+# ---- The old staging folder is not found ----
+# The staging site (retired 30/10/2026) was deployed into a folder of this web space
+# (staging/). Reached through the live host, that folder served the whole staging app
+# with no password and no noindex header (found by the server file check). It is no
+# page of the site: not found, ahead of every rule that could serve a page, until the
+# tidy-up has deleted the folder, and harmless after.
 RewriteCond %{REQUEST_URI} ^/staging(/|$) [NC]
 RewriteRule ^ - [R=404,L]
-
-# ---- Lock the staging site to the owner (staging host ONLY) ----
-# On staging.<domain> the site's entry pages are routed through staging-gate.php,
-# which demands an HTTP Basic-Auth password (set in staging's config.php) and
-# returns a 401 error to everyone else. None of this fires on the live host, so
-# production is completely unaffected. The first rule just forwards the Basic-Auth
-# header to PHP (needed under IONOS CGI/FastCGI) and is harmless everywhere.
-RewriteCond %{HTTP:Authorization} .
-RewriteRule .* - [E=HTTP_AUTHORIZATION:%{HTTP:Authorization}]
 
 # ============================================================
 #  Request firewall — bounce obvious injection / scan attempts to /blocked.
@@ -70,23 +61,11 @@ RewriteRule ^ /blocked [R=302,QSD,L]
 RewriteRule ^blocked/?$ blocked.php [L]
 # ============================================================
 
-RewriteCond %{HTTP_HOST} (^|\.)staging\. [NC]
-RewriteRule ^(index\.html)?$ staging-gate.php [L]
-RewriteCond %{HTTP_HOST} (^|\.)staging\. [NC]
-RewriteRule ^cottages(/.*)?$ staging-gate.php [L]
-RewriteCond %{HTTP_HOST} (^|\.)staging\. [NC]
-RewriteRule ^experiences/?$ staging-gate.php [L]
-RewriteCond %{HTTP_HOST} (^|\.)staging\. [NC]
-RewriteRule ^status/?$ staging-gate.php [L]
-RewriteCond %{HTTP_HOST} (^|\.)staging\. [NC]
-RewriteRule ^review(/.*)?$ staging-gate.php [L]
-
 # ---- Homepage via home.php (live hero + social-preview image injected) ----
 # The owner's hero is an uploaded photo (content table); the static index.html
 # references hero.jpg which doesn't exist on the live host. home.php serves
 # index.html with the live hero swapped into the LCP preload, og:/twitter:
 # images and the hero element; on any problem it serves index.html untouched.
-# (On staging the gate rules above win, so this only fires on the live host.)
 RewriteRule ^(index\.html)?$ home.php [L]
 
 # ---- Things to do (SEO) ----
@@ -292,23 +271,12 @@ Options -Indexes
 RedirectMatch 404 "(?!^/\.well-known/)^/\..*"
 
 
-# ---- Keep the staging site out of search engines ----
-# The same code is deployed to staging.<domain>; on that host only, send a
-# noindex header so the test environment is never indexed or shown publicly.
-<IfModule mod_setenvif.c>
-    SetEnvIf Host "(^|\.)staging\." CHB_STAGING=1
-</IfModule>
-<IfModule mod_headers.c>
-    Header set X-Robots-Tag "noindex, nofollow" env=CHB_STAGING
-</IfModule>
-
 # ---- Send the right charset ----
 AddDefaultCharset UTF-8
 
 # ---- Security headers ----
 <IfModule mod_headers.c>
-    # Tell browsers to always use HTTPS for this site (1 year, all subdomains —
-    # staging is HTTPS too, so nothing breaks)
+    # Tell browsers to always use HTTPS for this site (1 year, all subdomains)
     Header always set Strict-Transport-Security "max-age=31536000; includeSubDomains"
     # This site never uses camera/mic/location — say so explicitly, which also
     # denies them to anything embedded. (payment is deliberately NOT listed:

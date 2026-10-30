@@ -308,12 +308,12 @@ $JOBS = [
 // test-auth-posture.php's own header says "'dev' files must appear in deploy.yml's
 // exclusions", and then it filters `test-*` out of its registry entirely — so the one
 // class of file that rule was written for was the class nothing checked, and a new
-// test-*.php shipped to the live host by default. deploy.yml also strips TWICE, once
+// test-*.php shipped to the live host by default. deploy.yml used to strip TWICE, once
 // for production and once for staging, and a list somebody has to remember to extend
 // in two places is the shape check-versions already learned to derive rather than
 // hardcode.
 echo "-- \u{00A7}0 no test file ships --\n";
-// Both deploy jobs build what they upload with .github/scripts/stage-site.sh, which strips
+// The deploy builds what it uploads with .github/scripts/stage-site.sh, which strips
 // tests BY PATTERN. This runs it (without the build step) and checks what it leaves,
 // rather than parsing its commands.
 $stageSh = dirname($APP) . '/.github/scripts/stage-site.sh';
@@ -336,7 +336,7 @@ if (!is_file($stageSh)) {
     }
     exec('rm -rf ' . escapeshellarg($stageOut));
     $dep = (string) @file_get_contents(dirname($APP) . '/.github/workflows/deploy.yml');
-    chk('both deploy jobs (production and staging) stage with that script', substr_count($dep, 'bash .github/scripts/stage-site.sh "Cottage Holidays Blakeney" deploy') === 2);
+    chk('the deploy stages with that script', substr_count($dep, 'bash .github/scripts/stage-site.sh "Cottage Holidays Blakeney" deploy') === 1);
 }
 
 // ============================================================================

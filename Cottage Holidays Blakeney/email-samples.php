@@ -2,8 +2,7 @@
 // ============================================================
 //  email-samples.php — send [SAMPLE]-marked copies of every guest-facing
 //  email to the owner's inbox, so they can see exactly what guests receive
-//  without making a real booking. Available on the LIVE site (admin-only);
-//  the staging Test centre reuses the same sender with a [TEST] prefix.
+//  without making a real booking (admin-only).
 //
 //  POST {action:'send', which:'all'|<key>}  →  {ok, to, sent, results:[…]}
 // ============================================================
@@ -17,8 +16,8 @@ function chb_send_sample_emails($which = 'all', $prefix = '[SAMPLE] ')
     require_once __DIR__ . '/mailer.php';
     // Samples go to the person who asked — every one of them, the back office's
     // own emails included (people_mail_only), never to everyone who'd get the real
-    // thing. Without a signed-in person (the staging Test centre's own runs) it is
-    // the config owner address, as it always was.
+    // thing. Without a signed-in person it is the config owner address, as it always
+    // was.
     $owner = function_exists('admin_me') && admin_me() && function_exists('admin_contact_email') ? admin_contact_email(admin_me()) : '';
     if ($owner === '' && defined('OWNER_NOTIFY_EMAIL') && OWNER_NOTIFY_EMAIL) {
         $owner = (string) OWNER_NOTIFY_EMAIL;

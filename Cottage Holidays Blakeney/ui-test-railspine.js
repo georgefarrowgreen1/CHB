@@ -181,8 +181,8 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
     ok(await page.evaluate(() => { const r = document.getElementById('admin-rail'); return !!r && r.getBoundingClientRect().width > 180; }), 'at 1440 it unfolds to labels and counts — matchMedia drives the classes, a live resize cannot leave them stale');
     // A signed-in admin has no customer-facing site — nav() bounces every
     // public view to the back office — EXCEPT view-pay, which is deliberately
-    // let through (an admin settling on a guest's behalf, or testing a link on
-    // staging). That page is a GUEST page and must render as one: unshifted,
+    // let through (an admin settling on a guest's behalf, or testing a link).
+    // That page is a GUEST page and must render as one: unshifted,
     // no rail beside it. The .admin-screen half of the rail's CSS pair is what
     // guards it. (The first draft of this check nav'd to view-experiences and
     // silently measured the back office again — the redirect ate it.)
