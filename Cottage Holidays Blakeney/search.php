@@ -10,15 +10,18 @@
 //
 //  TWO WAYS TO MATCH (CLAUDE.md "Search stays instant at five years"). The quick
 //  path runs on every pause in typing, so it reads full-text indexes
-//  (migration-151): a word, or the start of one ("pemb" finds Pemberton), and a
-//  figure through its own column (a phone number, a postcode or a reference by
-//  LIKE, an amount exactly). It read every row of every source with LIKE '%…%':
-//  33,000 rows for a word nobody wrote, on five years. "Search everything"
-//  (?deep) still matches anywhere inside a word, over everything.
+//  (migrations 151 and 152, SEARCH_FT): a word, or the start of one ("pemb" finds
+//  Pemberton), an email by its start through its own index, and a figure through
+//  its own column (a phone number, a postcode or a reference by LIKE, an amount
+//  exactly). It read every row of every source with LIKE '%…%': 33,000 rows for a
+//  word nobody wrote, on five years. "Search everything" (?deep) still matches
+//  anywhere inside a word, over everything. A database without a word index reads
+//  that source the old way (search_rows) rather than finding nothing.
 //
 //  Every source is wrapped so a missing table/column can never break the whole
-//  search (older installs may not have every migration). Each source is capped;
-//  the whole response is capped again. Read-only.
+//  search (older installs may not have every migration), and a source that fails
+//  is logged (search_source_failed). Each source is capped; the whole response is
+//  capped again. Read-only.
 // ============================================================
 require_once __DIR__ . '/db.php';
 require_admin();
@@ -56,6 +59,73 @@ function search_ft_terms(string $q): string
     }
     return implode(' ', array_slice(array_keys($keep), 0, 8));
 }
+// The word indexes (migrations 151 and 152), by table: the columns each source's words
+// are matched against, exactly as each index lists them (test-migrate holds the two
+// equal). An index takes only columns that state no collation of their own, so the
+// emails of bookings, enquiries and guests are found through their own index instead
+// (search_mail_like).
+const SEARCH_FT = [
+    'bookings' => ['name', 'address', 'notes'],
+    'enquiries' => ['name', 'message'],
+    'guests' => ['name'],
+    'messages' => ['body'],
+    'guest_reviews' => ['review_text'],
+    'mail_sent' => ['subject', 'to_email', 'body'],
+    'activity_log' => ['summary'],
+    'expenses' => ['category', 'description'],
+    'waitlist' => ['name', 'email', 'note'],
+];
+/**
+ * A source's words as SQL: its full-text index, or (when $indexed is false) the LIKE the
+ * index replaced, over the same columns. Returns [condition, parameters].
+ * @return array{0: string, 1: list<string>}
+ */
+function search_words(string $table, string $alias, bool $indexed, string $ft, string $like): array
+{
+    $cols = array_map(fn($c) => ($alias !== '' ? $alias . '.' : '') . $c, SEARCH_FT[$table]);
+    if ($indexed) {
+        return ['MATCH(' . implode(', ', $cols) . ') AGAINST(? IN BOOLEAN MODE)', [$ft]];
+    }
+    return ['(' . implode(' OR ', array_map(fn($c) => "$c LIKE ?", $cols)) . ')', array_fill(0, count($cols), $like)];
+}
+/**
+ * A source's rows, read through its word index, or without it when the database has no
+ * such index (error 1191: a migration that has not run, or failed). Finding nothing
+ * there would read as "no such guest", which is how a week of search went quiet when
+ * migration-151 failed on the live database.
+ */
+function search_rows(callable $query): array
+{
+    try {
+        return $query(true);
+    } catch (\PDOException $e) {
+        if ((int) ($e->errorInfo[1] ?? 0) !== 1191) {
+            throw $e;
+        }
+        return $query(false);
+    }
+}
+/**
+ * The query as the start of an email address, for a LIKE on an email column's own index
+ * ('' when it cannot be one: under three characters, or holding a space).
+ */
+function search_mail_like(string $q): string
+{
+    $q = mb_strtolower(trim($q));
+    if (mb_strlen($q) < 3 || preg_match('/\s/u', $q)) {
+        return '';
+    }
+    return addcslashes($q, '%_\\') . '%';
+}
+/**
+ * A source that failed is said once an hour (Needs attention), never swallowed in
+ * silence: the search goes on with the others, but a source that keeps failing is
+ * results the owner never sees.
+ */
+function search_source_failed(\Throwable $e): void
+{
+    chb_log_server_error('Search source', $e->getMessage(), $e->getFile(), $e->getLine());
+}
 if (!empty($_GET['corpus']) || !empty(body()['corpus'] ?? null)) {
     $out = [];
     $cap = 300;
@@ -70,7 +140,7 @@ if (!empty($_GET['corpus']) || !empty(body()['corpus'] ?? null)) {
         try {
             $fn();
         } catch (\Throwable $e) {
-            /* a missing table/column must not sink the whole dump */
+            search_source_failed($e); // one failing source must not sink the whole dump
         }
     };
     $safe(function () use ($add, $cap) {
@@ -125,9 +195,11 @@ $src = function (callable $fn) {
     try {
         $fn();
     } catch (\Throwable $e) {
-        /* a missing table/column must never break the rest of the search */
+        search_source_failed($e); // one failing source must never break the rest of the search
     }
 };
+// The query as the start of an email address (search_mail_like).
+$mail = search_mail_like($q);
 
 // ============================================================
 //  DEEP SEARCH (?deep) — the "search everything" mode behind the palette's quick
@@ -278,29 +350,37 @@ if ($deep) {
     json_out(['ok' => true, 'deep' => true, 'q' => $q, 'results' => search_visible($results), 'counts' => (object) $counts]);
 }
 
-// 1) Bookings — each stay is also its invoice. Name, email, address and notes by their
-// words; a phone number, a postcode or a reference (CHB-000123) only when the query holds
-// a figure, as each can use its own index or is cheap enough on its own.
-$src(function () use (&$results, $like, $PER, $q, $ft, $digits) {
-    $parts = [];
-    $params = [];
-    $cols = 'SELECT id, prop_key, name, email, phone, check_in FROM bookings WHERE ';
-    if ($ft !== '') {
-        $parts[] = $cols . 'MATCH(name, email, address, notes) AGAINST(? IN BOOLEAN MODE)';
-        $params[] = $ft;
-    }
-    if ($digits) {
-        // The reference without its hyphen on both sides: "CHB-000123", "chb000123" and
-        // "000123" all find it (the hyphen kept on one side only matched nothing).
-        $parts[] = $cols . "phone LIKE ? OR postcode LIKE ? OR CONCAT('chb', LPAD(id, 6, '0')) LIKE ?";
-        array_push($params, $like, $like, '%' . strtolower(preg_replace('/[^0-9a-z]/i', '', $q)) . '%');
-    }
-    if (!$parts) {
-        return;
-    }
-    $st = db()->prepare('SELECT * FROM ((' . implode(') UNION (', $parts) . ")) u ORDER BY (u.check_in >= CURDATE()) DESC, u.check_in ASC LIMIT $PER");
-    $st->execute($params);
-    foreach ($st->fetchAll() as $b) {
+// 1) Bookings — each stay is also its invoice. Name, address and notes by their words,
+// the email by its start; a phone number, a postcode or a reference (CHB-000123) only
+// when the query holds a figure, as each can use its own index or is cheap enough alone.
+$src(function () use (&$results, $like, $PER, $q, $ft, $mail, $digits) {
+    $rows = search_rows(function (bool $indexed) use ($like, $PER, $q, $ft, $mail, $digits) {
+        $parts = [];
+        $params = [];
+        $cols = 'SELECT id, prop_key, name, email, phone, check_in FROM bookings WHERE ';
+        if ($ft !== '') {
+            [$w, $wp] = search_words('bookings', '', $indexed, $ft, $like);
+            $parts[] = $cols . $w;
+            array_push($params, ...$wp);
+        }
+        if ($mail !== '') {
+            $parts[] = $cols . 'email LIKE ?';
+            $params[] = $mail;
+        }
+        if ($digits) {
+            // The reference without its hyphen on both sides: "CHB-000123", "chb000123" and
+            // "000123" all find it (the hyphen kept on one side only matched nothing).
+            $parts[] = $cols . "phone LIKE ? OR postcode LIKE ? OR CONCAT('chb', LPAD(id, 6, '0')) LIKE ?";
+            array_push($params, $like, $like, '%' . strtolower(preg_replace('/[^0-9a-z]/i', '', $q)) . '%');
+        }
+        if (!$parts) {
+            return [];
+        }
+        $st = db()->prepare('SELECT * FROM ((' . implode(') UNION (', $parts) . ")) u ORDER BY (u.check_in >= CURDATE()) DESC, u.check_in ASC LIMIT $PER");
+        $st->execute($params);
+        return $st->fetchAll();
+    });
+    foreach ($rows as $b) {
         $results[] = [
             'type' => 'booking',
             'id' => (int) $b['id'],
@@ -310,55 +390,84 @@ $src(function () use (&$results, $like, $PER, $q, $ft, $digits) {
     }
 });
 
-// 2) Enquiries — name, email, their message.
-$src(function () use (&$results, $ft, $PER) {
-    if ($ft === '') {
-        return;
-    }
-    $st = db()->prepare('SELECT id, prop_key, name, email, message FROM enquiries WHERE MATCH(name, email, message) AGAINST(? IN BOOLEAN MODE) ORDER BY id DESC LIMIT ' . $PER);
-    $st->execute([$ft]);
-    foreach ($st->fetchAll() as $e) {
+// 2) Enquiries — name and their message by their words, the email by its start.
+$src(function () use (&$results, $like, $ft, $mail, $PER) {
+    $rows = search_rows(function (bool $indexed) use ($like, $ft, $mail, $PER) {
+        $parts = [];
+        $params = [];
+        $cols = 'SELECT id, prop_key, name, email FROM enquiries WHERE ';
+        if ($ft !== '') {
+            [$w, $wp] = search_words('enquiries', '', $indexed, $ft, $like);
+            $parts[] = $cols . $w;
+            array_push($params, ...$wp);
+        }
+        if ($mail !== '') {
+            $parts[] = $cols . 'email LIKE ?';
+            $params[] = $mail;
+        }
+        if (!$parts) {
+            return [];
+        }
+        $st = db()->prepare('SELECT * FROM ((' . implode(') UNION (', $parts) . ')) u ORDER BY u.id DESC LIMIT ' . $PER);
+        $st->execute($params);
+        return $st->fetchAll();
+    });
+    foreach ($rows as $e) {
         $results[] = ['type' => 'enquiry', 'id' => (int) $e['id'], 'title' => $e['name'] ?: '(no name)', 'sub' => 'Enquiry · ' . prop_display($e['prop_key'])['name']];
     }
 });
 
-// 3) Guest accounts — name and email by their words, a phone number when the query holds a figure.
-$src(function () use (&$results, $like, $PER, $ft, $digits) {
-    $parts = [];
-    $params = [];
-    if ($ft !== '') {
-        $parts[] = 'SELECT id, name, email, phone FROM guests WHERE MATCH(name, email) AGAINST(? IN BOOLEAN MODE)';
-        $params[] = $ft;
-    }
-    if ($digits) {
-        $parts[] = 'SELECT id, name, email, phone FROM guests WHERE phone LIKE ?';
-        $params[] = $like;
-    }
-    if (!$parts) {
-        return;
-    }
-    $st = db()->prepare('SELECT * FROM ((' . implode(') UNION (', $parts) . ')) u ORDER BY u.id DESC LIMIT ' . $PER);
-    $st->execute($params);
-    foreach ($st->fetchAll() as $g) {
+// 3) Guest accounts — the name by its words, the email by its start, a phone number when
+// the query holds a figure.
+$src(function () use (&$results, $like, $PER, $ft, $mail, $digits) {
+    $rows = search_rows(function (bool $indexed) use ($like, $PER, $ft, $mail, $digits) {
+        $parts = [];
+        $params = [];
+        $cols = 'SELECT id, name, email, phone FROM guests WHERE ';
+        if ($ft !== '') {
+            [$w, $wp] = search_words('guests', '', $indexed, $ft, $like);
+            $parts[] = $cols . $w;
+            array_push($params, ...$wp);
+        }
+        if ($mail !== '') {
+            $parts[] = $cols . 'email LIKE ?';
+            $params[] = $mail;
+        }
+        if ($digits) {
+            $parts[] = $cols . 'phone LIKE ?';
+            $params[] = $like;
+        }
+        if (!$parts) {
+            return [];
+        }
+        $st = db()->prepare('SELECT * FROM ((' . implode(') UNION (', $parts) . ')) u ORDER BY u.id DESC LIMIT ' . $PER);
+        $st->execute($params);
+        return $st->fetchAll();
+    });
+    foreach ($rows as $g) {
         $results[] = ['type' => 'guest', 'id' => (int) $g['id'], 'email' => $g['email'], 'title' => $g['name'] ?: $g['email'], 'sub' => 'Guest account · ' . $g['email']];
     }
 });
 
 // 4) Chat messages — the message text; jump to its thread.
-$src(function () use (&$results, $ft, $PER, $snip) {
+$src(function () use (&$results, $like, $ft, $PER, $snip) {
     if ($ft === '') {
         return;
     }
-    $st = db()->prepare(
-        'SELECT m.thread_id, m.body, m.sender_role, COALESCE(t.name, g.name) AS who
-         FROM messages m
-         LEFT JOIN chat_threads t ON t.id = m.thread_id
-         LEFT JOIN guests g ON g.id = m.guest_id
-         WHERE MATCH(m.body) AGAINST(? IN BOOLEAN MODE) AND m.thread_id IS NOT NULL
-         ORDER BY m.id DESC LIMIT ' . $PER,
-    );
-    $st->execute([$ft]);
-    foreach ($st->fetchAll() as $m) {
+    $rows = search_rows(function (bool $indexed) use ($like, $ft, $PER) {
+        [$w, $wp] = search_words('messages', 'm', $indexed, $ft, $like);
+        $st = db()->prepare(
+            'SELECT m.thread_id, m.body, m.sender_role, COALESCE(t.name, g.name) AS who
+             FROM messages m
+             LEFT JOIN chat_threads t ON t.id = m.thread_id
+             LEFT JOIN guests g ON g.id = m.guest_id
+             WHERE ' . $w . ' AND m.thread_id IS NOT NULL
+             ORDER BY m.id DESC LIMIT ' . $PER,
+        );
+        $st->execute($wp);
+        return $st->fetchAll();
+    });
+    foreach ($rows as $m) {
         $results[] = [
             'type' => 'message',
             'thread_id' => (int) $m['thread_id'],
@@ -369,25 +478,33 @@ $src(function () use (&$results, $ft, $PER, $snip) {
 });
 
 // 5) Reviews — the review text.
-$src(function () use (&$results, $ft, $PER, $snip) {
+$src(function () use (&$results, $like, $ft, $PER, $snip) {
     if ($ft === '') {
         return;
     }
-    $st = db()->prepare('SELECT id, prop_key, review_text FROM guest_reviews WHERE MATCH(review_text) AGAINST(? IN BOOLEAN MODE) ORDER BY id DESC LIMIT ' . $PER);
-    $st->execute([$ft]);
-    foreach ($st->fetchAll() as $r) {
+    $rows = search_rows(function (bool $indexed) use ($like, $ft, $PER) {
+        [$w, $wp] = search_words('guest_reviews', '', $indexed, $ft, $like);
+        $st = db()->prepare('SELECT id, prop_key, review_text FROM guest_reviews WHERE ' . $w . ' ORDER BY id DESC LIMIT ' . $PER);
+        $st->execute($wp);
+        return $st->fetchAll();
+    });
+    foreach ($rows as $r) {
         $results[] = ['type' => 'review', 'id' => (int) $r['id'], 'title' => $snip($r['review_text']), 'sub' => 'Review · ' . prop_display($r['prop_key'])['name']];
     }
 });
 
 // 6) Sent emails — subject, recipient, body (the mail_sent trail).
-$src(function () use (&$results, $ft, $PER) {
+$src(function () use (&$results, $like, $ft, $PER) {
     if ($ft === '') {
         return;
     }
-    $st = db()->prepare('SELECT id, to_email, subject FROM mail_sent WHERE MATCH(subject, to_email, body) AGAINST(? IN BOOLEAN MODE) ORDER BY id DESC LIMIT ' . $PER);
-    $st->execute([$ft]);
-    foreach ($st->fetchAll() as $m) {
+    $rows = search_rows(function (bool $indexed) use ($like, $ft, $PER) {
+        [$w, $wp] = search_words('mail_sent', '', $indexed, $ft, $like);
+        $st = db()->prepare('SELECT id, to_email, subject FROM mail_sent WHERE ' . $w . ' ORDER BY id DESC LIMIT ' . $PER);
+        $st->execute($wp);
+        return $st->fetchAll();
+    });
+    foreach ($rows as $m) {
         $results[] = ['type' => 'email', 'id' => (int) $m['id'], 'title' => $m['subject'] ?: '(no subject)', 'sub' => 'Email · to ' . $m['to_email']];
     }
 });
@@ -429,25 +546,33 @@ $src(function () use (&$results, $PER, $q, $digits) {
 // 8) Activity log — anything that happened in the last 13 months. The quick path
 // runs on keystrokes, and a rare word walked the whole log (three years, up to
 // 200,000 rows); "search everything" (deep) still reads all of it.
-$src(function () use (&$results, $ft, $PER, $snip) {
+$src(function () use (&$results, $like, $ft, $PER, $snip) {
     if ($ft === '') {
         return;
     }
-    $st = db()->prepare('SELECT id, summary, category, created_at FROM activity_log WHERE MATCH(summary) AGAINST(? IN BOOLEAN MODE) AND created_at >= (NOW() - INTERVAL 13 MONTH) ORDER BY created_at DESC, id DESC LIMIT ' . $PER);
-    $st->execute([$ft]);
-    foreach ($st->fetchAll() as $a) {
+    $rows = search_rows(function (bool $indexed) use ($like, $ft, $PER) {
+        [$w, $wp] = search_words('activity_log', '', $indexed, $ft, $like);
+        $st = db()->prepare('SELECT id, summary, category, created_at FROM activity_log WHERE ' . $w . ' AND created_at >= (NOW() - INTERVAL 13 MONTH) ORDER BY created_at DESC, id DESC LIMIT ' . $PER);
+        $st->execute($wp);
+        return $st->fetchAll();
+    });
+    foreach ($rows as $a) {
         $results[] = ['type' => 'activity', 'id' => (int) $a['id'], 'title' => $snip($a['summary']), 'sub' => 'Activity · ' . uk_date(substr((string) $a['created_at'], 0, 10))];
     }
 });
 
 // 9) Expenses — category / description; jump to Payments → Expenses.
-$src(function () use (&$results, $ft, $PER, $snip) {
+$src(function () use (&$results, $like, $ft, $PER, $snip) {
     if ($ft === '') {
         return;
     }
-    $st = db()->prepare('SELECT id, category, description, amount, expense_date FROM expenses WHERE MATCH(category, description) AGAINST(? IN BOOLEAN MODE) ORDER BY expense_date DESC, id DESC LIMIT ' . $PER);
-    $st->execute([$ft]);
-    foreach ($st->fetchAll() as $e) {
+    $rows = search_rows(function (bool $indexed) use ($like, $ft, $PER) {
+        [$w, $wp] = search_words('expenses', '', $indexed, $ft, $like);
+        $st = db()->prepare('SELECT id, category, description, amount, expense_date FROM expenses WHERE ' . $w . ' ORDER BY expense_date DESC, id DESC LIMIT ' . $PER);
+        $st->execute($wp);
+        return $st->fetchAll();
+    });
+    foreach ($rows as $e) {
         $results[] = [
             'type' => 'expense',
             'id' => (int) $e['id'],
@@ -458,13 +583,17 @@ $src(function () use (&$results, $ft, $PER, $snip) {
 });
 
 // 10) Waitlist — sold-out demand; name, email, note.
-$src(function () use (&$results, $ft, $PER) {
+$src(function () use (&$results, $like, $ft, $PER) {
     if ($ft === '') {
         return;
     }
-    $st = db()->prepare('SELECT id, prop_key, name, email, check_in FROM waitlist WHERE MATCH(name, email, note) AGAINST(? IN BOOLEAN MODE) ORDER BY id DESC LIMIT ' . $PER);
-    $st->execute([$ft]);
-    foreach ($st->fetchAll() as $w) {
+    $rows = search_rows(function (bool $indexed) use ($like, $ft, $PER) {
+        [$w, $wp] = search_words('waitlist', '', $indexed, $ft, $like);
+        $st = db()->prepare('SELECT id, prop_key, name, email, check_in FROM waitlist WHERE ' . $w . ' ORDER BY id DESC LIMIT ' . $PER);
+        $st->execute($wp);
+        return $st->fetchAll();
+    });
+    foreach ($rows as $w) {
         $results[] = [
             'type' => 'waitlist',
             'id' => (int) $w['id'],
