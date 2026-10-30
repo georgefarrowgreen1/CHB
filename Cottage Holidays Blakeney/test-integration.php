@@ -7337,7 +7337,56 @@ it_check('§94 findings are logged as a warning that counts them', $r['code'] ==
 it_check('§94 …each finding kept to one short, plain line, and a bad commit dropped', is_array($m94) && count($m94['items'] ?? []) === 3 && max(array_map('mb_strlen', $m94['items'])) <= 150 && strpos(implode('', $m94['items']), "\x07") === false && ($m94['commit'] ?? 'x') === '', json_encode($m94));
 $d94 = $row94();
 it_check('§94 …and Status says the server needs a look', is_array($d94) && $d94['status'] === 'warn' && strpos((string) $d94['detail'], '3 things on the server need a look') === 0, json_encode($d94));
-$rootDb->exec("DELETE FROM activity_log WHERE action = 'server.check'");
+
+// The whole count, not the first 40: the 26/10/2026 report read "40 things" over 158.
+$forty94 = array_map(fn($i) => "x$i.php: runs on the server, and is not in the site (never part of the site)", range(1, 40));
+$r = $post94('/server-check.php?cron=header', (string) json_encode(['needs' => $forty94, 'changed' => [], 'missing' => [], 'leftovers' => [], 'total' => ['needs' => 158, 'changed' => 0, 'missing' => 0, 'leftovers' => 14]]), $job92);
+$l94 = $last94();
+it_check('§94 the whole count is kept when the lists stop at 40', $r['code'] === 200 && ($r['json']['found'] ?? 0) === 158 && $l94['summary'] === 'Server file check: 158 things on the server need a look', $r['raw'] . ' ' . json_encode($l94));
+// A report as long as the lists allow still reads back.
+$long94 = array_map(fn($i) => 'staging/some/rather/long/folder/name/file-number-' . $i . '.php', range(1, 200));
+$r = $post94('/server-check.php?cron=header', (string) json_encode(['needs' => $forty94, 'changed' => [], 'missing' => [], 'leftovers' => [], 'total' => ['needs' => 200], 'open' => ['gone' => $long94, 'goneAll' => 200, 'back' => [], 'other' => 0]]), $job92);
+$m94 = json_decode((string) ($last94()['meta'] ?? ''), true);
+it_check('§94 a long report still fits the log, its open list cut rather than the record', is_array($m94) && count($m94['open']['gone'] ?? []) > 10 && ($m94['open']['goneAll'] ?? 0) === 200, substr(json_encode($m94), 0, 300));
+$d94 = $row94();
+$kept94 = 200 - count($m94['open']['gone'] ?? []);
+it_check('§94 …and the files the cut left out still count as open (the listed ones are not on disk here, so they read as dealt with)', is_array($d94) && $d94['status'] === 'warn' && $kept94 > 0 && strpos((string) $d94['detail'], $kept94 . ' things on the server need a look') === 0, json_encode($d94));
+
+// BETWEEN RUNS THE SITE CHECKS FOR ITSELF, AND "FIX SAFE ISSUES" REMOVES THE OLD FILES.
+// A report naming two strays: mailtest.php (on the list the site removes) is on disk,
+// the other is already gone. The row names what is left and says the button helps.
+file_put_contents($work . '/mailtest.php', "<?php http_response_code(404);\n");
+$r = $post94('/server-check.php?cron=header', (string) json_encode([
+    'needs' => ['mailtest.php: runs on the server, and is not in the site (never part of the site)', 'gone-already-94.php: runs on the server, and is not in the site (never part of the site)'],
+    'changed' => [], 'missing' => [], 'leftovers' => [],
+    'total' => ['needs' => 2, 'changed' => 0, 'missing' => 0, 'leftovers' => 0],
+    'open' => ['gone' => ['mailtest.php', 'gone-already-94.php', '../config.php'], 'goneAll' => 2, 'back' => [], 'other' => 0],
+]), $job92);
+$m94 = json_decode((string) ($last94()['meta'] ?? ''), true);
+it_check('§94 the open list keeps plain paths only', ($m94['open']['gone'] ?? null) === ['mailtest.php', 'gone-already-94.php'], json_encode($m94['open'] ?? null));
+$d94 = $row94();
+it_check('§94 Status names the file still there, not the one already gone', is_array($d94) && $d94['status'] === 'warn' && strpos((string) $d94['detail'], 'mailtest.php needs a look on the server, found on') === 0, json_encode($d94));
+it_check('§94 …and says "Fix safe issues" removes it', is_array($d94) && strpos((string) ($d94['hint'] ?? ''), '"Fix safe issues" removes it') === 0, json_encode($d94));
+// Not in a folder the deploy did not write: a developer's checkout is never touched.
+@unlink($work . '/.deploy-commit');
+$s94 = http($adm83, 'POST', '/self-repair.php', []);
+it_check('§94 self-repair leaves the file alone where there is no .deploy-commit', is_file($work . '/mailtest.php') && !in_array('old files:1', $s94['json']['fixed'] ?? [], true), json_encode($s94['json']['fixed'] ?? null));
+file_put_contents($work . '/.deploy-commit', str_repeat('b', 40) . "\n");
+require_once __DIR__ . '/retired-lib.php';
+// The app copy holds every .php of the repository, so the development files on the
+// list are there too: what goes is exactly the listed files present, and nothing else.
+$there94 = array_values(array_filter(RETIRED_FILES, fn($f) => is_file($work . '/' . $f)));
+$before94 = count(glob($work . '/*') ?: []);
+$s94 = http($adm83, 'POST', '/self-repair.php', []);
+$sr94 = (string) $rootDb->query("SELECT summary FROM activity_log WHERE action = 'selfrepair.retired' ORDER BY id DESC LIMIT 1")->fetchColumn();
+clearstatcache(); // another process deleted them; PHP remembers what it saw before
+$left94 = array_values(array_filter(RETIRED_FILES, fn($f) => is_file($work . '/' . $f)));
+it_check('§94 "Fix safe issues" removes the old files present (' . implode(', ', $there94) . ') and says so', in_array('mailtest.php', $there94, true) && $left94 === [] && in_array('old files:' . count($there94), $s94['json']['fixed'] ?? [], true) && strpos($sr94, 'Self-repair: removed ' . count($there94) . ' file') === 0 && strpos($sr94, 'mailtest.php') !== false, json_encode([$s94['json']['fixed'] ?? null, $sr94]));
+it_check('§94 …and nothing else in the folder', count(glob($work . '/*') ?: []) === $before94 - count($there94) && is_file($work . '/config.php') && is_file($work . '/db.php'), (string) count(glob($work . '/*') ?: []));
+$d94 = $row94();
+it_check('§94 …and Status clears at once, without waiting for Monday', is_array($d94) && $d94['status'] === 'ok' && strpos((string) $d94['detail'], 'what it found has since been dealt with') !== false, json_encode($d94));
+@unlink($work . '/.deploy-commit');
+$rootDb->exec("DELETE FROM activity_log WHERE action IN ('server.check', 'selfrepair.retired')");
 $nojar94 = [];
 $t94 = http($nojar94, 'GET', '/tide-push.php?cron=' . rawurlencode($SECRET));
 it_check('§94 the retired tide push answers 410 and nothing else, even to the master key', $t94['code'] === 410 && is_array($t94['json']) && array_keys($t94['json']) === ['error'], $t94['code'] . ' ' . $t94['raw']);

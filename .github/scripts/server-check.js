@@ -16,12 +16,14 @@
 // --nested    <folder>=<build>: a folder inside the web root that is another copy of
 //             the site (the staging site lives in staging/). It is compared with its
 //             own build, the same way, instead of being reported file by file.
+//             findCopies (`--copies <listing>`) says which folders those are.
 // --tidy      <file>: what the tidy-up (server-tidy.yml) may delete, as JSON
 //             {delete: [paths], keep: [{path, why}]}. The check itself never deletes.
 //
 // The repository is public, so its logs are too: nothing here prints a session file,
-// a photo or a backup by name. Those are counted. A file is named only when it needs
-// a look, is left over, or is one of the site's own (public) files.
+// a photo or a backup by name, AT ANY DEPTH (a copy of the site the check did not
+// recognise keeps its own sessions/ and uploads/). Those are counted. A file is named
+// only when it needs a look, is left over, or is one of the site's own (public) files.
 'use strict';
 
 const fs = require('fs');
@@ -47,6 +49,37 @@ const GUARD_RULES = new Set([
     'Require all denied\n<IfModule !mod_authz_core.c>\nOrder allow,deny\nDeny from all\n</IfModule>\nOptions -Indexes\n',
 ]);
 const GUARDED_DIRS = new Set(['uploads/pending', 'uploads/private', 'uploads/avatars', 'sessions', 'backups']);
+// The names the site gives a session file and a backup: counted wherever they sit.
+const SESSION_FILE = /^sess_[A-Za-z0-9,-]+$/;
+const BACKUP_FILE = /^chb-(backup-\d{8}-\d{6}\.sql\.gz|files-\d{8}-\d{6}\.zip)$/;
+
+// The part of a path from a folder of that name on: 'uploads/x.jpg' for both
+// 'uploads/x.jpg' and 'old/uploads/x.jpg'. Null when no folder on the path has it.
+function fromFolder(p, folder) {
+    if (p.startsWith(folder + '/')) return p;
+    const i = p.indexOf('/' + folder + '/');
+    return i < 0 ? null : p.slice(i + 1);
+}
+
+// WHICH FOLDERS ARE COPIES OF THE SITE: a folder the deploy wrote a .deploy-commit
+// into, holding at least 50 files. Found from the listing, so it does not depend on
+// how a secret names the staging folder (the 26/10/2026 check compared the staging
+// copy as 150 strays because the two paths were written differently). A copy inside
+// a copy is part of the outer one; the photo, session, backup and library folders are
+// never a copy; and a name the shell would have to quote is not offered.
+const NOT_A_COPY = /^(uploads|sessions|backups|lib|\.well-known)(\/|$)/;
+function findCopies(remote) {
+    const files = remote.filter((r) => r.type === 'file');
+    const dirs = files
+        .filter((r) => r.path.endsWith('/.deploy-commit'))
+        .map((r) => r.path.slice(0, -'/.deploy-commit'.length))
+        .filter((d) => /^[A-Za-z0-9._@+-]+(\/[A-Za-z0-9._@+-]+)*$/.test(d) && !d.split('/').some((s) => s === '.' || s === '..') && !NOT_A_COPY.test(d))
+        .filter((d) => files.filter((r) => r.path.startsWith(d + '/')).length >= 50)
+        .sort((a, b) => a.length - b.length || (a < b ? -1 : 1));
+    const out = [];
+    for (const d of dirs) if (!out.some((o) => d.startsWith(o + '/'))) out.push(d);
+    return out;
+}
 
 // lftp `find -l`: "-rw-r--r--  user/group  1234 2026-10-22 12:27:30 ./path"
 function parseListing(text) {
@@ -97,14 +130,19 @@ function sameContent(p, expectedBuf, serverBuf) {
 //   server:   Map path -> buf               what was downloaded from the host
 //   history:  path -> null | 'YYYY-MM-DD'   the last day it was in the code, if ever
 //   webauthn: Map path -> Set(blob) | null  the published library's files
+// history(p) answers null (never in the repository), 'dev' (in the repository now,
+// but a development file the deploy never uploads) or the day it was last there.
+// `gone: true` marks a finding that deleting the file resolves, which is how the
+// site can tell, before the next check, that it has been dealt with.
 function classify({ expected, remote, server, history = () => null, webauthn = null }) {
     const needs = [];
     const changed = [];
     const leftovers = [];
-    const counts = { sessions: 0, photos: 0, cachedSizes: 0, backups: 0, library: 0, libraryUnverified: 0 };
+    const counts = { sessions: 0, photos: 0, cachedSizes: 0, backups: 0, strayImages: 0, library: 0, libraryUnverified: 0 };
     const seen = new Set();
     const was = (p) => {
         const d = history(p);
+        if (d === 'dev') return 'a development file the deploy never uploads';
         return d ? `removed from the code, last there ${d}` : 'never part of the site';
     };
 
@@ -113,7 +151,7 @@ function classify({ expected, remote, server, history = () => null, webauthn = n
         const p = r.path;
         seen.add(p);
         if (r.type !== 'file') {
-            needs.push({ path: p, why: r.type === 'link' ? 'a link to another file (nothing here makes links)' : 'not a regular file' });
+            needs.push({ path: p, why: r.type === 'link' ? 'a link to another file (nothing here makes links)' : 'not a regular file', gone: true });
             continue;
         }
         const exp = expected.get(p);
@@ -134,26 +172,39 @@ function classify({ expected, remote, server, history = () => null, webauthn = n
 
         if (p === 'config.php') continue; // the host keeps its own
 
-        if (name === '.htaccess' && GUARDED_DIRS.has(dir)) {
+        if (name === '.htaccess' && [...GUARDED_DIRS].some((g) => dir === g || dir.endsWith('/' + g))) {
             const got = server.get(p);
             if (!got || !GUARD_RULES.has(got.toString('utf8'))) needs.push({ path: p, why: 'the folder\'s deny-all rule has been changed' });
             continue;
         }
 
-        if (p.startsWith('sessions/')) {
-            if (/^sessions\/sess_[A-Za-z0-9,-]+$/.test(p)) counts.sessions++;
-            else needs.push({ path: p, why: 'not a session file' });
+        // Private files, at ANY depth: a session file and a backup are counted wherever
+        // they are. One outside its own folder is a finding, reported without its name.
+        const inSessions = fromFolder(p, 'sessions') !== null;
+        const inBackups = fromFolder(p, 'backups') !== null;
+        if (SESSION_FILE.test(name)) {
+            counts.sessions++;
+            if (!inSessions) needs.push({ path: (dir ? dir + '/' : '') + '(a session file)', why: 'a sign-in\'s file outside the protected sessions folder' });
             continue;
         }
-        if (p.startsWith('backups/')) {
-            if (/^backups\/chb-(backup-\d{8}-\d{6}\.sql\.gz|files-\d{8}-\d{6}\.zip)$/.test(p)) counts.backups++;
-            else needs.push({ path: p, why: 'not one of the site\'s backups' });
+        if (BACKUP_FILE.test(name)) {
+            counts.backups++;
+            if (!inBackups) needs.push({ path: (dir ? dir + '/' : '') + '(a backup)', why: 'a backup of the site outside the protected backups folder' });
             continue;
         }
-        if (p.startsWith('uploads/')) {
-            if (RUNS.test(p) || RULES.test(p)) needs.push({ path: p, why: 'something the server would run, in the photo folder' });
-            else if (RENDERS.test(p)) needs.push({ path: p, why: 'a page or script a browser would open from the site\'s own address' });
-            else if (p.startsWith('uploads/cache/') && /\.w\d+\.webp$/.test(p)) counts.cachedSizes++;
+        if (inSessions) {
+            needs.push({ path: p, why: 'not a session file', gone: true });
+            continue;
+        }
+        if (inBackups) {
+            needs.push({ path: p, why: 'not one of the site\'s backups', gone: true });
+            continue;
+        }
+        const up = fromFolder(p, 'uploads');
+        if (up !== null) {
+            if (RUNS.test(p) || RULES.test(p)) needs.push({ path: p, why: 'something the server would run, in the photo folder', gone: true });
+            else if (RENDERS.test(p)) needs.push({ path: p, why: 'a page or script a browser would open from the site\'s own address', gone: true });
+            else if (up.startsWith('uploads/cache/') && /\.w\d+\.webp$/.test(p)) counts.cachedSizes++;
             else if (PHOTO.test(p)) counts.photos++;
             else leftovers.push({ path: p, why: 'not a photo', from: 'uploads' });
             continue;
@@ -172,7 +223,7 @@ function classify({ expected, remote, server, history = () => null, webauthn = n
             const h = blobHash(got);
             const known = [webauthn.get('src/' + rel), webauthn.get(rel)].some((s) => s && s.has(h));
             if (known) counts.library++;
-            else if (RUNS.test(p) || RULES.test(p)) needs.push({ path: p, why: 'a passkey-library file that matches no published version' });
+            else if (RUNS.test(p) || RULES.test(p)) needs.push({ path: p, why: 'a passkey-library file that matches no published version', gone: true });
             else leftovers.push({ path: p, why: 'not part of the passkey library', from: 'library' });
             continue;
         }
@@ -181,7 +232,10 @@ function classify({ expected, remote, server, history = () => null, webauthn = n
         if (/\.lftp$/.test(p)) {
             leftovers.push({ path: p, why: 'the temporary file of an interrupted upload', from: 'temp' });
         } else if (RUNS.test(p) || RULES.test(p)) {
-            needs.push({ path: p, why: `runs on the server, and is not in the site (${was(p)})` });
+            needs.push({ path: p, why: `runs on the server, and is not in the site (${was(p)})`, gone: true });
+        } else if (PHOTO.test(p) && !history(p)) {
+            // An image this repository never shipped may be someone's photo.
+            counts.strayImages++;
         } else {
             leftovers.push({ path: p, why: was(p), from: history(p) ? 'repo' : 'never' });
         }
@@ -252,6 +306,7 @@ function report(r, meta = {}) {
     lines.push('', '### Counted, not named', '');
     lines.push(`- ${c.photos} photo${c.photos === 1 ? '' : 's'} and ${c.cachedSizes} resized cop${c.cachedSizes === 1 ? 'y' : 'ies'} in uploads/`);
     lines.push(`- ${c.sessions} session file${c.sessions === 1 ? '' : 's'}, ${c.backups} backup${c.backups === 1 ? '' : 's'}`);
+    if (c.strayImages) lines.push(`- ${c.strayImages} other image${c.strayImages === 1 ? '' : 's'} the site never shipped, outside uploads/`);
     if (c.library || c.libraryUnverified) {
         lines.push(`- ${c.library} passkey-library file${c.library === 1 ? '' : 's'} matching a published lbuchs/WebAuthn version${c.libraryUnverified ? `, ${c.libraryUnverified} not checked (the library's releases could not be read)` : ''}`);
     }
@@ -277,6 +332,14 @@ function gitHistory(repo) {
     if (!repo) return () => null;
     return (p) => {
         const inRepo = p === '.htaccess' ? 'Cottage Holidays Blakeney/htaccess.txt' : 'Cottage Holidays Blakeney/' + p;
+        // Still in the repository but not in the build: a development file the deploy
+        // strips (test-pop3-server.php read as "removed from the code" before this).
+        try {
+            execFileSync('git', ['-C', repo, 'cat-file', '-e', 'HEAD:' + inRepo], { stdio: 'ignore' });
+            return 'dev';
+        } catch (e) {
+            // not in the repository now
+        }
         try {
             const out = execFileSync('git', ['-C', repo, 'log', '--all', '-1', '--format=%cs', '--', inRepo], { encoding: 'utf8' }).trim();
             return out || null;
@@ -300,6 +363,10 @@ function main(argv) {
         const i = argv.indexOf('--' + k);
         return i >= 0 ? argv[i + 1] : '';
     };
+    if (arg('copies')) {
+        for (const d of findCopies(parseListing(fs.readFileSync(arg('copies'), 'utf8')))) console.log(d);
+        return 0;
+    }
     const nested = argv.flatMap((a, i) => (a === '--nested' && /^[^=]+=.+$/.test(argv[i + 1] || '') ? [argv[i + 1]] : []))
         .map((s) => ({ dir: s.slice(0, s.indexOf('=')).replace(/^\/+|\/+$/g, ''), build: s.slice(s.indexOf('=') + 1) }));
     const expected = readBuild(arg('expected'));
@@ -321,10 +388,14 @@ function main(argv) {
         server = split.outer.server;
         const exp = readBuild(nx.build);
         if (exp.size < 50 || split.inner.remote.length < 50) tooLittle(` of ${nx.dir}/`, exp.size, split.inner.remote.length);
+        const built = exp.get('.deploy-commit');
         parts.push({
             prefix: nx.dir + '/',
             r: classify({ expected: exp, remote: split.inner.remote, server: split.inner.server, history, webauthn }),
-            meta: { title: `The staging copy in ${nx.dir}/`, commit: process.env.CHECK_NESTED_COMMIT || '', commitNote: process.env.CHECK_NESTED_COMMIT_NOTE || '' },
+            meta: {
+                title: nx.dir === 'staging' ? 'The staging copy in staging/' : `The copy of the site in ${nx.dir}/`,
+                commit: built && /^[0-9a-f]{40}\s*$/.test(built.buf.toString('utf8')) ? built.buf.toString('utf8').trim() : '',
+            },
         });
     }
     if (expected.size < 50 || remote.length < 50) tooLittle('', expected.size, remote.length);
@@ -338,12 +409,22 @@ function main(argv) {
     process.stdout.write(text);
     if (arg('summary')) fs.appendFileSync(arg('summary'), text);
     // One list per kind for the site, each item under its full path on the host.
-    const all = (k) => parts.flatMap((pt) => pt.r[k].map((it) => ({ path: pt.prefix + it.path, why: it.why })));
+    const all = (k) => parts.flatMap((pt) => pt.r[k].map((it) => ({ path: pt.prefix + it.path, why: it.why, gone: !!it.gone })));
     if (arg('json')) {
         const slim = (items) => items.slice(0, 40).map((it) => it.path + ': ' + it.why);
         fs.writeFileSync(arg('json'), JSON.stringify({
             commit: live.meta.commit,
             needs: slim(all('needs')), changed: slim(all('changed')), missing: slim(all('missing')), leftovers: slim(all('leftovers')),
+            // The whole count (the lists above stop at 40), and what the site can check
+            // for itself until the next run: a file whose removal resolves its finding,
+            // a file that should be there, and how many it cannot judge.
+            total: { needs: all('needs').length, changed: all('changed').length, missing: all('missing').length, leftovers: all('leftovers').length },
+            open: {
+                gone: all('needs').filter((it) => it.gone).slice(0, 200).map((it) => it.path),
+                goneAll: all('needs').filter((it) => it.gone).length,
+                back: all('missing').slice(0, 200).map((it) => it.path),
+                other: all('needs').filter((it) => !it.gone).length + all('changed').length,
+            },
             counts: live.r.counts,
         }));
     }
@@ -362,6 +443,6 @@ function main(argv) {
     return found.length ? 1 : 0;
 }
 
-module.exports = { parseListing, classify, report, splitNested, blobHash, sameContent, tidyPick, GUARD_RULES };
+module.exports = { parseListing, classify, report, splitNested, findCopies, fromFolder, blobHash, sameContent, tidyPick, GUARD_RULES };
 
 if (require.main === module) process.exit(main(process.argv.slice(2)));

@@ -500,9 +500,11 @@ try {
 } catch (\Throwable $e) {
     $scRow = false;
 }
-$sc = status_server_check_row(is_array($scRow) ? $scRow : null, time());
+// The site looks up, in its own folder, whether what the check named is still there.
+require_once __DIR__ . '/retired-lib.php';
+$sc = status_server_check_row(is_array($scRow) ? $scRow : null, time(), fn($p) => file_exists(__DIR__ . '/' . $p), RETIRED_FILES);
 if ($sc) {
-    add($checks, 'Security', $sc[0], $sc[1], $sc[2], $sc[1] === 'ok' ? '' : 'The check\'s run on GitHub (Actions, "Check the server\'s files") names each file.');
+    add($checks, 'Security', $sc[0], $sc[1], $sc[2], $sc[3]);
 }
 
 // A NARROWER OUTSIDE-CODE RULE ON TRIAL (first used for the security leftovers' Step 5,

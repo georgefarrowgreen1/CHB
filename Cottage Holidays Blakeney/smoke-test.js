@@ -2279,6 +2279,15 @@ console.log('\n== 7. Every required PHP file survives the deploy ==');
     check('both deploy jobs stage with stage-site.sh', (wf.match(/bash \.github\/scripts\/stage-site\.sh "Cottage Holidays Blakeney" deploy/g) || []).length === 2);
     const sc = fs.readFileSync(path.join(__dirname, '..', '.github', 'scripts', 'server-check.sh'), 'utf8');
     check('the server check builds what it compares with stage-site.sh too', /stage-site\.sh/.test(sc));
+    // THE FILES THE SITE REMOVES FROM ITS OWN HOST (retired-lib.php, run by self-repair)
+    // are never ones the deploy uploads: otherwise "Fix safe issues" would delete a live
+    // file every night and the next deploy would put it back. Read from the list itself.
+    const retiredSrc = fs.readFileSync(path.join(__dirname, 'retired-lib.php'), 'utf8');
+    const retiredList = (/const RETIRED_FILES = \[([\s\S]*?)\];/.exec(retiredSrc) || [, ''])[1];
+    const retired = [...retiredList.replace(/^\s*\/\/.*$/gm, '').matchAll(/'([^']+)'/g)].map((m) => m[1]);
+    check(`the files the site removes from its host were read (${retired.length})`, retired.length >= 10);
+    const shippedRetired = retired.filter((f) => shipped.has(f));
+    check(`none of them is uploaded by the deploy${shippedRetired.length ? ' — ' + shippedRetired.join(', ') : ''}`, shippedRetired.length === 0);
     // A required file must also EXIST in the repo, or the checkout ships a dangling
     // require — the same fatal, one step earlier.
     const absent = [...required].filter((f) => !fs.existsSync(path.join(__dirname, f)));

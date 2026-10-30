@@ -172,7 +172,9 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
       takenPickable: !!taken && !taken.disabled,
       label: taken ? taken.getAttribute('aria-label') : '',
     };
-  }, { free: d(36), taken: d(31) });
+  // The free night is on the page that shows the taken one: four days later, or (when
+  // that crosses into the next month, as it does at the end of a month) three before.
+  }, { free: d(34).slice(0, 7) === d(31).slice(0, 7) ? d(34) : d(28), taken: d(31) });
   ok(cal.freePrice !== '' && cal.freePrice === cal.want, `a free night shows its price, nightlyRateFor's own figure (${cal.freePrice} = ${cal.want})`);
   ok(cal.takenCls && !cal.takenPrice && cal.takenPickable && /booked by Booked Guest/.test(cal.label),
     `a taken night is crossed, unpriced, still pickable and says who has it (${cal.label})`);

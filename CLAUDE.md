@@ -12137,7 +12137,54 @@ whatever else reached it; nothing compared the two. Code: `.github/scripts/` and
   error means the key changed: check IONOS's published list before replacing a line.
 - **For the owner, not the code**: `mailtest.php` (never part of the site), `test-pop3-server.php` (denied
   by htaccess and CLI-only) and `vapid-keygen.php` (the pre-#1435 copy, which takes the master key in its
-  address) are on the live host, plus 14 harmless leftovers. The deploy never deletes, so they go by hand.
+  address) are on the live host, plus 14 harmless leftovers. (Since 30/10/2026 the site removes them itself:
+  see "What the second run found" below.)
+
+**WHAT THE SECOND RUN FOUND (26/10/2026), and what changed because of it.** Status read "40 things on the
+server need a look"; there were 158, and nearly all were the check's own fault.
+- **THE STAGING COPY WAS NOT RECOGNISED, so its 150 files were reported as strays.** The nesting depended on
+  `STAGING_REMOTE_PATH` being written as a path under `IONOS_REMOTE_PATH`, and the two secrets were not. The
+  check now FINDS each copy from the listing (`findCopies`, `--copies`): a folder holding a `.deploy-commit`
+  and at least 50 files, never in `uploads/`, `sessions/`, `backups/`, `lib/` or `.well-known/`, never a copy
+  inside a copy, never a name the shell would quote. The secret is still read as a hint. Each copy is built
+  from the commit in its own `.deploy-commit` (the report reads the commit from the build), and there may be
+  more than one.
+- **AND ITS SESSION FILES WERE NAMED IN THE PUBLIC LOG** (both runs: 378 staging session files each; none of
+  the live site's). The private-file rules only looked at the top of the path. Now, at ANY depth: a file named
+  like a session (`sess_…`) or a backup (`chb-backup-…`, `chb-files-…`) is counted wherever it is (one outside
+  its own folder is a finding under a stand-in name, `(a session file)`, `(a backup)`); the uploads rules apply
+  from any `uploads/` folder on the path (`fromFolder`); and an image the repository never shipped, outside
+  uploads/, is counted (`strayImages`), not named. Both runs' logs were deleted the same day. **The staging
+  session ids stayed public for days**: on the staging site, sign out of all other devices.
+- **A development file read as "removed from the code"** (`test-pop3-server.php`, still in the repository and
+  stripped by the deploy). `gitHistory` answers `dev` for a path at HEAD: "a development file the deploy
+  never uploads".
+- **THE SITE IS SENT THE WHOLE COUNT** (`total`; the lists stop at 40, and `found` was their length) **and what
+  it can check for itself** (`open`): the files whose removal resolves their finding (`gone`, findings marked
+  `gone: true`), the files that should be there (`back`), and how many it cannot judge (`other`).
+  server-check.php keeps plain paths only and fits the meta into the log's 4,000 characters (the items give
+  way to five first, then the open lists from their ends; what falls off still counts, through
+  `goneAll`/`backAll`).
+- **STATUS LOOKS FOR ITSELF BETWEEN RUNS** (`status_server_check_row($row, $now, $exists, $removable)`):
+  a stray already deleted and a missing file now back stop counting; the row names up to three files
+  ("mailtest.php needs a look on the server, found on …") and its hint says whether "Fix safe issues" removes
+  them. All dealt with reads "Checked DD/MM/YYYY; what it found has since been dealt with."
+- **"FIX SAFE ISSUES" REMOVES THE FILES THE SITE NO LONGER USES** (`retired-lib.php`, self-repair step
+  4d-ii-b, every night too). `RETIRED_FILES` is a fixed list: mailtest.php, the two development files and the
+  14 leftovers. Only from the site's own folder, and only where the deploy wrote a 40-hex `.deploy-commit`, so
+  a developer's checkout (which holds the development files) is never touched; never a link, a config, a rules
+  file, `.deploy-commit`, or anything in the protected folders (`retired_name_ok`). smoke-test §7 fails if a
+  listed file is one the deploy uploads (or the site would delete a live file nightly and the deploy put it
+  back). Logged as `selfrepair.retired`, reported as `old files:N`. **When a file leaves the code, add it to the
+  list if it was ever uploaded.** The staging copy's own leftovers go when "Fix safe issues" runs on staging.
+- Gates: test-server-check.js (finding copies; private files at any depth in an unrecognised copy; the whole
+  count and the open lists through the real command line; nothing printed, summarised, sent or listed names a
+  session file or a photo), test-status (the row both ways, a path that is not plain never looked up, the
+  list's names, the removal's guards), integration §94 (the whole count, a report as long as the lists allow,
+  the row naming what is still there, self-repair leaving a folder with no `.deploy-commit` alone, then
+  removing exactly the listed files present and the row clearing), smoke-test §7. Break-tested: copy finding,
+  the any-depth rule, the stray-image rule and the total each fail their named checks; a shipped file on the
+  list fails smoke; the `.deploy-commit` guard fails three test-status checks.
 
 **THE TIDY-UP** (`.github/workflows/server-tidy.yml`, architectural upgrade 5): started only by hand from the
 Actions tab, it runs the same check and then deletes leftovers, with "Delete them" unticked by default (it

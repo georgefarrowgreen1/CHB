@@ -202,6 +202,7 @@ $REGISTRY = [
     'people-lib.php' => ['lib', [], 'who may do what: the pure rules db.php enforces (no routes of its own)'],
     'username-lib.php' => ['lib', [], 'the one username rule for guests and the back office; required by people-lib.php (pure, no entry)'],
     'session-lib.php' => ['lib', [], 'the session lifetime + the daily sweep of the session folder; required by db.php (no entry)'],
+    'retired-lib.php' => ['lib', [], 'the files the site no longer uses, which self-repair removes from its own folder; required by self-repair.php and diagnostics.php (no entry)'],
     'devices-lib.php' => ['lib', [], 'every device a person is signed in on; required by db.php (no entry)'],
     'photo-lib.php' => ['lib', [], 'private photos and their signed links; required by db.php and photo.php (no entry)'],
     'stamps-lib.php' => ['lib', [], 'a change stamp per table and the connection that moves them; required by db.php (no entry)'],

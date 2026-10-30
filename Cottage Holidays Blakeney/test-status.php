@@ -143,7 +143,7 @@ echo "== Server files (the weekly server file check) ==\n";
 $now = strtotime('2026-10-22 09:00:00');
 sts('no row before the check has ever run (nothing to say yet)', status_server_check_row(null, $now) === null);
 $sc = status_server_check_row(['severity' => 'info', 'meta' => '{"found":0}', 'created_at' => '2026-10-19 05:30:00'], $now);
-sts('a clean run is ok, dated, and short enough to be its own note', $sc === ['Server files', 'ok', 'Checked 19/10/2026.'] && $note($sc[2]));
+sts('a clean run is ok, dated, and short enough to be its own note', $sc === ['Server files', 'ok', 'Checked 19/10/2026.', ''] && $note($sc[2]));
 $sc = status_server_check_row(['severity' => 'warn', 'meta' => '{"found":3,"items":["uploads/x.php: something"]}', 'created_at' => '2026-10-19 05:30:00'], $now);
 sts('a run with findings is a warning that counts them, in one sentence', $sc[1] === 'warn' && strpos($sc[2], '3 things on the server need a look') === 0 && $first($sc[2]) . '.' === $sc[2]);
 $sc = status_server_check_row(['severity' => 'warn', 'meta' => '{"found":1}', 'created_at' => '2026-10-19 05:30:00'], $now);
@@ -154,6 +154,50 @@ $sc = status_server_check_row(['severity' => 'info', 'meta' => '{"found":0}', 'c
 sts('a check that last reported over 15 days ago is a warning: it may have stopped', $sc[1] === 'warn' && strpos($sc[2], 'last reported on 06/10/2026') !== false && $first($sc[2]) . '.' === $sc[2]);
 $sc = status_server_check_row(['severity' => 'info', 'meta' => '{"found":0}', 'created_at' => '2026-10-07 10:00:00'], $now);
 sts('…but 15 days is not over', $sc[1] === 'ok');
+// Between runs the site looks for itself: what is gone stops counting.
+$on = ['mailtest.php' => true, 'staging/x.php' => true, 'missing-file.php' => false, 'returned.js' => true];
+$ex = fn($p) => $on[$p] ?? false;
+$mk = fn(array $open, int $found) => ['severity' => 'warn', 'meta' => json_encode(['found' => $found, 'open' => $open]), 'created_at' => '2026-10-19 05:30:00'];
+$sc = status_server_check_row($mk(['gone' => ['mailtest.php', 'gone.php'], 'goneAll' => 2, 'back' => [], 'other' => 0], 2), $now, $ex, ['mailtest.php']);
+sts('a stray already deleted stops counting; the one still there is named', $sc[1] === 'warn' && strpos($sc[2], 'mailtest.php needs a look on the server, found on 19/10/2026') === 0 && $first($sc[2]) . '.' === $sc[2]);
+sts('…and when "Fix safe issues" removes everything left, the hint says so', strpos($sc[3], '"Fix safe issues" removes it') === 0);
+$sc = status_server_check_row($mk(['gone' => ['mailtest.php', 'staging/x.php'], 'goneAll' => 2, 'back' => ['missing-file.php', 'returned.js'], 'other' => 1], 5), $now, $ex, ['mailtest.php']);
+sts('a file that should be there and is back stops counting; one still missing, a stray and what it cannot judge stay (' . $sc[2] . ')', strpos($sc[2], 'mailtest.php, staging/x.php, missing-file.php and 1 more need a look') === 0);
+sts('…the hint says the button helps with some, and where the rest are named', strpos($sc[3], '"Fix safe issues" removes 1 of them') === 0 && strpos($sc[3], 'GitHub') !== false);
+$sc = status_server_check_row($mk(['gone' => ['gone.php'], 'goneAll' => 1, 'back' => [], 'other' => 0], 1), $now, $ex, []);
+sts('everything dealt with reads as checked, not as a warning', $sc[1] === 'ok' && strpos($sc[2], 'Checked 19/10/2026; what it found has since been dealt with') === 0);
+$sc = status_server_check_row($mk(['gone' => ['gone.php'], 'goneAll' => 158, 'back' => [], 'other' => 0], 158), $now, $ex, []);
+sts('what the lists left out still counts (157 of 158 were not listed)', $sc[1] === 'warn' && strpos($sc[2], '157 things on the server need a look') === 0);
+$sc = status_server_check_row($mk(['gone' => ['../config.php', '/etc/passwd', 'a/./b.php'], 'goneAll' => 3, 'back' => [], 'other' => 0], 3), $now, fn($p) => false, []);
+sts('a path that is not plain is never looked up, and stays open', $sc[1] === 'warn' && strpos($sc[2], '3 things on the server need a look') === 0);
+$sc = status_server_check_row(['severity' => 'warn', 'meta' => '{"found":3}', 'created_at' => '2026-10-19 05:30:00'], $now, $ex, []);
+sts('a report from before the site could check (no open list) reads as it did', strpos($sc[2], '3 things on the server need a look') === 0);
+
+echo "== The files the site removes (retired-lib.php) ==\n";
+require_once __DIR__ . '/retired-lib.php';
+$bad = array_values(array_filter(RETIRED_FILES, fn($f) => !retired_name_ok($f)));
+sts('every listed name is one the site may delete (' . implode(', ', $bad) . ')', count(RETIRED_FILES) >= 10 && $bad === []);
+foreach (['config.php', 'staging/config.php', '.htaccess', 'x/.user.ini', '.deploy-commit', 'uploads/a.jpg', 'sessions/sess_x', 'backups/a.zip', 'lib/WebAuthn/x.php', '.well-known/x', '../x.php', 'a/../b.php', '/etc/passwd', 'a b.php', ''] as $p) {
+    sts('…never ' . ($p === '' ? '(empty)' : $p), !retired_name_ok($p));
+}
+$tmp = sys_get_temp_dir() . '/chb-retired-' . getmypid();
+@mkdir($tmp . '/sub', 0777, true);
+foreach (['mailtest.php', 'sitemap.xml', 'keep.php', 'config.php'] as $f) {
+    file_put_contents($tmp . '/' . $f, 'x');
+}
+@symlink($tmp . '/keep.php', $tmp . '/vapid-keygen.php');
+sts('nothing goes from a folder the deploy did not write (no .deploy-commit)', retired_remove($tmp) === [] && is_file($tmp . '/mailtest.php'));
+file_put_contents($tmp . '/.deploy-commit', 'not a commit');
+sts('…nor one whose .deploy-commit is not a commit', retired_remove($tmp) === [] && is_file($tmp . '/mailtest.php'));
+file_put_contents($tmp . '/.deploy-commit', str_repeat('c', 40) . "\n");
+$gone = retired_remove($tmp, ['mailtest.php', 'sitemap.xml', 'vapid-keygen.php', 'config.php', 'absent.php']);
+sts('in a deployed folder the listed files go, a link and a protected name never', $gone === ['mailtest.php', 'sitemap.xml'] && !is_file($tmp . '/mailtest.php') && is_link($tmp . '/vapid-keygen.php') && is_file($tmp . '/keep.php') && is_file($tmp . '/config.php'));
+exec('rm -rf ' . escapeshellarg($tmp));
+$sr = preg_replace('#^\s*//[^\n]*#m', '', (string) file_get_contents(__DIR__ . '/self-repair.php'));
+sts('self-repair removes them from its own folder only', strpos($sr, 'retired_remove(__DIR__)') !== false && substr_count($sr, 'retired_remove(') === 1);
+$dgR = preg_replace('#^\s*//[^\n]*#m', '', (string) file_get_contents(__DIR__ . '/diagnostics.php'));
+sts('Status looks up what the check named in its own folder, and knows what the button removes', strpos($dgR, "file_exists(__DIR__ . '/' . \$p)") !== false && strpos($dgR, 'RETIRED_FILES') !== false);
+
 $k = status_warn_kind('server.check', 'Server file check: 2 things on the server need a look');
 sts('its warning in the activity log needs the owner', $k['known'] && $k['needs'] === true);
 $dg2 = preg_replace('#^\s*//[^\n]*#m', '', (string) file_get_contents(__DIR__ . '/diagnostics.php'));
